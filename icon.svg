@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128">
+  <rect width="128" height="128" fill="#1a1a24"/>
+  <circle cx="64" cy="64" r="48" fill="#b43232" stroke="#782020" stroke-width="3"/>
+  <text x="64" y="72" text-anchor="middle" fill="white" font-family="sans-serif" font-size="20" font-weight="bold">MVP</text>
+</svg>

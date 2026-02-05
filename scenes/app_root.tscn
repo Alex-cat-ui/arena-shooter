@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3 uid="uid://dkl8qwerty123"]
+
+[ext_resource type="Script" path="res://src/app_root.gd" id="1_app"]
+
+[node name="AppRoot" type="Node"]
+script = ExtResource("1_app")
+
+[node name="UIRoot" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="LevelRoot" type="Node" parent="."]

@@ -1,0 +1,136 @@
+[gd_scene load_steps=2 format=3 uid="uid://dlevelsetup001"]
+
+[ext_resource type="Script" path="res://src/ui/level_setup.gd" id="1_script"]
+
+[node name="LevelSetup" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="Background" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.1, 0.1, 0.12, 1)
+
+[node name="VBoxContainer" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -200.0
+offset_right = 200.0
+offset_bottom = 200.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 15
+
+[node name="Title" type="Label" parent="VBoxContainer"]
+layout_mode = 2
+text = "LEVEL SETUP"
+horizontal_alignment = 1
+
+[node name="Spacer" type="Control" parent="VBoxContainer"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="WavesContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="WavesLabel" type="Label" parent="VBoxContainer/WavesContainer"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Waves Per Level"
+
+[node name="WavesSpinBox" type="SpinBox" parent="VBoxContainer/WavesContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 200.0
+value = 3.0
+
+[node name="DelayContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="DelayLabel" type="Label" parent="VBoxContainer/DelayContainer"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Start Delay (sec)"
+
+[node name="DelaySpinBox" type="SpinBox" parent="VBoxContainer/DelayContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 10.0
+step = 0.1
+value = 1.5
+
+[node name="MaxEnemiesContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+
+[node name="MaxEnemiesLabel" type="Label" parent="VBoxContainer/MaxEnemiesContainer"]
+custom_minimum_size = Vector2(150, 0)
+layout_mode = 2
+text = "Max Alive Enemies"
+
+[node name="MaxEnemiesSpinBox" type="SpinBox" parent="VBoxContainer/MaxEnemiesContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 256.0
+value = 64.0
+
+[node name="ValidationLabel" type="Label" parent="VBoxContainer"]
+custom_minimum_size = Vector2(0, 40)
+layout_mode = 2
+text = "Configuration OK"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Spacer2" type="Control" parent="VBoxContainer"]
+custom_minimum_size = Vector2(0, 10)
+layout_mode = 2
+
+[node name="ButtonContainer" type="HBoxContainer" parent="VBoxContainer"]
+layout_mode = 2
+alignment = 1
+
+[node name="BackButton" type="Button" parent="VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "Back"
+
+[node name="Spacer" type="Control" parent="VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(20, 0)
+layout_mode = 2
+
+[node name="ResetButton" type="Button" parent="VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "Reset Defaults"
+
+[node name="Spacer2" type="Control" parent="VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(20, 0)
+layout_mode = 2
+
+[node name="StartButton" type="Button" parent="VBoxContainer/ButtonContainer"]
+custom_minimum_size = Vector2(120, 40)
+layout_mode = 2
+text = "Start Level"
+
+[connection signal="value_changed" from="VBoxContainer/WavesContainer/WavesSpinBox" to="." method="_on_waves_spin_box_value_changed"]
+[connection signal="value_changed" from="VBoxContainer/DelayContainer/DelaySpinBox" to="." method="_on_delay_spin_box_value_changed"]
+[connection signal="value_changed" from="VBoxContainer/MaxEnemiesContainer/MaxEnemiesSpinBox" to="." method="_on_max_enemies_spin_box_value_changed"]
+[connection signal="pressed" from="VBoxContainer/ButtonContainer/BackButton" to="." method="_on_back_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/ButtonContainer/ResetButton" to="." method="_on_reset_button_pressed"]
+[connection signal="pressed" from="VBoxContainer/ButtonContainer/StartButton" to="." method="_on_start_button_pressed"]

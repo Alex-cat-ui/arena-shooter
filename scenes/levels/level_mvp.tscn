@@ -1,0 +1,93 @@
+[gd_scene load_steps=6 format=3 uid="uid://hlevelmvp001"]
+
+[ext_resource type="Script" path="res://src/levels/level_mvp.gd" id="1_level"]
+[ext_resource type="Script" path="res://src/entities/player.gd" id="2_player"]
+[ext_resource type="Texture2D" path="res://assets/sprites/player/player_idle_0001.png" id="3_player_tex"]
+[ext_resource type="Texture2D" path="res://assets/sprites/floor/floor_0001.png" id="4_floor_tex"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_player"]
+radius = 16.0
+
+[node name="LevelMVP" type="Node2D"]
+script = ExtResource("1_level")
+
+[node name="Floor" type="Node2D" parent="."]
+
+[node name="FloorSprite" type="Sprite2D" parent="Floor"]
+texture_filter = 0
+texture_repeat = 2
+scale = Vector2(100, 100)
+texture = ExtResource("4_floor_tex")
+region_enabled = true
+region_rect = Rect2(0, 0, 3200, 3200)
+
+[node name="Decals" type="Node2D" parent="."]
+
+[node name="Footprints" type="Node2D" parent="."]
+
+[node name="Corpses" type="Node2D" parent="."]
+
+[node name="Entities" type="Node2D" parent="."]
+
+[node name="Player" type="CharacterBody2D" parent="Entities"]
+collision_layer = 1
+collision_mask = 2
+script = ExtResource("2_player")
+
+[node name="Sprite2D" type="Sprite2D" parent="Entities/Player"]
+texture_filter = 0
+texture = ExtResource("3_player_tex")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Entities/Player"]
+shape = SubResource("CircleShape2D_player")
+
+[node name="Projectiles" type="Node2D" parent="."]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(2, 2)
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 5
+
+[node name="HUDContainer" type="VBoxContainer" parent="HUD"]
+anchors_preset = 0
+offset_left = 10.0
+offset_top = 10.0
+offset_right = 280.0
+offset_bottom = 130.0
+
+[node name="HPLabel" type="Label" parent="HUD/HUDContainer"]
+layout_mode = 2
+text = "HP: 100 / 100"
+
+[node name="StateLabel" type="Label" parent="HUD/HUDContainer"]
+layout_mode = 2
+text = "State: PLAYING"
+
+[node name="WaveLabel" type="Label" parent="HUD/HUDContainer"]
+layout_mode = 2
+text = "Wave: 0 / 3 (Alive: 0)"
+
+[node name="TimeLabel" type="Label" parent="HUD/HUDContainer"]
+layout_mode = 2
+text = "Time: 0.0 | Kills: 0"
+
+[node name="BossHPLabel" type="Label" parent="HUD/HUDContainer"]
+layout_mode = 2
+text = ""
+
+[node name="DebugHint" type="Label" parent="HUD"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -220.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 100.0
+grow_horizontal = 0
+text = "Debug Keys:
+ESC - Pause
+F1 - Game Over
+F2 - Level Complete
+LMB - Shoot"
+horizontal_alignment = 2
