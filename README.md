@@ -102,5 +102,9 @@ arena-shooter/
 ## Running Tests
 
 ```bash
-godot --headless --script res://tests/test_level_smoke.gd
+# Unit tests (62 tests, ~instant)
+godot --headless res://tests/test_runner.tscn
+
+# Smoke tests (level instantiation + spawn + boss, ~7 seconds)
+godot --headless res://tests/test_level_smoke.tscn
 ```

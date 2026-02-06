@@ -1,5 +1,5 @@
 ## level_mvp.gd
-## MVP level controller - Phase 1.
+## MVP level controller - Phase 1 + Phase 3 (Arena Polish + Weapons).
 ## CANON: Camera is TOP-DOWN ORTHOGRAPHIC, no rotation.
 ## CANON: ESC toggles pause, F1/F2 for debug state changes.
 ## CANON: StartDelaySec - player CAN move, enemies MUST NOT spawn.
@@ -18,6 +18,7 @@ const BOSS_SCENE := preload("res://scenes/entities/boss.tscn")
 @onready var wave_label: Label = $HUD/HUDContainer/WaveLabel
 @onready var time_label: Label = $HUD/HUDContainer/TimeLabel
 @onready var boss_hp_label: Label = $HUD/HUDContainer/BossHPLabel
+@onready var weapon_label: Label = $HUD/HUDContainer/WeaponLabel
 
 ## Container nodes
 @onready var entities_container: Node2D = $Entities
@@ -26,23 +27,30 @@ const BOSS_SCENE := preload("res://scenes/entities/boss.tscn")
 @onready var corpses_container: Node2D = $Corpses
 @onready var footprints_container: Node2D = $Footprints
 
-## Systems
+## Systems (Phase 1-2)
 var wave_manager: WaveManager = null
 var combat_system: CombatSystem = null
 var projectile_system: ProjectileSystem = null
 var vfx_system: VFXSystem = null
 var footprint_system: FootprintSystem = null
 
-## Level state
-var _is_paused: bool = false
+## Systems (Phase 3: Arena Polish + Weapons)
+var ability_system: AbilitySystem = null
+var camera_shake: CameraShake = null
+var wave_overlay: WaveOverlay = null
+var arena_boundary: ArenaBoundary = null
 
 ## Start delay timer
 var _start_delay_timer: float = 0.0
 var _start_delay_finished: bool = false
 
+## Arena bounds
+var _arena_min := Vector2(-500, -500)
+var _arena_max := Vector2(500, 500)
+
 
 func _ready() -> void:
-	print("[LevelMVP] Ready - Phase 1")
+	print("[LevelMVP] Ready - Phase 3")
 
 	# CANON: Camera must not rotate
 	camera.rotation = 0
@@ -53,9 +61,11 @@ func _ready() -> void:
 	# Initialize systems
 	_init_systems()
 
-	# Connect player to projectile system
+	# Connect player to systems
 	if player and projectile_system:
 		player.projectile_system = projectile_system
+	if player and ability_system:
+		player.ability_system = ability_system
 
 	# Start the start delay timer
 	_start_delay_timer = GameConfig.start_delay_sec if GameConfig else 1.5
@@ -88,8 +98,8 @@ func _init_systems() -> void:
 	wave_manager.boss_scene = BOSS_SCENE  # Phase 2: boss scene
 	wave_manager.entities_container = entities_container
 	# Set arena bounds based on floor size
-	wave_manager.arena_min = Vector2(-500, -500)
-	wave_manager.arena_max = Vector2(500, 500)
+	wave_manager.arena_min = _arena_min
+	wave_manager.arena_max = _arena_max
 	add_child(wave_manager)
 
 	# Initialize WaveManager with waves count from config
@@ -120,7 +130,32 @@ func _init_systems() -> void:
 	add_child(footprint_system)
 	footprint_system.initialize(footprints_container, vfx_system)
 
-	print("[LevelMVP] Systems initialized (Phase 2: VFX + Footprints enabled)")
+	# Phase 3: Create AbilitySystem
+	ability_system = AbilitySystem.new()
+	ability_system.name = "AbilitySystem"
+	ability_system.projectile_system = projectile_system
+	ability_system.combat_system = combat_system
+	add_child(ability_system)
+
+	# Phase 3: Create CameraShake
+	camera_shake = CameraShake.new()
+	camera_shake.name = "CameraShake"
+	add_child(camera_shake)
+	camera_shake.initialize(camera)
+
+	# Phase 3: Create WaveOverlay
+	wave_overlay = WaveOverlay.new()
+	wave_overlay.name = "WaveOverlay"
+	add_child(wave_overlay)
+
+	# Phase 3: Create ArenaBoundary (added before Entities for z-ordering)
+	arena_boundary = ArenaBoundary.new()
+	arena_boundary.name = "ArenaBoundary"
+	arena_boundary.z_index = -1  # Behind entities
+	add_child(arena_boundary)
+	arena_boundary.initialize(_arena_min, _arena_max)
+
+	print("[LevelMVP] Systems initialized (Phase 3: Weapons + Arena Polish)")
 
 
 func _subscribe_to_events() -> void:
@@ -133,6 +168,8 @@ func _subscribe_to_events() -> void:
 		EventBus.boss_spawned.connect(_on_boss_spawned)
 		EventBus.boss_killed.connect(_on_boss_killed)
 		EventBus.boss_damaged.connect(_on_boss_damaged)
+		# Phase 3: Rocket explosion -> camera shake
+		EventBus.rocket_exploded.connect(_on_rocket_exploded)
 
 
 func _process(delta: float) -> void:
@@ -168,6 +205,9 @@ func _process(delta: float) -> void:
 	if player and camera:
 		camera.position = player.position
 		camera.rotation = 0  # Ensure no rotation
+		# Phase 3: Apply camera shake
+		if camera_shake:
+			camera_shake.update(delta)
 
 	# Update HUD
 	_update_hud()
@@ -232,6 +272,13 @@ func _update_hud() -> void:
 		else:
 			boss_hp_label.text = ""
 
+	# Phase 3: Weapon display
+	if weapon_label and ability_system:
+		weapon_label.text = "Weapon: %s [%d/6]" % [
+			ability_system.get_current_weapon().to_upper(),
+			ability_system.current_weapon_index + 1
+		]
+
 
 ## ============================================================================
 ## EVENT HANDLERS
@@ -239,6 +286,9 @@ func _update_hud() -> void:
 
 func _on_wave_started(wave_index: int, wave_size: int) -> void:
 	print("[LevelMVP] Wave %d started (size: %d)" % [wave_index, wave_size])
+	# Phase 3: Show wave overlay
+	if wave_overlay:
+		wave_overlay.show_wave(wave_index)
 
 
 func _on_player_damaged(amount: int, new_hp: int, source: String) -> void:
@@ -255,6 +305,14 @@ func _on_player_died() -> void:
 func _on_all_waves_completed() -> void:
 	# Phase 2: Don't trigger LEVEL_COMPLETE here - boss must be killed first
 	print("[LevelMVP] All waves completed! Waiting for boss...")
+
+
+## Phase 3: Rocket explosion -> camera shake
+func _on_rocket_exploded(_pos: Vector3) -> void:
+	if camera_shake:
+		var amp: float = GameConfig.rocket_shake_amplitude if GameConfig else 3.0
+		var dur: float = GameConfig.rocket_shake_duration if GameConfig else 0.15
+		camera_shake.shake(amp, dur)
 
 
 ## ============================================================================
@@ -287,7 +345,6 @@ func _on_boss_killed(boss_id: int) -> void:
 
 ## Called by AppRoot when pausing
 func pause() -> void:
-	_is_paused = true
 	if RuntimeState:
 		RuntimeState.is_frozen = true
 	print("[LevelMVP] Paused")
@@ -295,7 +352,6 @@ func pause() -> void:
 
 ## Called by AppRoot when resuming
 func resume() -> void:
-	_is_paused = false
 	if RuntimeState:
 		RuntimeState.is_frozen = false
 	print("[LevelMVP] Resumed")

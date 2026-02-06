@@ -1,6 +1,7 @@
 ## projectile_system.gd
 ## ProjectileSystem - spawns and manages projectiles.
 ## CANON: TTL, collision, destruction.
+## CANON: Reads weapon stats from GameConfig.weapon_stats (Phase 3).
 class_name ProjectileSystem
 extends Node
 
@@ -13,13 +14,9 @@ var projectiles_container: Node2D = null
 ## Next projectile ID
 var _next_projectile_id: int = 1
 
-## Weapon stats (from ТЗ v1.13)
-## Pistol: dmg10, 180rpm, speed12 tiles/sec
-## Auto: dmg7, 150rpm, speed14
-## Shotgun: pellet dmg6 x5, speed10
-## Plasma: dmg20, 120rpm, speed9
-## Rocket: direct40, AoE20, radius7, speed4
-const WEAPON_STATS := {
+## Weapon stats - populated from GameConfig on _ready
+## Fallback values match ТЗ v1.13
+var WEAPON_STATS: Dictionary = {
 	"pistol": {
 		"damage": 10,
 		"rpm": 180,
@@ -56,7 +53,7 @@ const WEAPON_STATS := {
 		"projectile_type": "rocket",
 		"pellets": 1,
 		"aoe_damage": 20,
-		"aoe_radius": 7.0,
+		"aoe_radius_tiles": 7.0,
 	},
 	"piercing": {
 		"damage": 10,
@@ -71,6 +68,15 @@ const WEAPON_STATS := {
 func _ready() -> void:
 	# Load projectile scene
 	projectile_scene = load("res://scenes/entities/projectile.tscn")
+
+	# Override stats from GameConfig (canonical source of truth)
+	if GameConfig and GameConfig.weapon_stats:
+		for key in GameConfig.weapon_stats:
+			var stats: Dictionary = GameConfig.weapon_stats[key]
+			# Skip hitscan weapons (chain_lightning) - no projectile
+			if stats.get("projectile_type", "") == "hitscan":
+				continue
+			WEAPON_STATS[key] = stats
 
 
 ## Spawn projectile(s) for weapon

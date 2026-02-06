@@ -120,6 +120,19 @@ signal corpses_baked(count: int)
 signal footprint_spawned(position: Vector3, rotation: float)
 
 ## ============================================================================
+## SIGNALS - Weapons & Polish (Phase 3)
+## ============================================================================
+
+## Weapon changed by player
+signal weapon_changed(weapon_name: String, weapon_index: int)
+
+## Rocket exploded (for camera shake)
+signal rocket_exploded(position: Vector3)
+
+## Chain lightning arc hit (for VFX)
+signal chain_lightning_hit(origin: Vector3, target: Vector3)
+
+## ============================================================================
 ## INTERNAL STATE
 ## ============================================================================
 
@@ -238,6 +251,19 @@ func emit_footprint_spawned(position: Vector3, rotation: float) -> void:
 	_queue_event("footprint_spawned", [position, rotation])
 
 ## ============================================================================
+## PUBLIC API - Weapons & Polish (Phase 3)
+## ============================================================================
+
+func emit_weapon_changed(weapon_name: String, weapon_index: int) -> void:
+	_queue_event("weapon_changed", [weapon_name, weapon_index])
+
+func emit_rocket_exploded(position: Vector3) -> void:
+	_queue_event("rocket_exploded", [position], Priority.HIGH)
+
+func emit_chain_lightning_hit(origin: Vector3, target: Vector3) -> void:
+	_queue_event("chain_lightning_hit", [origin, target])
+
+## ============================================================================
 ## INTERNAL METHODS
 ## ============================================================================
 
@@ -273,9 +299,9 @@ func _process(_delta: float) -> void:
 
 ## Compare events for sorting (priority first, then FIFO order)
 func _compare_events(a: Dictionary, b: Dictionary) -> bool:
-	if a.priority != b.priority:
-		return a.priority < b.priority
-	return a.order < b.order
+	if a["priority"] != b["priority"]:
+		return int(a["priority"]) < int(b["priority"])
+	return int(a["order"]) < int(b["order"])
 
 
 ## Dispatch a single event
@@ -339,5 +365,12 @@ func _dispatch_event(event: Dictionary) -> void:
 			corpses_baked.emit(event.args[0])
 		"footprint_spawned":
 			footprint_spawned.emit(event.args[0], event.args[1])
+		# Weapons & Polish (Phase 3)
+		"weapon_changed":
+			weapon_changed.emit(event.args[0], event.args[1])
+		"rocket_exploded":
+			rocket_exploded.emit(event.args[0])
+		"chain_lightning_hit":
+			chain_lightning_hit.emit(event.args[0], event.args[1])
 		_:
 			push_warning("Unknown event: %s" % event.name)

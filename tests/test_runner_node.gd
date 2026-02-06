@@ -214,20 +214,20 @@ func _run_tests() -> void:
 		return Projectile.PROJECTILE_TTL.get("piercing_bullet", 0) == 2.0
 	)
 
-	print("\n--- SECTION 9: Weapon stats (ТЗ v1.13) ---")
+	print("\n--- SECTION 9: Weapon stats (ТЗ v1.13 - from GameConfig) ---")
 
 	_test("Pistol dmg=10, rpm=180", func():
-		var stats: Dictionary = ProjectileSystem.WEAPON_STATS.get("pistol", {})
+		var stats: Dictionary = GameConfig.weapon_stats.get("pistol", {})
 		return stats.damage == 10 and stats.rpm == 180
 	)
 
 	_test("Auto dmg=7, rpm=150", func():
-		var stats: Dictionary = ProjectileSystem.WEAPON_STATS.get("auto", {})
+		var stats: Dictionary = GameConfig.weapon_stats.get("auto", {})
 		return stats.damage == 7 and stats.rpm == 150
 	)
 
 	_test("Shotgun pellets=5, dmg=6", func():
-		var stats: Dictionary = ProjectileSystem.WEAPON_STATS.get("shotgun", {})
+		var stats: Dictionary = GameConfig.weapon_stats.get("shotgun", {})
 		return stats.pellets == 5 and stats.damage == 6
 	)
 
@@ -271,6 +271,10 @@ func _run_tests() -> void:
 
 	_test("Boss AoE cooldown = 1-2s", func():
 		return Boss.BOSS_AOE_COOLDOWN_MIN == 1.0 and Boss.BOSS_AOE_COOLDOWN_MAX == 2.0
+	)
+
+	_test("Boss min spawn distance = 10 tiles", func():
+		return Boss.BOSS_MIN_SPAWN_DISTANCE_TILES == 10.0
 	)
 
 	print("\n--- SECTION 12: GameConfig Phase 2 params ---")

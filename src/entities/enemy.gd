@@ -56,6 +56,9 @@ func _ready() -> void:
 	if hitbox:
 		hitbox.body_entered.connect(_on_hitbox_body_entered)
 
+	# Spawn animation (Phase 3: visual spawn cue)
+	_play_spawn_animation()
+
 
 ## Initialize enemy with ID, type, and wave
 func initialize(id: int, type: String, wave: int) -> void:
@@ -153,9 +156,8 @@ func die() -> void:
 	if EventBus:
 		EventBus.emit_enemy_killed(entity_id, enemy_type, wave_id)
 
-	# Now remove from group and queue free
-	# Use call_deferred to ensure event is processed first
-	call_deferred("_cleanup_after_death")
+	# Death visual feedback then cleanup
+	_play_death_effect()
 
 
 func _cleanup_after_death() -> void:
@@ -167,6 +169,34 @@ func _cleanup_after_death() -> void:
 
 	# Queue free - VFXSystem creates the visual corpse
 	queue_free()
+
+
+## Phase 3: Spawn scale-in animation + flash
+func _play_spawn_animation() -> void:
+	if not sprite:
+		return
+	sprite.scale = Vector2(0.1, 0.1)
+	sprite.modulate = Color(2.0, 2.0, 2.0, 1.0)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(sprite, "scale", Vector2(1.0, 1.0), 0.25).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_BACK)
+	tween.tween_property(sprite, "modulate", Color.WHITE, 0.2)
+
+
+## Phase 3: Death flash + scale burst before cleanup
+func _play_death_effect() -> void:
+	if not sprite:
+		call_deferred("_cleanup_after_death")
+		return
+
+	# White flash + scale burst + fade out
+	sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(sprite, "scale", Vector2(1.5, 1.5), 0.12).set_ease(Tween.EASE_OUT)
+	tween.tween_property(sprite, "modulate:a", 0.0, 0.15)
+	tween.set_parallel(false)
+	tween.tween_callback(_cleanup_after_death)
 
 
 func _on_hitbox_body_entered(body: Node2D) -> void:

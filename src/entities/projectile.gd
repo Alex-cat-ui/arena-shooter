@@ -151,8 +151,44 @@ func _hit_boss(boss: Node2D) -> void:
 
 
 func _destroy(reason: String) -> void:
+	# Rocket AoE explosion on any destruction
+	if projectile_type == "rocket":
+		_explode_rocket()
+
 	# Emit destroy event
 	if EventBus:
 		EventBus.emit_projectile_destroyed(projectile_id, reason)
 
 	queue_free()
+
+
+## Rocket AoE explosion - damages all enemies/bosses in radius
+func _explode_rocket() -> void:
+	# Read AoE stats from GameConfig
+	var aoe_damage: int = 20
+	var aoe_radius_tiles: float = 7.0
+	if GameConfig and GameConfig.weapon_stats.has("rocket"):
+		var stats: Dictionary = GameConfig.weapon_stats["rocket"]
+		aoe_damage = stats.get("aoe_damage", 20)
+		aoe_radius_tiles = stats.get("aoe_radius_tiles", 7.0)
+
+	var tile_size: int = GameConfig.tile_size if GameConfig else 32
+	var aoe_radius_px: float = aoe_radius_tiles * tile_size
+
+	# Damage all enemies in radius
+	var enemies := get_tree().get_nodes_in_group("enemies")
+	for enemy in enemies:
+		if enemy is Node2D and enemy.position.distance_to(position) <= aoe_radius_px:
+			if enemy.has_method("take_damage"):
+				enemy.take_damage(aoe_damage)
+
+	# Also check boss
+	var bosses := get_tree().get_nodes_in_group("boss")
+	for boss in bosses:
+		if boss is Node2D and boss.position.distance_to(position) <= aoe_radius_px:
+			if boss.has_method("take_damage"):
+				boss.take_damage(aoe_damage)
+
+	# Emit rocket_exploded event for camera shake
+	if EventBus:
+		EventBus.emit_rocket_exploded(Vector3(position.x, position.y, 0))

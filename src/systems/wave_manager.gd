@@ -102,6 +102,7 @@ func _ready() -> void:
 	if EventBus:
 		EventBus.start_delay_finished.connect(_on_start_delay_finished)
 		EventBus.enemy_killed.connect(_on_enemy_killed)
+		EventBus.state_changed.connect(_on_state_changed)
 
 
 ## Initialize wave manager for new level
@@ -388,8 +389,14 @@ func _spawn_boss() -> void:
 			StateManager.change_state(GameState.State.LEVEL_COMPLETE)
 		return
 
-	# Spawn boss at center of arena (or near player)
-	var spawn_pos := Vector2.ZERO
+	# Get player position for safe spawn calculation
+	var player_pos := Vector2.ZERO
+	if RuntimeState:
+		player_pos = Vector2(RuntimeState.player_pos.x, RuntimeState.player_pos.y)
+
+	# CANON: Boss must spawn >= 10 tiles away from player
+	var tile_size: int = GameConfig.tile_size if GameConfig else 32
+	var spawn_pos := Boss.get_safe_spawn_position(player_pos, arena_min, arena_max, tile_size)
 
 	boss_node = boss_scene.instantiate()
 	_boss_id = _next_enemy_id
@@ -408,9 +415,18 @@ func _spawn_boss() -> void:
 		var pos_v3 := Vector3(spawn_pos.x, spawn_pos.y, 0)
 		EventBus.emit_boss_spawned(_boss_id, pos_v3)
 
-	print("[WaveManager] BOSS SPAWNED! ID: %d" % _boss_id)
+	var distance_tiles := spawn_pos.distance_to(player_pos) / tile_size
+	print("[WaveManager] BOSS SPAWNED! ID: %d | pos: (%.0f, %.0f) | distance from player: %.1f tiles" % [
+		_boss_id, spawn_pos.x, spawn_pos.y, distance_tiles
+	])
 
 
 ## Check if boss is alive
 func is_boss_alive() -> bool:
 	return boss_spawned and boss_node != null and is_instance_valid(boss_node) and not boss_node.is_dead
+
+
+## Safety: stop spawning when leaving gameplay states
+func _on_state_changed(_old_state: GameState.State, new_state: GameState.State) -> void:
+	if new_state in [GameState.State.MAIN_MENU, GameState.State.GAME_OVER, GameState.State.LEVEL_COMPLETE]:
+		_spawning_active = false

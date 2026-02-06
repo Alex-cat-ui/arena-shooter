@@ -1,9 +1,9 @@
 ## boss.gd
 ## Boss entity for Phase 2.
 ## CANON: HP 500, size 9 tiles hitbox.
-## CANON: Contact damage 50% player HP, no more often than 3 seconds.
-## CANON: AoE attack radius 8 tiles, cooldown 1-2 seconds random.
-## CANON: Boss does NOT chase player (attacks from distance).
+## CANON: Contact damage 50% player HP, cooldown 3 seconds (separate from global i-frames).
+## CANON: AoE attack radius 8 tiles from BOSS position, cooldown 1-2 seconds random.
+## CANON: Boss does NOT constantly damage player - only via contact and discrete AoE.
 class_name Boss
 extends CharacterBody2D
 
@@ -11,11 +11,14 @@ extends CharacterBody2D
 const BOSS_HP := 500
 const BOSS_HITBOX_TILES := 9.0
 const BOSS_CONTACT_DAMAGE_PERCENT := 0.5  # 50% of player max HP
-const BOSS_CONTACT_IFRAMES := 3.0  # seconds
+const BOSS_CONTACT_IFRAMES := 3.0  # seconds (boss-specific, NOT global)
 const BOSS_AOE_RADIUS_TILES := 8.0
 const BOSS_AOE_COOLDOWN_MIN := 1.0
 const BOSS_AOE_COOLDOWN_MAX := 2.0
 const BOSS_AOE_DAMAGE := 25  # Damage per AoE hit
+
+## Minimum spawn distance from player (in tiles)
+const BOSS_MIN_SPAWN_DISTANCE_TILES := 10.0
 
 ## Unique entity ID
 var entity_id: int = 0
@@ -32,10 +35,10 @@ var is_dead: bool = false
 ## AoE attack cooldown timer
 var _aoe_cooldown: float = 0.0
 
-## Contact damage cooldown (separate from normal enemy i-frames)
+## Contact damage cooldown (SEPARATE from global enemy i-frames per CANON)
 var _contact_cooldown: float = 0.0
 
-## Is player currently in contact
+## Is player currently in contact with boss hitbox
 var _player_in_contact: bool = false
 
 ## Reference to sprite
@@ -51,15 +54,15 @@ var _player_in_contact: bool = false
 func _ready() -> void:
 	add_to_group("boss")
 
-	# Connect hitbox signals
+	# Connect hitbox signals for contact detection
 	if hitbox:
 		hitbox.body_entered.connect(_on_hitbox_body_entered)
 		hitbox.body_exited.connect(_on_hitbox_body_exited)
 
-	# Set initial AoE cooldown
+	# Set initial AoE cooldown (randomized)
 	_aoe_cooldown = randf_range(BOSS_AOE_COOLDOWN_MIN, BOSS_AOE_COOLDOWN_MAX)
 
-	print("[Boss] Ready - HP: %d" % hp)
+	print("[Boss] Ready - HP: %d, AoE cooldown: %.2f" % [hp, _aoe_cooldown])
 
 
 ## Initialize boss with ID
@@ -67,100 +70,145 @@ func initialize(id: int) -> void:
 	entity_id = id
 	hp = BOSS_HP
 	max_hp = BOSS_HP
+	_contact_cooldown = 0.0
+	_aoe_cooldown = randf_range(BOSS_AOE_COOLDOWN_MIN, BOSS_AOE_COOLDOWN_MAX)
 
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
 
-	# Check if frozen
+	# Check if frozen (paused)
 	if RuntimeState and RuntimeState.is_frozen:
 		return
 
-	# Update contact cooldown
+	# ========================================================================
+	# CONTACT DAMAGE SYSTEM (CANON)
+	# - Only when player collider overlaps boss collider
+	# - Damage = 50% player max HP
+	# - Cooldown = 3 seconds (boss-specific timer, NOT global i-frames)
+	# ========================================================================
 	if _contact_cooldown > 0:
 		_contact_cooldown -= delta
 
-	# Handle contact damage
 	if _player_in_contact and _contact_cooldown <= 0:
 		_apply_contact_damage()
 
-	# Update AoE cooldown and attack
+	# ========================================================================
+	# AoE ATTACK SYSTEM (CANON)
+	# - Cooldown randomly 1-2 seconds
+	# - AoE centered on BOSS position
+	# - Damage only if player distance <= radius
+	# - Fires ONCE per attack (not every frame)
+	# ========================================================================
 	_aoe_cooldown -= delta
 	if _aoe_cooldown <= 0:
 		_perform_aoe_attack()
+		# Reset cooldown for next attack
 		_aoe_cooldown = randf_range(BOSS_AOE_COOLDOWN_MIN, BOSS_AOE_COOLDOWN_MAX)
 
 
 func _apply_contact_damage() -> void:
 	## CANON: Contact damage is 50% of player max HP
-	## CANON: No more often than once per 3 seconds (separate i-frames)
+	## CANON: Cooldown 3 seconds (boss_contact_timer, NOT global i-frames)
+	## CANON: Only triggers when player overlaps boss hitbox
 	if not GameConfig or not RuntimeState:
+		return
+
+	# Check GodMode
+	if GameConfig.god_mode:
+		print("[Boss] Contact blocked - GodMode active | time=%.2f" % (Time.get_ticks_msec() / 1000.0))
 		return
 
 	var damage := int(ceil(GameConfig.player_max_hp * BOSS_CONTACT_DAMAGE_PERCENT))
 
-	# Get boss contact i-frames from config (or use default)
+	# Set boss-specific contact cooldown (NOT global i-frames)
 	var iframes_sec: float = GameConfig.boss_contact_iframes_sec if GameConfig else BOSS_CONTACT_IFRAMES
 	_contact_cooldown = iframes_sec
 
-	# Apply damage through CombatSystem via event
-	# We emit a special boss contact event that bypasses normal enemy i-frames
+	# Apply damage to player
+	var old_hp := RuntimeState.player_hp
+	RuntimeState.player_hp = maxi(0, RuntimeState.player_hp - damage)
+	RuntimeState.damage_received += damage
+
+	# Debug logging per spec
+	print("[Boss] CONTACT damage: %d | player HP: %d -> %d | cooldown: %.1fs | time=%.2f" % [
+		damage, old_hp, RuntimeState.player_hp, iframes_sec, Time.get_ticks_msec() / 1000.0
+	])
+
+	# Emit event for UI/stats
 	if EventBus:
-		EventBus.emit_player_damaged(damage, maxi(0, RuntimeState.player_hp - damage), "boss_contact")
+		EventBus.emit_player_damaged(damage, RuntimeState.player_hp, "boss_contact")
 
-	# Update RuntimeState directly (CombatSystem will also update, but we do it here for immediate effect)
-	if not GameConfig.god_mode:
-		RuntimeState.player_hp = maxi(0, RuntimeState.player_hp - damage)
-		RuntimeState.damage_received += damage
-
-		if RuntimeState.player_hp <= 0:
-			if EventBus:
-				EventBus.emit_player_died()
-			if StateManager:
-				StateManager.change_state(GameState.State.GAME_OVER)
-
-	print("[Boss] Contact damage: %d (player HP: %d)" % [damage, RuntimeState.player_hp])
+	# Check player death
+	if RuntimeState.player_hp <= 0:
+		print("[Boss] Player killed by contact damage")
+		if EventBus:
+			EventBus.emit_player_died()
+		if StateManager:
+			StateManager.change_state(GameState.State.GAME_OVER)
 
 
 func _perform_aoe_attack() -> void:
-	## CANON: AoE attack centered on player position
+	## CANON: AoE attack centered on BOSS position (NOT player)
 	## CANON: Radius 8 tiles
-	if not RuntimeState:
+	## CANON: Player takes damage ONLY if within radius
+	## CANON: Fires ONCE per attack event (NOT every frame)
+	if not RuntimeState or not GameConfig:
 		return
 
-	var player_pos := RuntimeState.player_pos
 	var tile_size: int = GameConfig.tile_size if GameConfig else 32
-	var aoe_radius_pixels := BOSS_AOE_RADIUS_TILES * tile_size
+	var aoe_radius_pixels: float = BOSS_AOE_RADIUS_TILES * tile_size
+
+	# Get positions
+	var boss_pos_2d := position
+	var player_pos_2d := Vector2(RuntimeState.player_pos.x, RuntimeState.player_pos.y)
+
+	# Calculate distance from boss to player
+	var distance := boss_pos_2d.distance_to(player_pos_2d)
+
+	# Emit AoE attack event for VFX (always, to show the attack animation)
+	if EventBus:
+		var boss_pos_v3 := Vector3(boss_pos_2d.x, boss_pos_2d.y, 0)
+		EventBus.emit_boss_aoe_attack(boss_pos_v3, BOSS_AOE_RADIUS_TILES)
 
 	# Check if player is within AoE radius
-	var boss_pos := Vector3(position.x, position.y, 0)
-	var player_pos_2d := Vector2(player_pos.x, player_pos.y)
-	var distance := position.distance_to(player_pos_2d)
+	if distance > aoe_radius_pixels:
+		# Player is OUTSIDE AoE range - no damage
+		print("[Boss] AoE attack MISSED | player distance: %.0f > radius: %.0f | time=%.2f" % [
+			distance, aoe_radius_pixels, Time.get_ticks_msec() / 1000.0
+		])
+		return
 
-	# Emit AoE attack event (for VFX)
+	# Check GodMode
+	if GameConfig.god_mode:
+		print("[Boss] AoE blocked - GodMode active | time=%.2f" % (Time.get_ticks_msec() / 1000.0))
+		return
+
+	# Player is within AoE - apply damage ONCE
+	var old_hp := RuntimeState.player_hp
+	RuntimeState.player_hp = maxi(0, RuntimeState.player_hp - BOSS_AOE_DAMAGE)
+	RuntimeState.damage_received += BOSS_AOE_DAMAGE
+
+	# Debug logging per spec
+	print("[Boss] AoE damage: %d | player HP: %d -> %d | distance: %.0f | time=%.2f" % [
+		BOSS_AOE_DAMAGE, old_hp, RuntimeState.player_hp, distance, Time.get_ticks_msec() / 1000.0
+	])
+
+	# Emit event for UI/stats
 	if EventBus:
-		EventBus.emit_boss_aoe_attack(player_pos, BOSS_AOE_RADIUS_TILES)
+		EventBus.emit_player_damaged(BOSS_AOE_DAMAGE, RuntimeState.player_hp, "boss_aoe")
 
-	# Player takes damage if within AoE (AoE is always at player position per spec)
-	# Since AoE centers on player, player always gets hit
-	if not GameConfig.god_mode:
+	# Check player death
+	if RuntimeState.player_hp <= 0:
+		print("[Boss] Player killed by AoE damage")
 		if EventBus:
-			EventBus.emit_player_damaged(BOSS_AOE_DAMAGE, maxi(0, RuntimeState.player_hp - BOSS_AOE_DAMAGE), "boss_aoe")
-
-		RuntimeState.player_hp = maxi(0, RuntimeState.player_hp - BOSS_AOE_DAMAGE)
-		RuntimeState.damage_received += BOSS_AOE_DAMAGE
-
-		if RuntimeState.player_hp <= 0:
-			if EventBus:
-				EventBus.emit_player_died()
-			if StateManager:
-				StateManager.change_state(GameState.State.GAME_OVER)
-
-	print("[Boss] AoE attack at player position - damage: %d" % BOSS_AOE_DAMAGE)
+			EventBus.emit_player_died()
+		if StateManager:
+			StateManager.change_state(GameState.State.GAME_OVER)
 
 
-## Take damage
+## Take damage from projectiles
 func take_damage(amount: int) -> void:
 	if is_dead:
 		return
@@ -220,13 +268,47 @@ func _on_hitbox_body_entered(body: Node2D) -> void:
 
 	if body.is_in_group("player"):
 		_player_in_contact = true
+		print("[Boss] Player entered contact zone | time=%.2f" % (Time.get_ticks_msec() / 1000.0))
 
 
 func _on_hitbox_body_exited(body: Node2D) -> void:
 	if body.is_in_group("player"):
 		_player_in_contact = false
+		print("[Boss] Player exited contact zone | time=%.2f" % (Time.get_ticks_msec() / 1000.0))
 
 
 ## Get current position as Vector3 (CANON)
 func get_position_v3() -> Vector3:
 	return Vector3(position.x, position.y, 0)
+
+
+## Static helper: Get valid spawn position for boss (>= 10 tiles from player)
+static func get_safe_spawn_position(player_pos: Vector2, arena_min: Vector2, arena_max: Vector2, tile_size: int) -> Vector2:
+	var min_distance: float = BOSS_MIN_SPAWN_DISTANCE_TILES * tile_size
+
+	# Try to find valid position
+	for attempt in range(20):
+		var x := randf_range(arena_min.x, arena_max.x)
+		var y := randf_range(arena_min.y, arena_max.y)
+		var pos := Vector2(x, y)
+
+		if pos.distance_to(player_pos) >= min_distance:
+			return pos
+
+	# Fallback: spawn at furthest corner from player
+	var corners: Array[Vector2] = [
+		arena_min,
+		Vector2(arena_max.x, arena_min.y),
+		Vector2(arena_min.x, arena_max.y),
+		arena_max
+	]
+
+	var best_pos := corners[0]
+	var best_dist := 0.0
+	for corner in corners:
+		var dist := corner.distance_to(player_pos)
+		if dist > best_dist:
+			best_dist = dist
+			best_pos = corner
+
+	return best_pos

@@ -3,6 +3,7 @@
 ## CANON: Movement is free (not grid-based), uses tile units for speed.
 ## CANON: Position stored as Vector3 in RuntimeState.
 ## CANON: ROTATE_SPRITE mode - sprite rotates to aim direction.
+## Phase 3: Weapon switching via AbilitySystem.
 extends CharacterBody2D
 
 ## Reference to sprite for rotation
@@ -14,14 +15,17 @@ var speed_tiles: float = 5.0
 ## Tile size in pixels (from GameConfig)
 var tile_size: int = 32
 
-## Current weapon type
+## Current weapon type (kept for backward compat, reads from ability_system)
 var current_weapon: String = "pistol"
 
-## Weapon cooldown remaining
+## Weapon cooldown remaining (legacy fallback)
 var _weapon_cooldown: float = 0.0
 
-## Reference to ProjectileSystem (set by level)
+## Reference to ProjectileSystem (set by level, legacy fallback)
 var projectile_system: Node = null
+
+## Reference to AbilitySystem (set by level, Phase 3)
+var ability_system: Node = null
 
 
 func _ready() -> void:
@@ -70,6 +74,9 @@ func _physics_process(delta: float) -> void:
 	# Update aim direction and rotate sprite
 	_update_aim()
 
+	# Handle weapon switching (Phase 3)
+	_handle_weapon_switch()
+
 	# Handle shooting
 	_handle_shooting(delta)
 
@@ -90,12 +97,41 @@ func _update_aim() -> void:
 		sprite.rotation = aim_dir.angle()
 
 
+## Phase 3: Weapon switching via mouse wheel and keys 1-6
+func _handle_weapon_switch() -> void:
+	if not ability_system:
+		return
+
+	# Mouse wheel
+	if Input.is_action_just_pressed("weapon_next"):
+		ability_system.cycle_weapon(1)
+	elif Input.is_action_just_pressed("weapon_prev"):
+		ability_system.cycle_weapon(-1)
+
+	# Keys 1-6
+	for i in range(6):
+		var action := "weapon_%d" % (i + 1)
+		if Input.is_action_just_pressed(action):
+			ability_system.set_weapon_by_index(i)
+			break
+
+
 func _handle_shooting(delta: float) -> void:
-	# Update cooldown
+	# Use AbilitySystem if available (Phase 3), else fallback to legacy
+	if ability_system:
+		if Input.is_action_pressed("shoot"):
+			var aim_dir := Vector2.ZERO
+			if RuntimeState:
+				aim_dir = Vector2(RuntimeState.player_aim_dir.x, RuntimeState.player_aim_dir.y)
+			else:
+				aim_dir = (get_global_mouse_position() - position).normalized()
+			var spawn_pos := position + aim_dir * 20
+			ability_system.try_fire(spawn_pos, aim_dir, delta)
+		return
+
+	# Legacy fallback (no ability system)
 	if _weapon_cooldown > 0:
 		_weapon_cooldown -= delta
-
-	# Check for shoot input
 	if Input.is_action_pressed("shoot") and _weapon_cooldown <= 0:
 		_fire_weapon()
 

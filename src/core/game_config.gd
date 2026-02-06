@@ -98,6 +98,66 @@ enum DirectionRenderMode {
 @export_range(1.0, 50.0) var player_speed_tiles: float = 5.0
 
 ## ============================================================================
+## SECTION: Weapons (Phase 3)
+## ============================================================================
+@export_group("Weapons")
+
+## Canonical weapon stats - source of truth for AbilitySystem
+var weapon_stats: Dictionary = {
+	"pistol": {
+		"damage": 10,
+		"rpm": 180,
+		"speed_tiles": 12.0,
+		"projectile_type": "bullet",
+		"pellets": 1,
+	},
+	"auto": {
+		"damage": 7,
+		"rpm": 150,
+		"speed_tiles": 14.0,
+		"projectile_type": "bullet",
+		"pellets": 1,
+	},
+	"shotgun": {
+		"damage": 6,
+		"rpm": 60,
+		"speed_tiles": 10.0,
+		"projectile_type": "pellet",
+		"pellets": 5,
+		"spread": 0.3,
+	},
+	"plasma": {
+		"damage": 20,
+		"rpm": 120,
+		"speed_tiles": 9.0,
+		"projectile_type": "plasma",
+		"pellets": 1,
+	},
+	"rocket": {
+		"damage": 40,
+		"rpm": 30,
+		"speed_tiles": 4.0,
+		"projectile_type": "rocket",
+		"pellets": 1,
+		"aoe_damage": 20,
+		"aoe_radius_tiles": 7.0,
+	},
+	"chain_lightning": {
+		"damage": 8,
+		"rpm": 120,
+		"chain_count": 5,
+		"chain_range_tiles": 6.0,
+		"projectile_type": "hitscan",
+	},
+}
+
+## Camera shake on rocket explosion
+@export_range(0.0, 20.0) var rocket_shake_amplitude: float = 3.0
+
+## Camera shake duration on rocket explosion
+@export_range(0.0, 1.0) var rocket_shake_duration: float = 0.15
+
+## ============================================================================
 ## METHODS
 ## ============================================================================
 
@@ -134,6 +194,18 @@ func reset_to_defaults() -> void:
 	# Physics
 	player_speed_tiles = 5.0
 
+	# Weapons
+	weapon_stats = {
+		"pistol": {"damage": 10, "rpm": 180, "speed_tiles": 12.0, "projectile_type": "bullet", "pellets": 1},
+		"auto": {"damage": 7, "rpm": 150, "speed_tiles": 14.0, "projectile_type": "bullet", "pellets": 1},
+		"shotgun": {"damage": 6, "rpm": 60, "speed_tiles": 10.0, "projectile_type": "pellet", "pellets": 5, "spread": 0.3},
+		"plasma": {"damage": 20, "rpm": 120, "speed_tiles": 9.0, "projectile_type": "plasma", "pellets": 1},
+		"rocket": {"damage": 40, "rpm": 30, "speed_tiles": 4.0, "projectile_type": "rocket", "pellets": 1, "aoe_damage": 20, "aoe_radius_tiles": 7.0},
+		"chain_lightning": {"damage": 8, "rpm": 120, "chain_count": 5, "chain_range_tiles": 6.0, "projectile_type": "hitscan"},
+	}
+	rocket_shake_amplitude = 3.0
+	rocket_shake_duration = 0.15
+
 ## Create a snapshot of current config (for validation/comparison)
 func get_snapshot() -> Dictionary:
 	return {
@@ -146,5 +218,7 @@ func get_snapshot() -> Dictionary:
 		"player_max_hp": player_max_hp,
 		"music_volume": music_volume,
 		"sfx_volume": sfx_volume,
-		"player_speed_tiles": player_speed_tiles
+		"player_speed_tiles": player_speed_tiles,
+		"rocket_shake_amplitude": rocket_shake_amplitude,
+		"rocket_shake_duration": rocket_shake_duration,
 	}

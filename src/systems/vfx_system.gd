@@ -36,10 +36,15 @@ const BLOOD_COLORS := [
 ]
 
 
+## Container for chain lightning VFX arcs
+var _lightning_container: Node2D = null
+
+
 func _ready() -> void:
 	# Subscribe to events
 	if EventBus:
 		EventBus.enemy_killed.connect(_on_enemy_killed)
+		EventBus.chain_lightning_hit.connect(_on_chain_lightning_hit)
 
 
 ## Initialize VFX system with containers
@@ -54,6 +59,13 @@ func initialize(decals: Node2D, corpses: Node2D) -> void:
 		corpses_container.add_child(baked_container)
 		# Baked layer should be below active corpses
 		corpses_container.move_child(baked_container, 0)
+
+	# Create lightning VFX container
+	if not _lightning_container:
+		_lightning_container = Node2D.new()
+		_lightning_container.name = "LightningArcs"
+		if decals_container and decals_container.get_parent():
+			decals_container.get_parent().add_child(_lightning_container)
 
 	print("[VFXSystem] Initialized")
 
@@ -203,6 +215,36 @@ func _on_enemy_killed(enemy_id: int, enemy_type: String, wave_id: int) -> void:
 			var pos := Vector3(enemy.position.x, enemy.position.y, 0)
 			spawn_corpse(pos, enemy_type, enemy.rotation if "rotation" in enemy else 0.0)
 			break
+
+
+## ============================================================================
+## CHAIN LIGHTNING VFX (Phase 3)
+## ============================================================================
+
+## Event handler for chain lightning arc
+func _on_chain_lightning_hit(origin: Vector3, target: Vector3) -> void:
+	if not _lightning_container:
+		return
+
+	var line := Line2D.new()
+	line.width = 2.0
+	line.default_color = Color(0.4, 0.7, 1.0, 0.9)
+	line.add_point(Vector2(origin.x, origin.y))
+
+	# Add a jagged midpoint for electric look
+	var mid := Vector2(
+		(origin.x + target.x) / 2.0 + randf_range(-8, 8),
+		(origin.y + target.y) / 2.0 + randf_range(-8, 8)
+	)
+	line.add_point(mid)
+	line.add_point(Vector2(target.x, target.y))
+
+	_lightning_container.add_child(line)
+
+	# Fade out and remove
+	var tween := line.create_tween()
+	tween.tween_property(line, "modulate:a", 0.0, 0.15)
+	tween.tween_callback(line.queue_free)
 
 
 ## Get corpse count

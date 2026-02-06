@@ -27,6 +27,9 @@ var _current_level: Node = null
 ## Music system (Phase 2)
 var music_system: MusicSystem = null
 
+## SFX system (Phase 4)
+var sfx_system: SFXSystem = null
+
 
 func _ready() -> void:
 	print("[AppRoot] Initializing...")
@@ -40,6 +43,11 @@ func _ready() -> void:
 	music_system.name = "MusicSystem"
 	add_child(music_system)
 
+	# Initialize SFXSystem (Phase 4)
+	sfx_system = SFXSystem.new()
+	sfx_system.name = "SFXSystem"
+	add_child(sfx_system)
+
 	# Start with main menu
 	_show_main_menu()
 
@@ -47,7 +55,7 @@ func _ready() -> void:
 	if music_system:
 		music_system.play_context(MusicSystem.MusicContext.MENU)
 
-	print("[AppRoot] Ready (Phase 2: Music enabled)")
+	print("[AppRoot] Ready (Phase 4: Music + SFX enabled)")
 
 
 func _on_state_changed(old_state: GameState.State, new_state: GameState.State) -> void:
@@ -76,8 +84,10 @@ func _on_state_changed(old_state: GameState.State, new_state: GameState.State) -
 			_pause_level()
 			_show_pause_menu()
 		GameState.State.GAME_OVER:
+			_pause_level()
 			_show_game_over()
 		GameState.State.LEVEL_COMPLETE:
+			_pause_level()
 			_show_level_complete()
 
 
