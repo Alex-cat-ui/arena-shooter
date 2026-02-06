@@ -115,6 +115,10 @@ func _apply_contact_damage() -> void:
 	if not GameConfig or not RuntimeState:
 		return
 
+	# Check invulnerability (dash slash i-frames)
+	if RuntimeState.is_player_invulnerable:
+		return
+
 	# Check GodMode
 	if GameConfig.god_mode:
 		print("[Boss] Contact blocked - GodMode active | time=%.2f" % (Time.get_ticks_msec() / 1000.0))
@@ -180,6 +184,10 @@ func _perform_aoe_attack() -> void:
 		])
 		return
 
+	# Check invulnerability (dash slash i-frames)
+	if RuntimeState.is_player_invulnerable:
+		return
+
 	# Check GodMode
 	if GameConfig.god_mode:
 		print("[Boss] AoE blocked - GodMode active | time=%.2f" % (Time.get_ticks_msec() / 1000.0))
@@ -206,6 +214,21 @@ func _perform_aoe_attack() -> void:
 			EventBus.emit_player_died()
 		if StateManager:
 			StateManager.change_state(GameState.State.GAME_OVER)
+
+
+## Apply damage from any source (melee, projectile, etc.)
+func apply_damage(amount: int, _source: String) -> void:
+	take_damage(amount)
+
+
+## Apply stagger (boss: reduced effect)
+func apply_stagger(_sec: float) -> void:
+	pass  # Boss is immune to stagger
+
+
+## Apply knockback (boss: immune)
+func apply_knockback(_impulse: Vector2) -> void:
+	pass  # Boss is immune to knockback
 
 
 ## Take damage from projectiles

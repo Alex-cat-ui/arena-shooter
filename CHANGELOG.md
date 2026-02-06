@@ -1,5 +1,29 @@
 # Arena Shooter Changelog
 
+## 2026-02-07
+
+### 02:57 MSK - PATCH 0.2 Phase 1: Katana Core + Feel
+- **Added**: MeleeSystem — full katana state machine (IDLE → WINDUP → ACTIVE → RECOVERY / DASHING)
+- **Added**: 3 katana moves: Light Slash (LMB), Heavy Slash (RMB), Dash Slash (Space)
+- **Added**: Katana Mode toggle (Q key) — switches between GUN and KATANA modes
+- **Added**: All katana tunables in GameConfig (30+ parameters: damage, arc, range, knockback, stagger, hitstop per move)
+- **Added**: Input buffer system (0.12s) for responsive move queuing
+- **Added**: Hitstop on melee hit (Engine.time_scale brief freeze, safe restore)
+- **Added**: Knockback + stagger system on enemies (blocks movement, decays over time)
+- **Added**: Dash slash with i-frames (invulnerability window during dash center)
+- **Added**: `RuntimeState.katana_mode`, `is_player_invulnerable`, `invuln_timer`
+- **Added**: EventBus signals: `katana_mode_changed`, `melee_hit`
+- **Added**: InputMap actions: `katana_toggle` (Q), `katana_light` (LMB), `katana_heavy` (RMB), `katana_dash` (Space)
+- **Added**: `enemy.apply_damage()`, `enemy.apply_stagger()`, `enemy.apply_knockback()` methods
+- **Added**: `boss.apply_damage()` (delegates to take_damage), stagger/knockback immune
+- **Added**: Invulnerability guard in CombatSystem and Boss damage pipelines
+- **Added**: HUD displays "Mode: GUN / KATANA" with weapon info or slash state
+- **Added**: VFX hook — melee hits emit `blood_spawned` + `melee_hit` events
+- **Added**: Headless smoke test `test_melee_smoke.tscn` — 7 tests (toggle, slash damage, dash movement)
+- **Changed**: Player blocks shooting/weapon switching when katana mode ON
+- **Changed**: level_mvp.gd creates and updates MeleeSystem
+- **Files**: `src/systems/melee_system.gd` (new), `src/core/game_config.gd`, `src/core/runtime_state.gd`, `src/systems/event_bus.gd`, `src/entities/enemy.gd`, `src/entities/boss.gd`, `src/entities/player.gd`, `src/systems/combat_system.gd`, `src/levels/level_mvp.gd`, `scenes/levels/level_mvp.tscn`, `project.godot`, `tests/test_melee_smoke.gd` (new), `tests/test_melee_smoke.tscn` (new)
+
 ## 2026-02-06
 
 ### 19:00 MSK - Phase 4: Sound Effects System

@@ -133,6 +133,16 @@ signal rocket_exploded(position: Vector3)
 signal chain_lightning_hit(origin: Vector3, target: Vector3)
 
 ## ============================================================================
+## SIGNALS - Melee / Katana (Phase 4 - Patch 0.2)
+## ============================================================================
+
+## Katana mode toggled
+signal katana_mode_changed(is_katana: bool)
+
+## Melee slash hit enemy (for VFX/SFX)
+signal melee_hit(position: Vector3, move_type: String)
+
+## ============================================================================
 ## INTERNAL STATE
 ## ============================================================================
 
@@ -264,6 +274,16 @@ func emit_chain_lightning_hit(origin: Vector3, target: Vector3) -> void:
 	_queue_event("chain_lightning_hit", [origin, target])
 
 ## ============================================================================
+## PUBLIC API - Melee / Katana (Phase 4)
+## ============================================================================
+
+func emit_katana_mode_changed(is_katana: bool) -> void:
+	_queue_event("katana_mode_changed", [is_katana])
+
+func emit_melee_hit(position: Vector3, move_type: String) -> void:
+	_queue_event("melee_hit", [position, move_type])
+
+## ============================================================================
 ## INTERNAL METHODS
 ## ============================================================================
 
@@ -372,5 +392,10 @@ func _dispatch_event(event: Dictionary) -> void:
 			rocket_exploded.emit(event.args[0])
 		"chain_lightning_hit":
 			chain_lightning_hit.emit(event.args[0], event.args[1])
+		# Melee / Katana (Phase 4)
+		"katana_mode_changed":
+			katana_mode_changed.emit(event.args[0])
+		"melee_hit":
+			melee_hit.emit(event.args[0], event.args[1])
 		_:
 			push_warning("Unknown event: %s" % event.name)

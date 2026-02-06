@@ -158,6 +158,55 @@ var weapon_stats: Dictionary = {
 @export_range(0.0, 1.0) var rocket_shake_duration: float = 0.15
 
 ## ============================================================================
+## SECTION: Katana / Melee (Phase 4 - Patch 0.2)
+## ============================================================================
+@export_group("Katana")
+
+## Master toggle for katana system
+@export var katana_enabled: bool = true
+
+## Input buffer window for melee requests (seconds)
+@export_range(0.0, 0.5) var melee_input_buffer_sec: float = 0.12
+
+## ---------- Light Slash ----------
+@export_range(0.0, 1.0) var katana_light_windup: float = 0.12
+@export_range(0.0, 1.0) var katana_light_active: float = 0.08
+@export_range(0.0, 1.0) var katana_light_recovery: float = 0.22
+@export var katana_light_damage: int = 50
+@export_range(1, 20) var katana_light_cleave_max: int = 3
+@export_range(10.0, 200.0) var katana_light_range_px: float = 55.0
+@export_range(10.0, 360.0) var katana_light_arc_deg: float = 120.0
+@export_range(0.0, 2000.0) var katana_light_knockback: float = 420.0
+@export_range(0.0, 2.0) var katana_light_stagger_sec: float = 0.15
+@export_range(0.0, 0.5) var katana_light_hitstop_sec: float = 0.07
+
+## ---------- Heavy Slash ----------
+@export_range(0.0, 1.0) var katana_heavy_windup: float = 0.24
+@export_range(0.0, 1.0) var katana_heavy_active: float = 0.10
+@export_range(0.0, 1.0) var katana_heavy_recovery: float = 0.38
+@export var katana_heavy_damage: int = 90
+@export_range(1, 20) var katana_heavy_cleave_max: int = 5
+@export_range(10.0, 200.0) var katana_heavy_range_px: float = 65.0
+@export_range(10.0, 360.0) var katana_heavy_arc_deg: float = 140.0
+@export_range(0.0, 2000.0) var katana_heavy_knockback: float = 680.0
+@export_range(0.0, 2.0) var katana_heavy_stagger_sec: float = 0.28
+@export_range(0.0, 0.5) var katana_heavy_hitstop_sec: float = 0.10
+
+## ---------- Dash Slash ----------
+@export_range(0.0, 1.0) var katana_dash_duration_sec: float = 0.15
+@export_range(10.0, 500.0) var katana_dash_distance_px: float = 110.0
+@export_range(0.0, 1.0) var katana_dash_iframes_sec: float = 0.12
+@export_range(0.0, 1.0) var katana_dash_active_sec: float = 0.08
+@export_range(0.0, 1.0) var katana_dash_recovery_sec: float = 0.25
+@export_range(0.0, 10.0) var katana_dash_cooldown_sec: float = 1.5
+@export var katana_dash_damage: int = 60
+@export_range(10.0, 200.0) var katana_dash_range_px: float = 60.0
+@export_range(10.0, 360.0) var katana_dash_arc_deg: float = 120.0
+@export_range(0.0, 2000.0) var katana_dash_knockback: float = 520.0
+@export_range(0.0, 2.0) var katana_dash_stagger_sec: float = 0.18
+@export_range(0.0, 0.5) var katana_dash_hitstop_sec: float = 0.07
+
+## ============================================================================
 ## METHODS
 ## ============================================================================
 
@@ -206,6 +255,42 @@ func reset_to_defaults() -> void:
 	rocket_shake_amplitude = 3.0
 	rocket_shake_duration = 0.15
 
+	# Katana
+	katana_enabled = true
+	melee_input_buffer_sec = 0.12
+	katana_light_windup = 0.12
+	katana_light_active = 0.08
+	katana_light_recovery = 0.22
+	katana_light_damage = 50
+	katana_light_cleave_max = 3
+	katana_light_range_px = 55.0
+	katana_light_arc_deg = 120.0
+	katana_light_knockback = 420.0
+	katana_light_stagger_sec = 0.15
+	katana_light_hitstop_sec = 0.07
+	katana_heavy_windup = 0.24
+	katana_heavy_active = 0.10
+	katana_heavy_recovery = 0.38
+	katana_heavy_damage = 90
+	katana_heavy_cleave_max = 5
+	katana_heavy_range_px = 65.0
+	katana_heavy_arc_deg = 140.0
+	katana_heavy_knockback = 680.0
+	katana_heavy_stagger_sec = 0.28
+	katana_heavy_hitstop_sec = 0.10
+	katana_dash_duration_sec = 0.15
+	katana_dash_distance_px = 110.0
+	katana_dash_iframes_sec = 0.12
+	katana_dash_active_sec = 0.08
+	katana_dash_recovery_sec = 0.25
+	katana_dash_cooldown_sec = 1.5
+	katana_dash_damage = 60
+	katana_dash_range_px = 60.0
+	katana_dash_arc_deg = 120.0
+	katana_dash_knockback = 520.0
+	katana_dash_stagger_sec = 0.18
+	katana_dash_hitstop_sec = 0.07
+
 ## Create a snapshot of current config (for validation/comparison)
 func get_snapshot() -> Dictionary:
 	return {
@@ -221,4 +306,8 @@ func get_snapshot() -> Dictionary:
 		"player_speed_tiles": player_speed_tiles,
 		"rocket_shake_amplitude": rocket_shake_amplitude,
 		"rocket_shake_duration": rocket_shake_duration,
+		"katana_enabled": katana_enabled,
+		"katana_light_damage": katana_light_damage,
+		"katana_heavy_damage": katana_heavy_damage,
+		"katana_dash_damage": katana_dash_damage,
 	}

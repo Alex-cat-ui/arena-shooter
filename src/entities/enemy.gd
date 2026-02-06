@@ -38,6 +38,12 @@ var speed_tiles: float = 2.0
 ## Is enemy dead?
 var is_dead: bool = false
 
+## Stagger timer (melee knockback, blocks movement)
+var stagger_timer: float = 0.0
+
+## Knockback velocity (decays over time)
+var knockback_vel: Vector2 = Vector2.ZERO
+
 ## Reference to sprite
 @onready var sprite: Sprite2D = $Sprite2D
 
@@ -85,6 +91,20 @@ func _physics_process(delta: float) -> void:
 	if RuntimeState and RuntimeState.is_frozen:
 		return
 
+	# Handle stagger (blocks normal movement)
+	if stagger_timer > 0:
+		stagger_timer -= delta
+		# Apply knockback velocity with decay during stagger
+		if knockback_vel.length_squared() > 1.0:
+			velocity = knockback_vel
+			move_and_slide()
+			knockback_vel = knockback_vel.lerp(Vector2.ZERO, minf(10.0 * delta, 1.0))
+		return
+
+	# Decay any residual knockback
+	if knockback_vel.length_squared() > 1.0:
+		knockback_vel = knockback_vel.lerp(Vector2.ZERO, minf(10.0 * delta, 1.0))
+
 	# Move toward player
 	_move_toward_player(delta)
 
@@ -111,7 +131,38 @@ func _move_toward_player(delta: float) -> void:
 		sprite.rotation = direction.angle()
 
 
-## Take damage
+## Apply damage from any source (melee, projectile, etc.)
+## Reduces HP, emits EventBus signals, handles death once.
+func apply_damage(amount: int, source: String) -> void:
+	if is_dead:
+		return
+	hp -= amount
+	# Visual feedback
+	if sprite:
+		sprite.modulate = Color.RED
+		var tween := create_tween()
+		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+	# Track stats
+	if RuntimeState:
+		RuntimeState.damage_dealt += amount
+	# Emit damage event
+	if EventBus:
+		EventBus.emit_damage_dealt(entity_id, amount, source)
+	if hp <= 0:
+		die()
+
+
+## Apply stagger (blocks movement for duration)
+func apply_stagger(sec: float) -> void:
+	stagger_timer = maxf(stagger_timer, sec)
+
+
+## Apply knockback impulse
+func apply_knockback(impulse: Vector2) -> void:
+	knockback_vel = impulse
+
+
+## Take damage (legacy, used by CombatSystem projectile pipeline)
 func take_damage(amount: int) -> void:
 	if is_dead:
 		return

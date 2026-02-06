@@ -38,6 +38,15 @@ var is_level_active: bool = false
 ## Is gameplay frozen (pause, game over, etc.)
 var is_frozen: bool = false
 
+## Katana mode active (Q toggle)
+var katana_mode: bool = false
+
+## Player invulnerability (dash slash i-frames)
+var is_player_invulnerable: bool = false
+
+## Invulnerability timer (auto-decrements)
+var invuln_timer: float = 0.0
+
 ## ============================================================================
 ## METHODS
 ## ============================================================================
@@ -55,6 +64,9 @@ func reset() -> void:
 	player_aim_dir = Vector3(1, 0, 0)
 	is_level_active = false
 	is_frozen = false
+	katana_mode = false
+	is_player_invulnerable = false
+	invuln_timer = 0.0
 
 
 ## Convert Vector2 to Vector3 (z=0) - utility for physics

@@ -92,5 +92,6 @@ grow_horizontal = 0
 text = "Debug Keys:
 ESC - Pause | F1 - Game Over
 F2 - Level Complete | LMB - Shoot
-1-6 - Weapons | Wheel - Cycle"
+1-6 - Weapons | Wheel - Cycle
+Q - Katana Mode | Space - Dash"
 horizontal_alignment = 2

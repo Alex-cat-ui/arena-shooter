@@ -46,6 +46,10 @@ func damage_player(amount: int, source: String) -> void:
 	if not RuntimeState:
 		return
 
+	# Check invulnerability (dash slash i-frames)
+	if RuntimeState.is_player_invulnerable:
+		return
+
 	# Check GodMode
 	if GameConfig and GameConfig.god_mode:
 		print("[CombatSystem] GodMode active - damage blocked")

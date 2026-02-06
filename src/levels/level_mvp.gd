@@ -40,6 +40,9 @@ var camera_shake: CameraShake = null
 var wave_overlay: WaveOverlay = null
 var arena_boundary: ArenaBoundary = null
 
+## Systems (Phase 4: Katana / Melee)
+var melee_system: MeleeSystem = null
+
 ## Start delay timer
 var _start_delay_timer: float = 0.0
 var _start_delay_finished: bool = false
@@ -155,7 +158,15 @@ func _init_systems() -> void:
 	add_child(arena_boundary)
 	arena_boundary.initialize(_arena_min, _arena_max)
 
-	print("[LevelMVP] Systems initialized (Phase 3: Weapons + Arena Polish)")
+	# Phase 4: Create MeleeSystem (Katana)
+	if GameConfig and GameConfig.katana_enabled:
+		melee_system = MeleeSystem.new()
+		melee_system.name = "MeleeSystem"
+		melee_system.player_node = player
+		melee_system.entities_container = entities_container
+		add_child(melee_system)
+
+	print("[LevelMVP] Systems initialized (Phase 4: Weapons + Arena Polish + Katana)")
 
 
 func _subscribe_to_events() -> void:
@@ -198,6 +209,8 @@ func _process(delta: float) -> void:
 		wave_manager.update(delta)
 	if combat_system:
 		combat_system.update(delta)
+	if melee_system:
+		melee_system.update(delta)
 	if footprint_system:
 		footprint_system.update(delta)
 
@@ -272,12 +285,20 @@ func _update_hud() -> void:
 		else:
 			boss_hp_label.text = ""
 
-	# Phase 3: Weapon display
+	# Phase 3: Weapon display + Phase 4: Mode display
 	if weapon_label and ability_system:
-		weapon_label.text = "Weapon: %s [%d/6]" % [
-			ability_system.get_current_weapon().to_upper(),
-			ability_system.current_weapon_index + 1
-		]
+		var mode_str := "KATANA" if RuntimeState.katana_mode else "GUN"
+		if RuntimeState.katana_mode:
+			var melee_state := ""
+			if melee_system and melee_system.is_busy():
+				melee_state = " (SLASH)"
+			weapon_label.text = "Mode: %s%s | Q=switch" % [mode_str, melee_state]
+		else:
+			weapon_label.text = "Mode: %s | %s [%d/6]" % [
+				mode_str,
+				ability_system.get_current_weapon().to_upper(),
+				ability_system.current_weapon_index + 1
+			]
 
 
 ## ============================================================================
