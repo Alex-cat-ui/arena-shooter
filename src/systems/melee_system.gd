@@ -180,7 +180,7 @@ func _process_dashing(delta: float) -> void:
 		player_node.move_and_slide()
 		# Update RuntimeState position
 		if RuntimeState:
-			RuntimeState.player_pos = Vector3(player_node.position.x, player_node.position.y, 0)
+			RuntimeState.player_pos = Vector3(player_node.global_position.x, player_node.global_position.y, 0)
 
 	# I-frames: center window of the dash
 	var iframes_start := (dash_duration - iframes_sec) / 2.0

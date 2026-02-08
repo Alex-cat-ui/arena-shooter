@@ -351,7 +351,99 @@ func _run_tests() -> void:
 		return EventBus.has_signal("footprint_spawned")
 	)
 
-	print("\nAll tests completed (Phase 1 + Phase 2).")
+	# ==========================================================================
+	# VISUAL POLISH TESTS
+	# ==========================================================================
+
+	print("\n--- SECTION 17: Visual Polish GameConfig defaults ---")
+
+	_test("footprints_enabled = true", func():
+		return GameConfig.footprints_enabled == true
+	)
+
+	_test("footprint_step_distance_px = 22.0", func():
+		return is_equal_approx(GameConfig.footprint_step_distance_px, 22.0)
+	)
+
+	_test("footprint_lifetime_sec = 20.0", func():
+		return is_equal_approx(GameConfig.footprint_lifetime_sec, 20.0)
+	)
+
+	_test("footprint_max_count = 100", func():
+		return GameConfig.footprint_max_count == 100
+	)
+
+	_test("melee_arc_light_radius = 26.0", func():
+		return is_equal_approx(GameConfig.melee_arc_light_radius, 26.0)
+	)
+
+	_test("melee_arc_heavy_radius = 30.0", func():
+		return is_equal_approx(GameConfig.melee_arc_heavy_radius, 30.0)
+	)
+
+	_test("shadow_player_alpha = 0.25", func():
+		return is_equal_approx(GameConfig.shadow_player_alpha, 0.25)
+	)
+
+	_test("hit_flash_duration = 0.06", func():
+		return is_equal_approx(GameConfig.hit_flash_duration, 0.06)
+	)
+
+	_test("kill_pop_scale = 1.2", func():
+		return is_equal_approx(GameConfig.kill_pop_scale, 1.2)
+	)
+
+	_test("blood_max_decals = 500", func():
+		return GameConfig.blood_max_decals == 500
+	)
+
+	_test("vignette_alpha = 0.3", func():
+		return is_equal_approx(GameConfig.vignette_alpha, 0.3)
+	)
+
+	_test("debug_overlay_visible = false", func():
+		return GameConfig.debug_overlay_visible == false
+	)
+
+	print("\n--- SECTION 18: Visual Polish system classes ---")
+
+	_test("MeleeArcSystem class exists", func():
+		var inst := MeleeArcSystem.new()
+		var exists := inst != null
+		inst.free()
+		return exists
+	)
+
+	_test("ShadowSystem class exists", func():
+		var inst := ShadowSystem.new()
+		var exists := inst != null
+		inst.free()
+		return exists
+	)
+
+	_test("CombatFeedbackSystem class exists", func():
+		var inst := CombatFeedbackSystem.new()
+		var exists := inst != null
+		inst.free()
+		return exists
+	)
+
+	_test("AtmosphereSystem class exists", func():
+		var inst := AtmosphereSystem.new()
+		var exists := inst != null
+		inst.free()
+		return exists
+	)
+
+	print("\n--- SECTION 19: Visual Polish reset_to_defaults ---")
+
+	_test("Visual polish values survive reset_to_defaults", func():
+		GameConfig.footprint_step_distance_px = 999.0
+		GameConfig.reset_to_defaults()
+		return is_equal_approx(GameConfig.footprint_step_distance_px, 22.0)
+	)
+
+	print("\nAll tests completed (Phase 1 + Phase 2 + Visual Polish).")
 
 
 func _test(name: String, test_func: Callable) -> void:

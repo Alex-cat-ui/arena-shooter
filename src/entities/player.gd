@@ -69,7 +69,7 @@ func _physics_process(delta: float) -> void:
 
 	# Update RuntimeState position (CANON: Vector3)
 	if RuntimeState:
-		RuntimeState.player_pos = Vector3(position.x, position.y, 0)
+		RuntimeState.player_pos = Vector3(global_position.x, global_position.y, 0)
 
 	# Update aim direction and rotate sprite
 	_update_aim()

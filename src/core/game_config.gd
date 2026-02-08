@@ -207,6 +207,128 @@ var weapon_stats: Dictionary = {
 @export_range(0.0, 0.5) var katana_dash_hitstop_sec: float = 0.07
 
 ## ============================================================================
+## SECTION: Visual Polish (Patch 0.2 Phase 2)
+## ============================================================================
+@export_group("Visual Polish")
+
+## ---------- Footprints ----------
+@export var footprints_enabled: bool = true
+@export_range(5.0, 100.0) var footprint_step_distance_px: float = 40.0
+@export_range(0.0, 40.0) var footprint_rear_offset_px: float = 12.0
+@export_range(0.0, 20.0) var footprint_separation_px: float = 7.0
+@export_range(0.1, 3.0) var footprint_scale: float = 0.65
+@export_range(0.0, 1.0) var footprint_alpha: float = 0.35
+@export_range(0.0, 15.0) var footprint_rotation_jitter_deg: float = 1.0
+@export_range(1.0, 120.0) var footprint_lifetime_sec: float = 20.0
+@export_range(0.0, 200.0) var footprint_velocity_threshold: float = 35.0
+@export_range(10, 500) var footprint_max_count: int = 100
+@export_range(1, 30) var footprint_bloody_steps: int = 8
+@export_range(1, 30) var footprint_black_steps: int = 4
+@export_range(5.0, 100.0) var footprint_blood_detect_radius: float = 25.0
+@export_range(-180.0, 180.0) var footprint_rotation_offset_deg: float = 90.0
+@export_range(1, 30) var boots_blood_max_prints: int = 8
+
+## ---------- Melee Arc Visuals ----------
+@export_range(5.0, 60.0) var melee_arc_light_radius: float = 26.0
+@export_range(10.0, 180.0) var melee_arc_light_arc_deg: float = 80.0
+@export_range(1.0, 8.0) var melee_arc_light_thickness: float = 2.0
+@export_range(0.01, 1.0) var melee_arc_light_duration: float = 0.08
+@export_range(0.0, 1.0) var melee_arc_light_alpha: float = 0.6
+
+@export_range(5.0, 80.0) var melee_arc_heavy_radius: float = 30.0
+@export_range(10.0, 220.0) var melee_arc_heavy_arc_deg: float = 110.0
+@export_range(1.0, 8.0) var melee_arc_heavy_thickness: float = 3.0
+@export_range(0.01, 1.0) var melee_arc_heavy_duration: float = 0.12
+@export_range(0.0, 1.0) var melee_arc_heavy_alpha: float = 0.8
+
+@export_range(5.0, 60.0) var melee_arc_dash_length_min: float = 20.0
+@export_range(10.0, 60.0) var melee_arc_dash_length_max: float = 28.0
+@export_range(1, 6) var melee_arc_dash_afterimages: int = 3
+@export_range(0.0, 1.0) var melee_arc_dash_alpha: float = 0.6
+
+## ---------- Shadows ----------
+@export_range(0.5, 3.0) var shadow_player_radius_mult: float = 1.2
+@export_range(0.0, 1.0) var shadow_player_alpha: float = 0.25
+@export_range(0.5, 3.0) var shadow_enemy_radius_mult: float = 1.1
+@export_range(0.0, 1.0) var shadow_enemy_alpha: float = 0.18
+@export_range(0.0, 10.0) var highlight_player_radius_offset: float = 2.0
+@export_range(0.5, 6.0) var highlight_player_thickness: float = 2.0
+@export_range(0.0, 1.0) var highlight_player_alpha: float = 0.5
+
+## ---------- Combat Feedback ----------
+@export_range(0.01, 0.5) var hit_flash_duration: float = 0.06
+@export_range(1.0, 2.0) var kill_pop_scale: float = 1.2
+@export_range(0.01, 1.0) var kill_pop_duration: float = 0.1
+@export_range(0.0, 1.0) var kill_edge_pulse_alpha: float = 0.15
+@export_range(0.01, 1.0) var damage_arc_duration: float = 0.12
+
+## ---------- Blood & Corpse Lifecycle ----------
+@export_range(50, 2000) var blood_max_decals: int = 500
+@export_range(0.0, 0.1) var blood_darken_rate: float = 0.01
+@export_range(0.0, 0.1) var blood_desaturate_rate: float = 0.005
+
+## ---------- Atmosphere ----------
+@export_range(0.0, 1.0) var vignette_alpha: float = 0.3
+@export_range(0.0, 0.5) var floor_overlay_alpha: float = 0.15
+@export_range(0.0, 0.3) var atmosphere_particle_alpha_min: float = 0.05
+@export_range(0.0, 0.5) var atmosphere_particle_alpha_max: float = 0.15
+@export_range(1.0, 15.0) var atmosphere_particle_lifetime_min: float = 3.0
+@export_range(1.0, 15.0) var atmosphere_particle_lifetime_max: float = 6.0
+
+## ---------- Debug ----------
+@export var debug_overlay_visible: bool = false
+
+## ============================================================================
+## SECTION: Procedural Layout
+## ============================================================================
+@export_group("Procedural Layout")
+
+@export var procedural_layout_enabled: bool = true
+@export var waves_enabled: bool = false
+@export var spawn_enemies_enabled: bool = false
+@export var spawn_boss_enabled: bool = false
+
+@export var layout_seed: int = 1337
+
+@export_range(2, 20) var rooms_count_min: int = 6
+@export_range(2, 20) var rooms_count_max: int = 9
+
+@export_range(4.0, 64.0) var wall_thickness: float = 16.0
+
+@export_range(40.0, 300.0) var door_opening_min: float = 96.0
+@export_range(40.0, 400.0) var door_opening_max: float = 128.0
+@export_range(0.0, 100.0) var door_from_corner_min: float = 48.0
+@export_range(1, 5) var max_doors_per_room: int = 2
+@export_range(0, 3) var extra_loops_max: int = 1
+
+@export_range(0, 5) var corridor_count_min: int = 1
+@export_range(0, 5) var corridor_count_max: int = 3
+@export_range(40.0, 200.0) var corridor_w_min: float = 80.0
+@export_range(40.0, 300.0) var corridor_w_max: float = 110.0
+@export_range(100.0, 600.0) var corridor_len_min: float = 320.0
+@export_range(0.0, 1.0) var corridor_area_cap: float = 0.25
+@export_range(0, 3) var corridor_bends_max: int = 1
+
+@export_range(60.0, 800.0) var room_min_w: float = 220.0
+@export_range(60.0, 800.0) var room_min_h: float = 200.0
+@export_range(100.0, 1200.0) var room_max_w: float = 520.0
+@export_range(100.0, 1200.0) var room_max_h: float = 420.0
+@export_range(0.2, 5.0) var room_aspect_min: float = 0.65
+@export_range(0.2, 5.0) var room_aspect_max: float = 1.75
+
+@export_range(0, 5) var big_rooms_target: int = 2
+@export_range(100.0, 800.0) var big_room_min_w: float = 360.0
+@export_range(100.0, 800.0) var big_room_min_h: float = 280.0
+
+@export_range(0.0, 1.0) var l_room_chance: float = 0.12
+@export_range(40.0, 400.0) var l_leg_min: float = 160.0
+@export_range(0.0, 1.0) var l_cut_max_frac: float = 0.40
+@export_range(0.0, 100.0) var inner_padding: float = 32.0
+
+@export var layout_debug_draw: bool = false
+@export var layout_debug_text: bool = true
+
+## ============================================================================
 ## METHODS
 ## ============================================================================
 
@@ -290,6 +412,96 @@ func reset_to_defaults() -> void:
 	katana_dash_knockback = 520.0
 	katana_dash_stagger_sec = 0.18
 	katana_dash_hitstop_sec = 0.07
+
+	# Visual Polish
+	footprints_enabled = true
+	footprint_step_distance_px = 40.0
+	footprint_rear_offset_px = 12.0
+	footprint_separation_px = 7.0
+	footprint_scale = 0.65
+	footprint_alpha = 0.35
+	footprint_rotation_jitter_deg = 1.0
+	footprint_lifetime_sec = 20.0
+	footprint_velocity_threshold = 35.0
+	footprint_max_count = 100
+	footprint_bloody_steps = 8
+	footprint_black_steps = 4
+	footprint_blood_detect_radius = 25.0
+	footprint_rotation_offset_deg = 90.0
+	boots_blood_max_prints = 8
+	melee_arc_light_radius = 26.0
+	melee_arc_light_arc_deg = 80.0
+	melee_arc_light_thickness = 2.0
+	melee_arc_light_duration = 0.08
+	melee_arc_light_alpha = 0.6
+	melee_arc_heavy_radius = 30.0
+	melee_arc_heavy_arc_deg = 110.0
+	melee_arc_heavy_thickness = 3.0
+	melee_arc_heavy_duration = 0.12
+	melee_arc_heavy_alpha = 0.8
+	melee_arc_dash_length_min = 20.0
+	melee_arc_dash_length_max = 28.0
+	melee_arc_dash_afterimages = 3
+	melee_arc_dash_alpha = 0.6
+	shadow_player_radius_mult = 1.2
+	shadow_player_alpha = 0.25
+	shadow_enemy_radius_mult = 1.1
+	shadow_enemy_alpha = 0.18
+	highlight_player_radius_offset = 2.0
+	highlight_player_thickness = 2.0
+	highlight_player_alpha = 0.5
+	hit_flash_duration = 0.06
+	kill_pop_scale = 1.2
+	kill_pop_duration = 0.1
+	kill_edge_pulse_alpha = 0.15
+	damage_arc_duration = 0.12
+	blood_max_decals = 500
+	blood_darken_rate = 0.01
+	blood_desaturate_rate = 0.005
+	vignette_alpha = 0.3
+	floor_overlay_alpha = 0.15
+	atmosphere_particle_alpha_min = 0.05
+	atmosphere_particle_alpha_max = 0.15
+	atmosphere_particle_lifetime_min = 3.0
+	atmosphere_particle_lifetime_max = 6.0
+	debug_overlay_visible = false
+
+	# Procedural Layout
+	procedural_layout_enabled = true
+	waves_enabled = false
+	spawn_enemies_enabled = false
+	spawn_boss_enabled = false
+	layout_seed = 1337
+	rooms_count_min = 6
+	rooms_count_max = 9
+	wall_thickness = 16.0
+	door_opening_min = 96.0
+	door_opening_max = 128.0
+	door_from_corner_min = 48.0
+	max_doors_per_room = 2
+	extra_loops_max = 1
+	corridor_count_min = 1
+	corridor_count_max = 3
+	corridor_w_min = 80.0
+	corridor_w_max = 110.0
+	corridor_len_min = 320.0
+	corridor_bends_max = 1
+	corridor_area_cap = 0.25
+	room_min_w = 220.0
+	room_min_h = 200.0
+	room_max_w = 520.0
+	room_max_h = 420.0
+	room_aspect_min = 0.65
+	room_aspect_max = 1.75
+	big_rooms_target = 2
+	big_room_min_w = 360.0
+	big_room_min_h = 280.0
+	l_room_chance = 0.12
+	l_leg_min = 160.0
+	l_cut_max_frac = 0.40
+	inner_padding = 32.0
+	layout_debug_draw = false
+	layout_debug_text = true
 
 ## Create a snapshot of current config (for validation/comparison)
 func get_snapshot() -> Dictionary:

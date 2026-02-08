@@ -1,12 +1,12 @@
 ## vfx_system.gd
-## VFXSystem - handles blood decals, corpses, corpse baking, and footprints.
-## CANON: Blood stays forever.
+## VFXSystem - handles blood decals, corpses, corpse baking, and chain lightning VFX.
+## CANON: Blood stays persistent but ages (darkens/desaturates).
 ## CANON: Corpses limit 200; when reached, bake into texture layer.
-## CANON: Footprints only spawn when player walks over blood/corpses.
+## CANON: Blood decal count clamped (oldest removed first).
 class_name VFXSystem
 extends Node
 
-## Container for decals (blood, footprints)
+## Container for decals (blood)
 var decals_container: Node2D = null
 
 ## Container for corpses
@@ -21,12 +21,8 @@ const CORPSE_LIMIT := 200
 ## Active corpse entities
 var _corpses: Array[Node2D] = []
 
-## Baked corpse viewport (for rendering corpses to texture)
-var _bake_viewport: SubViewport = null
-var _bake_sprite: Sprite2D = null
-
-## Blood decal scene (simple colored sprite)
-var _blood_decal_scene: PackedScene = null
+## Blood decal tracking for aging
+var _blood_decals: Array[Dictionary] = []  # {sprite, age}
 
 ## Corpse visual settings
 const BLOOD_COLORS := [
@@ -34,7 +30,6 @@ const BLOOD_COLORS := [
 	Color(0.5, 0.0, 0.0, 0.7),
 	Color(0.7, 0.1, 0.1, 0.75),
 ]
-
 
 ## Container for chain lightning VFX arcs
 var _lightning_container: Node2D = null
@@ -70,22 +65,68 @@ func initialize(decals: Node2D, corpses: Node2D) -> void:
 	print("[VFXSystem] Initialized")
 
 
+## Update blood aging each frame
+func update_aging(delta: float) -> void:
+	if _blood_decals.is_empty():
+		return
+
+	var darken_rate := GameConfig.blood_darken_rate if GameConfig else 0.01
+	var desat_rate := GameConfig.blood_desaturate_rate if GameConfig else 0.005
+
+	for entry in _blood_decals:
+		entry["age"] += delta
+		var spr: Sprite2D = entry["sprite"]
+		if not is_instance_valid(spr):
+			continue
+
+		# Gradually darken and desaturate
+		var age: float = entry["age"]
+		var darken := minf(age * darken_rate, 0.5)  # Cap darkening
+		var desat := minf(age * desat_rate, 0.3)     # Cap desaturation
+
+		var base_color: Color = entry["base_modulate"]
+		var r := lerpf(base_color.r, base_color.r * 0.3, darken)
+		var g := lerpf(base_color.g, base_color.g * 0.3, darken)
+		var b := lerpf(base_color.b, base_color.b * 0.3, darken)
+		# Desaturate: shift toward grey
+		var grey := (r + g + b) / 3.0
+		r = lerpf(r, grey, desat)
+		g = lerpf(g, grey, desat)
+		b = lerpf(b, grey, desat)
+		spr.modulate = Color(r, g, b, base_color.a)
+
+
 ## Spawn blood decal at position
 func spawn_blood(pos: Vector3, size: float = 1.0) -> void:
 	if not decals_container:
 		return
+
+	# Clamp blood decals
+	var max_decals := GameConfig.blood_max_decals if GameConfig else 500
+	while _blood_decals.size() >= max_decals:
+		var oldest: Dictionary = _blood_decals.pop_front()
+		var spr: Sprite2D = oldest["sprite"]
+		if is_instance_valid(spr):
+			spr.queue_free()
 
 	var blood := _create_blood_sprite(size)
 	blood.position = Vector2(pos.x, pos.y)
 	blood.rotation = randf() * TAU
 	decals_container.add_child(blood)
 
+	# Track for aging
+	_blood_decals.append({
+		"sprite": blood,
+		"age": 0.0,
+		"base_modulate": blood.modulate,
+	})
+
 	# Emit event
 	if EventBus:
 		EventBus.emit_blood_spawned(pos, size)
 
 
-## Spawn corpse at position
+## Spawn corpse at position with settle animation
 func spawn_corpse(pos: Vector3, enemy_type: String, rotation: float = 0.0) -> void:
 	if not corpses_container:
 		return
@@ -95,10 +136,19 @@ func spawn_corpse(pos: Vector3, enemy_type: String, rotation: float = 0.0) -> vo
 		_bake_corpses()
 
 	var corpse := _create_corpse_sprite(enemy_type)
+	var final_rot := rotation if rotation != 0.0 else randf() * TAU
 	corpse.position = Vector2(pos.x, pos.y)
-	corpse.rotation = rotation if rotation != 0.0 else randf() * TAU
+	corpse.rotation = final_rot
 	corpses_container.add_child(corpse)
 	_corpses.append(corpse)
+
+	# Corpse settle animation: small rotation + slide
+	var settle_rot := final_rot + randf_range(-0.15, 0.15)
+	var settle_slide := Vector2(randf_range(-3, 3), randf_range(-3, 3))
+	var tween := corpse.create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(corpse, "rotation", settle_rot, 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tween.tween_property(corpse, "position", corpse.position + settle_slide, 0.3).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 
 	# Also spawn blood at corpse location
 	spawn_blood(pos, 1.5)
@@ -163,13 +213,8 @@ func _bake_corpses() -> void:
 
 	print("[VFXSystem] Baking %d corpses..." % _corpses.size())
 
-	# Simple bake: just move corpses to baked container and make them static
-	# For a real implementation, we'd render to a viewport texture
-	# MVP: Keep corpses but move to baked layer (reduces processing since they don't need updates)
-
 	for corpse in _corpses:
 		if is_instance_valid(corpse):
-			# Reparent to baked container
 			var old_pos := corpse.global_position
 			var old_rot := corpse.rotation
 			corpse.get_parent().remove_child(corpse)
@@ -189,20 +234,32 @@ func _bake_corpses() -> void:
 
 ## Check if position has blood/corpse (for footprint spawning)
 func has_blood_or_corpse_at(pos: Vector2, radius: float = 20.0) -> bool:
-	# Check decals (blood)
+	return has_blood_at(pos, radius) or has_corpse_at(pos, radius)
+
+
+## Check if position is near a blood decal only
+func has_blood_at(pos: Vector2, radius: float = 20.0) -> bool:
 	if decals_container:
 		for child in decals_container.get_children():
 			if child is Sprite2D:
-				if child.position.distance_to(pos) < radius:
+				if child.global_position.distance_to(pos) < radius:
 					return true
+	return false
 
-	# Check corpses
-	if corpses_container:
-		for child in corpses_container.get_children():
-			if child is Sprite2D or child is Node2D:
-				if child.position.distance_to(pos) < radius:
+
+## Check if position is near a corpse only (active + baked Sprite2D, not containers)
+func has_corpse_at(pos: Vector2, radius: float = 20.0) -> bool:
+	# Check active corpses
+	for corpse in _corpses:
+		if is_instance_valid(corpse):
+			if corpse.global_position.distance_to(pos) < radius:
+				return true
+	# Check baked corpses (only Sprite2D children, skip Node2D containers)
+	if baked_container:
+		for child in baked_container.get_children():
+			if child is Sprite2D:
+				if child.global_position.distance_to(pos) < radius:
 					return true
-
 	return false
 
 

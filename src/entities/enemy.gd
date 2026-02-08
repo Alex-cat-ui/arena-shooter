@@ -137,11 +137,12 @@ func apply_damage(amount: int, source: String) -> void:
 	if is_dead:
 		return
 	hp -= amount
-	# Visual feedback
+	# Visual feedback (white flash per visual polish spec)
 	if sprite:
-		sprite.modulate = Color.RED
+		var flash_dur := GameConfig.hit_flash_duration if GameConfig else 0.06
+		sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
 		var tween := create_tween()
-		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+		tween.tween_property(sprite, "modulate", Color.WHITE, flash_dur)
 	# Track stats
 	if RuntimeState:
 		RuntimeState.damage_dealt += amount
@@ -169,11 +170,12 @@ func take_damage(amount: int) -> void:
 
 	hp -= amount
 
-	# Visual feedback (flash red)
+	# Visual feedback (white flash per visual polish spec)
 	if sprite:
-		sprite.modulate = Color.RED
+		var flash_dur := GameConfig.hit_flash_duration if GameConfig else 0.06
+		sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
 		var tween := create_tween()
-		tween.tween_property(sprite, "modulate", Color.WHITE, 0.1)
+		tween.tween_property(sprite, "modulate", Color.WHITE, flash_dur)
 
 	# Check death
 	if hp <= 0:
@@ -234,18 +236,23 @@ func _play_spawn_animation() -> void:
 	tween.tween_property(sprite, "modulate", Color.WHITE, 0.2)
 
 
-## Phase 3: Death flash + scale burst before cleanup
+## Kill feedback: scale pop 1.0 → kill_pop_scale → 0 + fade
 func _play_death_effect() -> void:
 	if not sprite:
 		call_deferred("_cleanup_after_death")
 		return
 
-	# White flash + scale burst + fade out
+	var pop_scale := GameConfig.kill_pop_scale if GameConfig else 1.2
+	var pop_dur := GameConfig.kill_pop_duration if GameConfig else 0.1
+
 	sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
 	var tween := create_tween()
+	# Scale pop: 1.0 → pop_scale
+	tween.tween_property(sprite, "scale", Vector2(pop_scale, pop_scale), pop_dur * 0.5).set_ease(Tween.EASE_OUT)
+	# Then shrink to 0 + fade
 	tween.set_parallel(true)
-	tween.tween_property(sprite, "scale", Vector2(1.5, 1.5), 0.12).set_ease(Tween.EASE_OUT)
-	tween.tween_property(sprite, "modulate:a", 0.0, 0.15)
+	tween.tween_property(sprite, "scale", Vector2(0, 0), pop_dur * 0.5).set_ease(Tween.EASE_IN)
+	tween.tween_property(sprite, "modulate:a", 0.0, pop_dur * 0.5)
 	tween.set_parallel(false)
 	tween.tween_callback(_cleanup_after_death)
 

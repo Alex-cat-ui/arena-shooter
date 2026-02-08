@@ -99,6 +99,18 @@ arena-shooter/
 - Systems: communicate via EventBus only
 - Pause: freezes all gameplay
 
+## Asset Attribution
+
+All external assets are CC0 (Public Domain) licensed. No attribution is legally required,
+but we credit authors as good practice.
+
+| Asset | Source | Author | License | Path in Repo |
+|-------|--------|--------|---------|--------------|
+| Ground 037 (dirt+grass floor texture) | [ambientCG](https://ambientcg.com/view?id=Ground037) | ambientCG | CC0 1.0 | `assets/textures/floor/dirt_grass_01.png` |
+| Top-down Shooter (player hitman) | [Kenney](https://kenney.nl/assets/top-down-shooter) | Kenney | CC0 1.0 | `assets/sprites/player/player_idle_0001.png` |
+| Top-down Shooter (zombie enemy) | [Kenney](https://kenney.nl/assets/top-down-shooter) | Kenney | CC0 1.0 | `assets/sprites/enemy/enemy_zombie_0001.png` |
+| Boss sprite (procedural, robot aesthetic) | — | Project | CC0 1.0 | `assets/sprites/boss/boss_0001.png` |
+
 ## Running Tests
 
 ```bash
