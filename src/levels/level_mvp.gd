@@ -5,6 +5,9 @@
 ## CANON: StartDelaySec - player CAN move, enemies MUST NOT spawn.
 extends Node2D
 
+## Arena shape presets
+enum ArenaPreset { SQUARE, LANDSCAPE, PORTRAIT }
+
 ## Scene references
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
 const BOSS_SCENE := preload("res://scenes/entities/boss.tscn")
@@ -116,6 +119,23 @@ func _init_runtime_state() -> void:
 		RuntimeState.damage_received = 0
 
 
+func _random_arena_rect() -> Rect2:
+	var preset := randi() % 3
+	var cx := 0.0
+	var cy := 0.0
+	if preset == ArenaPreset.SQUARE:
+		var s := randf_range(2100.0, 2700.0)
+		return Rect2(cx - s * 0.5, cy - s * 0.5, s, s)
+	elif preset == ArenaPreset.LANDSCAPE:
+		var h := randf_range(1650.0, 2100.0)
+		var w := h * randf_range(1.3, 1.6)
+		return Rect2(cx - w * 0.5, cy - h * 0.5, w, h)
+	else:  # PORTRAIT
+		var w := randf_range(1650.0, 2100.0)
+		var h := w * randf_range(1.3, 1.6)
+		return Rect2(cx - w * 0.5, cy - h * 0.5, w, h)
+
+
 func _init_systems() -> void:
 	# Create WaveManager
 	wave_manager = WaveManager.new()
@@ -179,7 +199,16 @@ func _init_systems() -> void:
 	arena_boundary.name = "ArenaBoundary"
 	arena_boundary.z_index = -1  # Behind entities
 	add_child(arena_boundary)
-	arena_boundary.initialize(_arena_min, _arena_max)
+	# Random arena shape
+	if GameConfig and GameConfig.procedural_layout_enabled:
+		var arena_rect := _random_arena_rect()
+		_arena_min = arena_rect.position
+		_arena_max = arena_rect.end
+		arena_boundary.initialize(_arena_min, _arena_max)
+		wave_manager.arena_min = _arena_min
+		wave_manager.arena_max = _arena_max
+	else:
+		arena_boundary.initialize(_arena_min, _arena_max)
 
 	# Procedural layout
 	layout_walls = Node2D.new()
@@ -487,6 +516,14 @@ func _handle_input() -> void:
 		print("[LevelMVP] Debug overlay: %s" % ("ON" if _debug_overlay_visible else "OFF"))
 
 
+## Part 9: F4 - regenerate layout
+func _unhandled_key_input(event: InputEvent) -> void:
+	if event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_F4:
+			print("[LevelMVP] F4: Regenerating layout")
+			regenerate_layout(0)
+
+
 func _update_hud() -> void:
 	if not RuntimeState:
 		return
@@ -578,11 +615,12 @@ func _update_debug_overlay() -> void:
 		var layout_label := _debug_container.get_node_or_null("LayoutLabel") as Label
 		if layout_label:
 			if _layout and _layout.valid:
-				layout_label.text = "Layout: seed=%d rooms=%d corridors=%d doors=%d ok=true max_doors=%d loops=%d isolated=%d" % [
+				layout_label.text = "Layout: seed=%d rooms=%d corr=%d doors=%d mode=%s hubs=%d voids=%d avg_deg=%.1f max_d=%d loops=%d iso=%d [F4=regen]" % [
 					_layout.layout_seed, _layout.rooms.size(), _layout.corridors.size(), _layout.doors.size(),
-					_layout.max_doors_stat, _layout.extra_loops, _layout.isolated_fixed]
+					_layout.layout_mode_name, _layout._hub_ids.size(), _layout._void_ids.size(),
+					_layout.avg_degree, _layout.max_doors_stat, _layout.extra_loops, _layout.isolated_fixed]
 			elif _layout:
-				layout_label.text = "Layout: INVALID"
+				layout_label.text = "Layout: INVALID [F4=regen]"
 			else:
 				layout_label.text = "Layout: disabled"
 
@@ -665,8 +703,16 @@ func regenerate_layout(new_seed: int = 0) -> void:
 		child.queue_free()
 	for child in layout_debug.get_children():
 		child.queue_free()
+	# Random arena shape on regeneration
+	var arena_rect := _random_arena_rect()
+	_arena_min = arena_rect.position
+	_arena_max = arena_rect.end
+	if arena_boundary:
+		arena_boundary.initialize(_arena_min, _arena_max)
+	if wave_manager:
+		wave_manager.arena_min = _arena_min
+		wave_manager.arena_max = _arena_max
 	# Regenerate
-	var arena_rect := Rect2(_arena_min, _arena_max - _arena_min)
 	var s := new_seed
 	if s == 0:
 		s = int(Time.get_ticks_msec()) % 999999
