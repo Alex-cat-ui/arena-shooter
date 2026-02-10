@@ -7,6 +7,9 @@ const SEED_COUNT := 50
 const ARENA := Rect2(-1100, -1100, 2200, 2200)
 const MAX_AVG_OPEN_OVERSIZED := 2.20
 const MIN_AVG_BLOCKERS := 0.35
+const MAX_LINEAR_PATH_FAILS := 0
+const MAX_WALKABILITY_FAILS := 0
+const MAX_UNREACHABLE_CELLS_PER_LAYOUT := 6
 
 
 func _ready() -> void:
@@ -31,6 +34,12 @@ func _ready() -> void:
 	var total_bad_edge_corridors := 0
 	var total_open_oversized := 0
 	var total_blockers := 0
+	var linear_path_failures := 0
+	var walkability_failures := 0
+	var total_unreachable_cells := 0
+	var total_main_path_turns := 0
+	var total_main_path_edges := 0
+	var total_main_path_straight := 0
 
 	for s in range(1, SEED_COUNT + 1):
 		for child in walls_node.get_children():
@@ -43,6 +52,16 @@ func _ready() -> void:
 			continue
 
 		total_blockers += layout._interior_blocker_segs.size()
+		total_unreachable_cells += layout.walk_unreachable_cells_stat
+		total_main_path_turns += layout.main_path_turns_stat
+		total_main_path_edges += layout.main_path_edges_stat
+		total_main_path_straight += layout.main_path_straight_run_stat
+		if layout.walk_unreachable_cells_stat > MAX_UNREACHABLE_CELLS_PER_LAYOUT:
+			walkability_failures += 1
+		if layout.main_path_edges_stat >= 4 and layout.main_path_turns_stat < 1:
+			linear_path_failures += 1
+		if layout.main_path_straight_run_stat > 4:
+			linear_path_failures += 1
 
 		for i in range(layout.rooms.size()):
 			if i in layout._void_ids:
@@ -74,6 +93,9 @@ func _ready() -> void:
 
 	var avg_open_oversized := float(total_open_oversized) / maxf(float(SEED_COUNT), 1.0)
 	var avg_blockers := float(total_blockers) / maxf(float(SEED_COUNT), 1.0)
+	var avg_unreachable := float(total_unreachable_cells) / maxf(float(SEED_COUNT), 1.0)
+	var avg_turns := float(total_main_path_turns) / maxf(float(SEED_COUNT), 1.0)
+	var avg_straight_run := float(total_main_path_straight) / maxf(float(SEED_COUNT), 1.0)
 
 	print("\n" + "-".repeat(68))
 	print("Visual metrics")
@@ -82,6 +104,11 @@ func _ready() -> void:
 	print("  total bad edge corridors:   %d" % total_bad_edge_corridors)
 	print("  avg open oversized rooms:   %.2f (target <= %.2f)" % [avg_open_oversized, MAX_AVG_OPEN_OVERSIZED])
 	print("  avg blockers per layout:    %.2f (target >= %.2f)" % [avg_blockers, MIN_AVG_BLOCKERS])
+	print("  linear path failures:       %d (target <= %d)" % [linear_path_failures, MAX_LINEAR_PATH_FAILS])
+	print("  walkability failures:       %d (target <= %d)" % [walkability_failures, MAX_WALKABILITY_FAILS])
+	print("  avg unreachable cells:      %.2f" % avg_unreachable)
+	print("  avg main path turns:        %.2f" % avg_turns)
+	print("  avg main straight run:      %.2f" % avg_straight_run)
 	print("-".repeat(68))
 
 	var is_pass := true
@@ -94,6 +121,10 @@ func _ready() -> void:
 	if avg_open_oversized > MAX_AVG_OPEN_OVERSIZED:
 		is_pass = false
 	if avg_blockers < MIN_AVG_BLOCKERS:
+		is_pass = false
+	if linear_path_failures > MAX_LINEAR_PATH_FAILS:
+		is_pass = false
+	if walkability_failures > MAX_WALKABILITY_FAILS:
 		is_pass = false
 
 	print("RESULT: %s" % ("PASS" if is_pass else "FAIL"))

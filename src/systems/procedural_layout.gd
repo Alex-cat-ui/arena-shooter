@@ -56,6 +56,10 @@ const HM_CORRIDOR_MAX_ASPECT := 10.0
 const HM_CORRIDOR_SOFT_MAX_LEN_FRAC := 0.48
 const HM_CORRIDOR_HARD_MAX_LEN_FRAC := 0.72
 const INTERIOR_BLOCKER_CHANCE := 0.45
+const WALK_GRID_CELL := 16.0
+const MAX_UNREACHABLE_WALK_CELLS := 6
+const MIN_MAIN_PATH_TURNS := 1
+const MAX_MAIN_PATH_STRAIGHT_RUN := 4
 var _l_room_ids: Array = []
 var _l_room_notches: Array = []  # [{room_id:int, notch_rect:Rect2, corner:String}]
 var _perimeter_notches: Array = []  # [{room_id:int, notch_rect:Rect2, side:String}]
@@ -64,6 +68,10 @@ var _t_u_room_ids: Array = []
 var _complex_shape_wall_segs: Array = []
 var _interior_blocker_segs: Array = []
 var _entry_gate: Rect2 = Rect2()
+var walk_unreachable_cells_stat: int = 0
+var main_path_turns_stat: int = 0
+var main_path_edges_stat: int = 0
+var main_path_straight_run_stat: int = 0
 
 ## Composition enforcement (Part 4)
 var _protected_doors: Array = []  # [{a:int, b:int}] normalized (a<b)
@@ -105,13 +113,14 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 		for vr: Rect2 in layout.void_rects:
 			void_area_pct += vr.get_area()
 		void_area_pct = void_area_pct / maxf(arena_area, 1.0) * 100.0
-		print("[ProceduralLayout] OK seed=%d arena=%.0fx%.0f rooms=%d corridors=%d doors=%d big=%d avg_deg=%.1f max_doors=%d loops=%d isolated=%d corr_leaves=%d mode=%s hubs=%d voids=%d void%%=%.1f l_rooms=%d blockers=%d gate=%s" % [
+		print("[ProceduralLayout] OK seed=%d arena=%.0fx%.0f rooms=%d corridors=%d doors=%d big=%d avg_deg=%.1f max_doors=%d loops=%d isolated=%d corr_leaves=%d mode=%s hubs=%d voids=%d void%%=%.1f l_rooms=%d blockers=%d turns=%d straight=%d uwalk=%d gate=%s" % [
 			layout.layout_seed, layout._arena.size.x, layout._arena.size.y,
 			layout.rooms.size(), layout.corridors.size(),
 			layout.doors.size(), layout.big_rooms_count,
 			layout.avg_degree, layout.max_doors_stat, layout.extra_loops, layout.isolated_fixed,
 			layout._logical_corr_count, layout.layout_mode_name, layout._hub_ids.size(),
 			layout._void_ids.size(), void_area_pct, layout._l_room_ids.size(), layout._interior_blocker_segs.size(),
+			layout.main_path_turns_stat, layout.main_path_straight_run_stat, layout.walk_unreachable_cells_stat,
 			str(layout._entry_gate != Rect2())])
 	else:
 		push_warning("[ProceduralLayout] FAILED after %d attempts" % MAX_GENERATION_ATTEMPTS)
@@ -148,6 +157,10 @@ func _generate() -> void:
 	_complex_shape_wall_segs.clear()
 	_interior_blocker_segs.clear()
 	_entry_gate = Rect2()
+	walk_unreachable_cells_stat = 0
+	main_path_turns_stat = 0
+	main_path_edges_stat = 0
+	main_path_straight_run_stat = 0
 	_protected_doors.clear()
 	_composition_ok = true
 	_layout_mode = 0
@@ -990,6 +1003,16 @@ func _door_pair_priority(a: int, b: int) -> float:
 	if _layout_mode == LayoutMode.CENTRAL_SPINE and not a_hub and not b_hub:
 		score -= 500.0
 	return score
+
+
+func _door_bend_bonus(a: int, b: int, split_type: String) -> float:
+	if a < 0 or b < 0 or a >= rooms.size() or b >= rooms.size():
+		return 0.0
+	var ca := rooms[a]["center"] as Vector2
+	var cb := rooms[b]["center"] as Vector2
+	if split_type == "V":
+		return absf(ca.y - cb.y)
+	return absf(ca.x - cb.x)
 
 
 func _max_doors_for_room(room_id: int) -> int:
@@ -2038,10 +2061,18 @@ func _create_doors_bsp(node: Dictionary) -> void:
 			var cj: Vector2 = rooms[ri]["center"]
 			pairs.append({"a": int(li), "b": int(ri), "dist": ci.distance_to(cj)})
 	pairs.sort_custom(func(x, y):
-		var px := _door_pair_priority(int(x["a"]), int(x["b"]))
-		var py := _door_pair_priority(int(y["a"]), int(y["b"]))
-		if absf(px - py) > 0.1:
-			return px > py
+		var ax := int(x["a"])
+		var bx := int(x["b"])
+		var ay := int(y["a"])
+		var by := int(y["b"])
+		var px := _door_pair_priority(ax, bx)
+		var py := _door_pair_priority(ay, by)
+		var bend_x := _door_bend_bonus(ax, bx, split_type)
+		var bend_y := _door_bend_bonus(ay, by, split_type)
+		var sx := px + bend_x * 0.45
+		var sy := py + bend_y * 0.45
+		if absf(sx - sy) > 0.1:
+			return sx > sy
 		return float(x["dist"]) < float(y["dist"]))
 
 	# Part 7: up to 2 doors per split
@@ -2091,7 +2122,9 @@ func _make_door_on_split_line(split_type: String, split_pos: float, a: int, b: i
 		if dy1 - dy0 < dmin:
 			return Rect2()
 		var door_len := clampf(randf_range(dmin, dmax), dmin, dy1 - dy0)
-		var center := (dy0 + dy1) * 0.5 + randf_range(-0.2, 0.2) * (dy1 - dy0)
+		var center := (dy0 + dy1) * 0.5 + randf_range(-0.35, 0.35) * (dy1 - dy0)
+		var asym_seed := float(((a * 92821 + b * 68917) % 11) - 5) / 5.0
+		center += asym_seed * 0.12 * (dy1 - dy0)
 		var dy := clampf(center - door_len * 0.5, dy0, dy1 - door_len)
 		return Rect2(split_pos - wall_t * 0.5, dy, wall_t, door_len)
 	else:
@@ -2103,7 +2136,9 @@ func _make_door_on_split_line(split_type: String, split_pos: float, a: int, b: i
 		if dx1 - dx0 < dmin:
 			return Rect2()
 		var door_len := clampf(randf_range(dmin, dmax), dmin, dx1 - dx0)
-		var center := (dx0 + dx1) * 0.5 + randf_range(-0.2, 0.2) * (dx1 - dx0)
+		var center := (dx0 + dx1) * 0.5 + randf_range(-0.35, 0.35) * (dx1 - dx0)
+		var asym_seed := float(((a * 68917 + b * 92821) % 11) - 5) / 5.0
+		center += asym_seed * 0.12 * (dx1 - dx0)
 		var dx := clampf(center - door_len * 0.5, dx0, dx1 - door_len)
 		return Rect2(dx, split_pos - wall_t * 0.5, door_len, wall_t)
 
@@ -2586,8 +2621,18 @@ func _ensure_connectivity() -> bool:
 				if not seg.is_empty():
 					var ci: Vector2 = rooms[i]["center"]
 					var cj: Vector2 = rooms[int(j)]["center"]
-					cand_j.append({"j": int(j), "dist": ci.distance_to(cj), "seg": seg})
-			cand_j.sort_custom(func(a, b): return float(a["dist"]) < float(b["dist"]))
+					cand_j.append({
+						"j": int(j),
+						"dist": ci.distance_to(cj),
+						"bend": _door_bend_bonus(i, int(j), seg["type"] as String),
+						"seg": seg,
+					})
+			cand_j.sort_custom(func(a, b):
+				var sa := float(a["bend"]) * 0.35 - float(a["dist"])
+				var sb := float(b["bend"]) * 0.35 - float(b["dist"])
+				if absf(sa - sb) > 0.1:
+					return sa > sb
+				return float(a["dist"]) < float(b["dist"]))
 
 			var repaired := false
 			for cj in cand_j:
@@ -2641,6 +2686,350 @@ func _arena_is_too_tight() -> bool:
 		return true
 
 	return false
+
+
+func _compute_cut_wall_segments_for_validation() -> Array:
+	# Mirrors wall topology assembly from _build_walls, but returns segments only.
+	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var base_segs: Array = []
+
+	var ax := _arena.position.x
+	var ay := _arena.position.y
+	var ax1 := _arena.end.x
+	var ay1 := _arena.end.y
+
+	for i in range(rooms.size()):
+		if i in _void_ids:
+			continue
+		for rr in rooms[i]["rects"]:
+			var r := rr as Rect2
+			if absf(r.position.y - ay) < 1.0:
+				base_segs.append({"type": "H", "pos": ay, "t0": r.position.x, "t1": r.end.x})
+			if absf(r.end.y - ay1) < 1.0:
+				base_segs.append({"type": "H", "pos": ay1, "t0": r.position.x, "t1": r.end.x})
+			if absf(r.position.x - ax) < 1.0:
+				base_segs.append({"type": "V", "pos": ax, "t0": r.position.y, "t1": r.end.y})
+			if absf(r.end.x - ax1) < 1.0:
+				base_segs.append({"type": "V", "pos": ax1, "t0": r.position.y, "t1": r.end.y})
+
+	for ss in _split_segs:
+		var left_ids: Array = ss["left_ids"]
+		var right_ids: Array = ss["right_ids"]
+		var all_left_void := true
+		for lid in left_ids:
+			if int(lid) not in _void_ids:
+				all_left_void = false
+				break
+		var all_right_void := true
+		for rid in right_ids:
+			if int(rid) not in _void_ids:
+				all_right_void = false
+				break
+		if all_left_void and all_right_void:
+			continue
+		base_segs.append({
+			"type": ss["type"],
+			"pos": float(ss["pos"]),
+			"t0": float(ss["t0"]),
+			"t1": float(ss["t1"]),
+		})
+
+	for notch_data in _l_room_notches:
+		var notch: Rect2 = notch_data["notch_rect"] as Rect2
+		var corner: String = notch_data["corner"] as String
+		match corner:
+			"NE":
+				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
+			"NW":
+				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
+			"SE":
+				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+			"SW":
+				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+
+	for notch_data in _perimeter_notches:
+		var notch: Rect2 = notch_data["notch_rect"] as Rect2
+		var side: String = notch_data["side"] as String
+		match side:
+			"TOP":
+				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
+			"BOTTOM":
+				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+			"LEFT":
+				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
+				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
+			"RIGHT":
+				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
+				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
+
+	for seg in _complex_shape_wall_segs:
+		base_segs.append(seg)
+	for seg in _interior_blocker_segs:
+		base_segs.append(seg)
+
+	base_segs = _merge_collinear_segments(base_segs)
+	var all_door_rects: Array = doors.duplicate()
+	if _entry_gate != Rect2():
+		all_door_rects.append(_entry_gate)
+	return _cut_doors_from_segments(base_segs, all_door_rects, wall_t)
+
+
+func _find_nearest_walk_cell(mask: Array, cols: int, rows: int, sx: int, sy: int) -> Vector2i:
+	var x0 := clampi(sx, 0, cols - 1)
+	var y0 := clampi(sy, 0, rows - 1)
+	if bool(mask[y0][x0]):
+		return Vector2i(x0, y0)
+
+	var max_r := maxi(cols, rows)
+	for r in range(1, max_r):
+		var y_min := maxi(0, y0 - r)
+		var y_max := mini(rows - 1, y0 + r)
+		for yy in range(y_min, y_max + 1):
+			var x_min := maxi(0, x0 - r)
+			var x_max := mini(cols - 1, x0 + r)
+			for xx in range(x_min, x_max + 1):
+				if absi(xx - x0) != r and absi(yy - y0) != r:
+					continue
+				if bool(mask[yy][xx]):
+					return Vector2i(xx, yy)
+	return Vector2i(-1, -1)
+
+
+func _analyze_walkability() -> Dictionary:
+	var analysis := {
+		"ok": false,
+		"walkable_cells": 0,
+		"unreachable_cells": 0,
+	}
+	var solid_rects: Array = []
+	for i in range(rooms.size()):
+		if i in _void_ids:
+			continue
+		for rect in (rooms[i]["rects"] as Array):
+			solid_rects.append(rect as Rect2)
+	if solid_rects.is_empty():
+		return analysis
+
+	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var wall_rects: Array = []
+	var wall_segs := _compute_cut_wall_segments_for_validation()
+	for seg in wall_segs:
+		var seg_type: String = seg["type"] as String
+		var seg_pos: float = float(seg["pos"])
+		var seg_t0: float = float(seg["t0"])
+		var seg_t1: float = float(seg["t1"])
+		var seg_len := seg_t1 - seg_t0
+		if seg_len <= 1.0:
+			continue
+		if seg_type == "H":
+			wall_rects.append(Rect2(seg_t0 - 2.0, seg_pos - wall_t * 0.5, seg_len + 4.0, wall_t))
+		else:
+			wall_rects.append(Rect2(seg_pos - wall_t * 0.5, seg_t0 - 2.0, wall_t, seg_len + 4.0))
+
+	var cell := WALK_GRID_CELL
+	var cols := maxi(int(ceilf(_arena.size.x / cell)), 1)
+	var rows := maxi(int(ceilf(_arena.size.y / cell)), 1)
+	var walk_mask: Array = []
+	var walkable_cells := 0
+
+	for y in range(rows):
+		var row: Array = []
+		for x in range(cols):
+			var p := _arena.position + Vector2((float(x) + 0.5) * cell, (float(y) + 0.5) * cell)
+			var in_solid := false
+			for rr in solid_rects:
+				if (rr as Rect2).has_point(p):
+					in_solid = true
+					break
+			if not in_solid:
+				row.append(false)
+				continue
+			var blocked := false
+			for wr in wall_rects:
+				if (wr as Rect2).has_point(p):
+					blocked = true
+					break
+			row.append(not blocked)
+			if not blocked:
+				walkable_cells += 1
+		walk_mask.append(row)
+
+	analysis["walkable_cells"] = walkable_cells
+	if walkable_cells <= 0:
+		return analysis
+
+	var sx := int(floor((player_spawn_pos.x - _arena.position.x) / cell))
+	var sy := int(floor((player_spawn_pos.y - _arena.position.y) / cell))
+	var start := _find_nearest_walk_cell(walk_mask, cols, rows, sx, sy)
+	if start.x < 0:
+		return analysis
+
+	var visited: Dictionary = {}
+	var queue: Array = [start]
+	visited[start.y * cols + start.x] = true
+	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
+
+	while queue.size() > 0:
+		var cur: Vector2i = queue.pop_front()
+		for d: Vector2i in dirs:
+			var nx: int = cur.x + d.x
+			var ny: int = cur.y + d.y
+			if nx < 0 or ny < 0 or nx >= cols or ny >= rows:
+				continue
+			if not bool(walk_mask[ny][nx]):
+				continue
+			var key: int = ny * cols + nx
+			if visited.has(key):
+				continue
+			visited[key] = true
+			queue.append(Vector2i(nx, ny))
+
+	var unreachable := 0
+	for y in range(rows):
+		for x in range(cols):
+			if not bool(walk_mask[y][x]):
+				continue
+			var key := y * cols + x
+			if not visited.has(key):
+				unreachable += 1
+
+	analysis["unreachable_cells"] = unreachable
+	analysis["ok"] = unreachable <= MAX_UNREACHABLE_WALK_CELLS
+	return analysis
+
+
+func _compute_main_path_info() -> Dictionary:
+	var info := {
+		"ok": true,
+		"edges": 0,
+		"turns": 0,
+		"max_straight_run": 0,
+	}
+	if rooms.is_empty():
+		return info
+
+	var start := player_room_id
+	if start < 0 or start >= rooms.size() or start in _void_ids:
+		start = -1
+		for i in range(rooms.size()):
+			if i not in _void_ids:
+				start = i
+				break
+	if start < 0:
+		return info
+
+	var dist: Dictionary = {}
+	var parent: Dictionary = {}
+	var queue: Array = [start]
+	dist[start] = 0
+	parent[start] = -1
+
+	while queue.size() > 0:
+		var cur: int = queue.pop_front()
+		if not _door_adj.has(cur):
+			continue
+		for n in (_door_adj[cur] as Array):
+			var ni := int(n)
+			if ni in _void_ids:
+				continue
+			if dist.has(ni):
+				continue
+			dist[ni] = int(dist[cur]) + 1
+			parent[ni] = cur
+			queue.append(ni)
+
+	if dist.size() <= 1:
+		return info
+
+	var target := start
+	var best_dist := -1
+	var best_geo := -1.0
+	for k in dist.keys():
+		var rid := int(k)
+		var d := int(dist[rid])
+		if d > best_dist:
+			best_dist = d
+			best_geo = (rooms[rid]["center"] as Vector2).distance_to(rooms[start]["center"] as Vector2)
+			target = rid
+		elif d == best_dist:
+			var geo := (rooms[rid]["center"] as Vector2).distance_to(rooms[start]["center"] as Vector2)
+			if geo > best_geo:
+				best_geo = geo
+				target = rid
+
+	if best_dist <= 0:
+		return info
+
+	var path: Array = []
+	var cur := target
+	while cur >= 0:
+		path.push_front(cur)
+		if cur == start:
+			break
+		cur = int(parent.get(cur, -1))
+	if path.size() < 2:
+		return info
+
+	var edges := path.size() - 1
+	info["edges"] = edges
+	if edges < 2:
+		return info
+
+	var turns := 0
+	var straight_run := 1
+	var max_straight_run := 1
+	for i in range(1, path.size() - 1):
+		var c0 := rooms[int(path[i - 1])]["center"] as Vector2
+		var c1 := rooms[int(path[i])]["center"] as Vector2
+		var c2 := rooms[int(path[i + 1])]["center"] as Vector2
+		var v1 := c1 - c0
+		var v2 := c2 - c1
+		if v1.length() < 0.001 or v2.length() < 0.001:
+			continue
+		var dot := v1.normalized().dot(v2.normalized())
+		if dot <= 0.90:
+			turns += 1
+			straight_run = 1
+		elif dot >= 0.97:
+			straight_run += 1
+			max_straight_run = maxi(max_straight_run, straight_run)
+		else:
+			straight_run = 1
+
+	info["turns"] = turns
+	info["max_straight_run"] = max_straight_run
+
+	var too_linear := false
+	if edges >= 4 and turns < MIN_MAIN_PATH_TURNS:
+		too_linear = true
+	if max_straight_run > MAX_MAIN_PATH_STRAIGHT_RUN:
+		too_linear = true
+	info["ok"] = not too_linear
+	return info
+
+
+func _validate_main_path_rhythm() -> bool:
+	var info := _compute_main_path_info()
+	main_path_edges_stat = int(info["edges"])
+	main_path_turns_stat = int(info["turns"])
+	main_path_straight_run_stat = int(info["max_straight_run"])
+	return bool(info["ok"])
+
+
+func _validate_walkability() -> bool:
+	var analysis := _analyze_walkability()
+	walk_unreachable_cells_stat = int(analysis["unreachable_cells"])
+	return bool(analysis["ok"])
 
 
 ## ============================================================================
@@ -2832,6 +3221,12 @@ func _validate() -> bool:
 			has_diverse = true
 			break
 	if not has_diverse and solid_ids.size() >= 6:
+		return false
+
+	if not _validate_main_path_rhythm():
+		return false
+
+	if not _validate_walkability():
 		return false
 
 	return true
