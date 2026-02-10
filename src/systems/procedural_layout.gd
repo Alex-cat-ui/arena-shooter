@@ -206,6 +206,9 @@ func _generate() -> void:
 	# 4.8) Apply L-shaped rooms (internal notch cuts)
 	_apply_l_rooms()
 
+	# 4.85) Apply L-shaped corridors (optional variety)
+	_apply_l_shaped_corridors()
+
 	# 4.9) Apply T/U complex room shapes
 	_apply_t_u_shapes()
 
@@ -1450,6 +1453,63 @@ func _apply_l_rooms() -> void:
 
 		_l_room_ids.append(room_id)
 		_l_room_notches.append({"room_id": room_id, "notch_rect": notch, "corner": corner})
+
+
+func _apply_l_shaped_corridors() -> void:
+	var chance := 0.20
+	var leg_min := 120.0
+	for i in range(rooms.size()):
+		if rooms[i]["is_corridor"] != true:
+			continue
+		if i in _void_ids:
+			continue
+		var rects: Array = rooms[i]["rects"] as Array
+		if rects.size() != 1:
+			continue
+		if randf() > chance:
+			continue
+
+		var r: Rect2 = rects[0] as Rect2
+		if r.size.x < leg_min * 2.0 or r.size.y < leg_min * 2.0:
+			continue
+
+		var corners := ["NE", "NW", "SE", "SW"]
+		var corner: String = corners[randi() % corners.size()]
+		var cut_w := clampf(randf_range(leg_min, r.size.x * 0.35), leg_min, r.size.x - leg_min)
+		var cut_h := clampf(randf_range(leg_min, r.size.y * 0.35), leg_min, r.size.y - leg_min)
+		if cut_w < 64.0 or cut_h < 64.0:
+			continue
+
+		var rect1: Rect2
+		var rect2: Rect2
+		var notch: Rect2
+		match corner:
+			"NE":
+				rect1 = Rect2(r.position.x, r.position.y, r.size.x - cut_w, r.size.y)
+				rect2 = Rect2(r.position.x + r.size.x - cut_w, r.position.y + cut_h, cut_w, r.size.y - cut_h)
+				notch = Rect2(r.position.x + r.size.x - cut_w, r.position.y, cut_w, cut_h)
+			"NW":
+				rect1 = Rect2(r.position.x + cut_w, r.position.y, r.size.x - cut_w, r.size.y)
+				rect2 = Rect2(r.position.x, r.position.y + cut_h, cut_w, r.size.y - cut_h)
+				notch = Rect2(r.position.x, r.position.y, cut_w, cut_h)
+			"SE":
+				rect1 = Rect2(r.position.x, r.position.y, r.size.x - cut_w, r.size.y)
+				rect2 = Rect2(r.position.x + r.size.x - cut_w, r.position.y, cut_w, r.size.y - cut_h)
+				notch = Rect2(r.position.x + r.size.x - cut_w, r.position.y + r.size.y - cut_h, cut_w, cut_h)
+			"SW":
+				rect1 = Rect2(r.position.x + cut_w, r.position.y, r.size.x - cut_w, r.size.y)
+				rect2 = Rect2(r.position.x, r.position.y, cut_w, r.size.y - cut_h)
+				notch = Rect2(r.position.x, r.position.y + r.size.y - cut_h, cut_w, cut_h)
+
+		if minf(rect1.size.x, rect1.size.y) < 96.0 or minf(rect2.size.x, rect2.size.y) < 96.0:
+			continue
+		if _is_gut_rect(rect1) or _is_gut_rect(rect2):
+			continue
+
+		rooms[i]["rects"] = [rect1, rect2]
+		rooms[i]["is_l_room"] = true
+		rooms[i]["center"] = _area_weighted_center([rect1, rect2])
+		_l_room_notches.append({"room_id": i, "notch_rect": notch, "corner": corner})
 
 
 ## ============================================================================
