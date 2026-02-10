@@ -2,6 +2,21 @@
 
 ## 2026-02-10
 
+### Closet access + anti-floating-wall fix
+- Changed: disabled interior blocker generation that produced random "wall in the middle of room" artifacts.
+- Added: closet classifier helper and strict closet door cap (`max_doors=1`).
+- Added: validation rule for closets: allowed count `0..2`, and every closet must have exactly one entrance.
+- Changed: dead-end validation excludes closets (they are validated separately by one-entrance rule).
+- Changed: walkability check now uses wall clearance radius and tighter unreachable budget (`<=1`) to catch narrow fake passages.
+- Updated tests:
+  - `tests/test_layout_stats.gd` logs and fails on closets with invalid entrance count.
+  - `tests/test_layout_visual_regression.gd` aligns blocker metric with new optional blocker policy and tighter unreachable threshold.
+- Result:
+  - `test_layout_stats`: PASS (50/50 valid, `closet_bad_entries=0`, `gut=0`, `bad_edge=0`)
+  - `test_layout_visual_regression`: PASS (`walkability_failures=0`)
+  - `test_hotline_similarity`: PASS (`95.25/100`)
+- Files: `src/systems/procedural_layout.gd`, `tests/test_layout_stats.gd`, `tests/test_layout_visual_regression.gd`
+
 ### Walkability + route rhythm hardening (latest)
 - Added: flood-fill walkability validation to reject internal unreachable pockets/void-like leftovers inside playable silhouette.
 - Added: main path rhythm validation (minimum turns + max straight run cap) to reduce long boring "door-in-line" routes.

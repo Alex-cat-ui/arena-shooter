@@ -32,6 +32,7 @@ func _ready() -> void:
 	var total_count_rooms := 0
 	var total_count_corridors := 0
 	var total_closets := 0
+	var total_closet_bad_entries := 0
 	var total_gut_rects := 0
 	var total_bad_edge_corridors := 0
 	var total_dead_ends := 0
@@ -53,6 +54,7 @@ func _ready() -> void:
 		var count_rooms := 0
 		var count_corridors := 0
 		var closets_count := 0
+		var closet_bad_entries_found := 0
 		var gut_rects_found := 0
 		var bad_edge_corridors_found := 0
 		var dead_end_count := 0
@@ -87,20 +89,19 @@ func _ready() -> void:
 				if layout._is_gut_rect(r):
 					gut_rects_found += 1
 
-			if not is_corridor and rects.size() == 1:
-				var base := rects[0] as Rect2
-				var min_side := minf(base.size.x, base.size.y)
-				var aspect := maxf(base.size.x, base.size.y) / maxf(min_side, 1.0)
-				if min_side >= 96.0 and min_side <= 127.0 and aspect <= 2.5:
-					closets_count += 1
+			if layout._is_closet_room(i):
+				closets_count += 1
+				if deg != 1:
+					closet_bad_entries_found += 1
 
-		print("\n  seed=%d valid=%s mode=%s count_rooms=%d count_corridors=%d closets=%d gut_rects=%d bad_edge_corridors=%d dead_end=%d notched=%d t_u=%d" % [
+		print("\n  seed=%d valid=%s mode=%s count_rooms=%d count_corridors=%d closets=%d closet_bad_entries=%d gut_rects=%d bad_edge_corridors=%d dead_end=%d notched=%d t_u=%d" % [
 			s,
 			str(layout.valid),
 			mode_name,
 			count_rooms,
 			count_corridors,
 			closets_count,
+			closet_bad_entries_found,
 			gut_rects_found,
 			bad_edge_corridors_found,
 			dead_end_count,
@@ -116,6 +117,7 @@ func _ready() -> void:
 		total_count_rooms += count_rooms
 		total_count_corridors += count_corridors
 		total_closets += closets_count
+		total_closet_bad_entries += closet_bad_entries_found
 		total_gut_rects += gut_rects_found
 		total_bad_edge_corridors += bad_edge_corridors_found
 		total_dead_ends += dead_end_count
@@ -131,6 +133,7 @@ func _ready() -> void:
 	print("  Avg count_rooms:          %.2f" % (float(total_count_rooms) / float(SEED_COUNT)))
 	print("  Avg count_corridors:      %.2f" % (float(total_count_corridors) / float(SEED_COUNT)))
 	print("  Avg closets_count:        %.2f" % (float(total_closets) / float(SEED_COUNT)))
+	print("  Total closet bad entries: %d" % total_closet_bad_entries)
 	print("  Total gut_rects_found:    %d" % total_gut_rects)
 	print("  Total bad_edge_corridors: %d" % total_bad_edge_corridors)
 	print("  Avg dead_end_count:       %.2f" % (float(total_dead_ends) / float(SEED_COUNT)))
@@ -149,5 +152,10 @@ func _ready() -> void:
 	print("LAYOUT STATS TEST COMPLETE")
 	print("=".repeat(60))
 
-	var has_errors := invalid_count > 0 or total_gut_rects > 0 or total_bad_edge_corridors > 0
+	var has_errors := (
+		invalid_count > 0
+		or total_gut_rects > 0
+		or total_bad_edge_corridors > 0
+		or total_closet_bad_entries > 0
+	)
 	get_tree().quit(1 if has_errors else 0)

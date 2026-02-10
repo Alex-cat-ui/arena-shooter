@@ -6,10 +6,10 @@ extends Node
 const SEED_COUNT := 50
 const ARENA := Rect2(-1100, -1100, 2200, 2200)
 const MAX_AVG_OPEN_OVERSIZED := 2.20
-const MIN_AVG_BLOCKERS := 0.35
+const MIN_AVG_BLOCKERS := 0.0
 const MAX_LINEAR_PATH_FAILS := 0
 const MAX_WALKABILITY_FAILS := 0
-const MAX_UNREACHABLE_CELLS_PER_LAYOUT := 6
+const MAX_UNREACHABLE_CELLS_PER_LAYOUT := 1
 
 
 func _ready() -> void:
@@ -103,7 +103,7 @@ func _ready() -> void:
 	print("  total bad corridors:        %d" % total_bad_corridors)
 	print("  total bad edge corridors:   %d" % total_bad_edge_corridors)
 	print("  avg open oversized rooms:   %.2f (target <= %.2f)" % [avg_open_oversized, MAX_AVG_OPEN_OVERSIZED])
-	print("  avg blockers per layout:    %.2f (target >= %.2f)" % [avg_blockers, MIN_AVG_BLOCKERS])
+	print("  avg blockers per layout:    %.2f (target >= %.2f, currently optional)" % [avg_blockers, MIN_AVG_BLOCKERS])
 	print("  linear path failures:       %d (target <= %d)" % [linear_path_failures, MAX_LINEAR_PATH_FAILS])
 	print("  walkability failures:       %d (target <= %d)" % [walkability_failures, MAX_WALKABILITY_FAILS])
 	print("  avg unreachable cells:      %.2f" % avg_unreachable)

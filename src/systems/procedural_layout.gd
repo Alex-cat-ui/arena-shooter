@@ -55,9 +55,9 @@ const MODE_PRIMARY_ATTEMPTS := 170
 const HM_CORRIDOR_MAX_ASPECT := 10.0
 const HM_CORRIDOR_SOFT_MAX_LEN_FRAC := 0.48
 const HM_CORRIDOR_HARD_MAX_LEN_FRAC := 0.72
-const INTERIOR_BLOCKER_CHANCE := 0.45
 const WALK_GRID_CELL := 16.0
-const MAX_UNREACHABLE_WALK_CELLS := 6
+const WALK_CLEARANCE_RADIUS := 16.0
+const MAX_UNREACHABLE_WALK_CELLS := 1
 const MIN_MAIN_PATH_TURNS := 1
 const MAX_MAIN_PATH_STRAIGHT_RUN := 4
 var _l_room_ids: Array = []
@@ -221,8 +221,8 @@ func _generate() -> void:
 	# 4.9) Apply T/U complex room shapes
 	_apply_t_u_shapes()
 
-	# 4.92) Add short interior blockers in oversized single-rect rooms.
-	_apply_interior_blockers()
+	# 4.92) Disabled for now: interior blockers create unwanted "floating walls" in rooms.
+	_interior_blocker_segs.clear()
 
 	# 5) Collect split segments from BSP tree
 	_collect_split_segments(_bsp_root)
@@ -1016,6 +1016,8 @@ func _door_bend_bonus(a: int, b: int, split_type: String) -> float:
 
 
 func _max_doors_for_room(room_id: int) -> int:
+	if _is_closet_room(room_id):
+		return 1
 	if room_id in _hub_ids:
 		return 3
 	if room_id in _ring_ids:
@@ -1789,73 +1791,28 @@ func _apply_t_u_shapes() -> void:
 		_try_apply_t_u_shape(int(reserved_candidates[0]))
 
 
+func _is_closet_room(room_id: int) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	if room_id in _void_ids:
+		return false
+	var room: Dictionary = rooms[room_id]
+	if room["is_corridor"] == true:
+		return false
+	var rects: Array = room["rects"] as Array
+	if rects.size() != 1:
+		return false
+	var base := rects[0] as Rect2
+	var min_side := minf(base.size.x, base.size.y)
+	if min_side < 96.0 or min_side > 127.0:
+		return false
+	return _rect_aspect(base) <= 2.5
+
+
 func _apply_interior_blockers() -> void:
 	_interior_blocker_segs.clear()
-	var max_blockers := 4
-	var margin := 96.0
-
-	for i in range(rooms.size()):
-		if _interior_blocker_segs.size() >= max_blockers:
-			break
-		if rooms[i]["is_corridor"] == true:
-			continue
-		if rooms[i].get("is_void", false) == true:
-			continue
-
-		var rects: Array = rooms[i]["rects"] as Array
-		if rects.size() != 1:
-			continue
-		var r := rects[0] as Rect2
-		if minf(r.size.x, r.size.y) < 300.0:
-			continue
-		if r.get_area() < 140000.0:
-			continue
-		if randf() > INTERIOR_BLOCKER_CHANCE:
-			continue
-
-		var prefer_horizontal := r.size.x >= r.size.y
-		if prefer_horizontal:
-			var seg_len_max := minf(320.0, r.size.x - margin * 2.0)
-			if seg_len_max < 160.0:
-				continue
-			var seg_len := randf_range(160.0, seg_len_max)
-			var x0_min := r.position.x + margin
-			var x0_max := r.end.x - margin - seg_len
-			if x0_max < x0_min:
-				continue
-			var x0 := randf_range(x0_min, x0_max)
-			var y := clampf(
-				r.get_center().y + randf_range(-56.0, 56.0),
-				r.position.y + margin,
-				r.end.y - margin
-			)
-			_interior_blocker_segs.append({
-				"type": "H",
-				"pos": y,
-				"t0": x0,
-				"t1": x0 + seg_len,
-			})
-		else:
-			var seg_len_max := minf(320.0, r.size.y - margin * 2.0)
-			if seg_len_max < 160.0:
-				continue
-			var seg_len := randf_range(160.0, seg_len_max)
-			var y0_min := r.position.y + margin
-			var y0_max := r.end.y - margin - seg_len
-			if y0_max < y0_min:
-				continue
-			var y0 := randf_range(y0_min, y0_max)
-			var x := clampf(
-				r.get_center().x + randf_range(-56.0, 56.0),
-				r.position.x + margin,
-				r.end.x - margin
-			)
-			_interior_blocker_segs.append({
-				"type": "V",
-				"pos": x,
-				"t0": y0,
-				"t1": y0 + seg_len,
-			})
+	# Disabled: these blockers frequently read as random "wall-in-the-middle" artifacts.
+	return
 
 
 func _try_apply_t_u_shape(room_id: int) -> bool:
@@ -2831,10 +2788,12 @@ func _analyze_walkability() -> Dictionary:
 		var seg_len := seg_t1 - seg_t0
 		if seg_len <= 1.0:
 			continue
+		var wr: Rect2
 		if seg_type == "H":
-			wall_rects.append(Rect2(seg_t0 - 2.0, seg_pos - wall_t * 0.5, seg_len + 4.0, wall_t))
+			wr = Rect2(seg_t0 - 2.0, seg_pos - wall_t * 0.5, seg_len + 4.0, wall_t)
 		else:
-			wall_rects.append(Rect2(seg_pos - wall_t * 0.5, seg_t0 - 2.0, wall_t, seg_len + 4.0))
+			wr = Rect2(seg_pos - wall_t * 0.5, seg_t0 - 2.0, wall_t, seg_len + 4.0)
+		wall_rects.append(wr.grow(WALK_CLEARANCE_RADIUS))
 
 	var cell := WALK_GRID_CELL
 	var cols := maxi(int(ceilf(_arena.size.x / cell)), 1)
@@ -3055,6 +3014,7 @@ func _validate() -> bool:
 	# - gut rects are forbidden
 	# - closet rooms allowed only as single-rect non-corridor, max 2 per layout
 	var closet_count := 0
+	var closet_ids: Array = []
 	for i in solid_ids:
 		var room: Dictionary = rooms[i]
 		var is_corridor: bool = room["is_corridor"] == true
@@ -3068,14 +3028,16 @@ func _validate() -> bool:
 		if is_corridor:
 			continue
 
-		if rects.size() == 1:
-			var base := rects[0] as Rect2
-			var min_side := minf(base.size.x, base.size.y)
-			if min_side >= 96.0 and min_side <= 127.0 and _rect_aspect(base) <= 2.5:
-				closet_count += 1
+		if _is_closet_room(i):
+			closet_count += 1
+			closet_ids.append(i)
 
 	if closet_count > 2:
 		return false
+	for cid in closet_ids:
+		var cdeg := (_door_adj[int(cid)] as Array).size() if _door_adj.has(int(cid)) else 0
+		if cdeg != 1:
+			return false
 
 	for i in range(rooms.size()):
 		if rooms[i]["is_corridor"] != true:
@@ -3169,6 +3131,7 @@ func _validate() -> bool:
 			return false
 
 	# Dead-end rules for solid non-corridor rooms:
+	# - closets are handled separately (must have exactly one entrance)
 	# - degree==1 allowed only on perimeter rooms
 	# - interior rooms must have degree >= 2
 	# - dead_end_count <= 3 and ratio <= 0.20 of perimeter rooms
@@ -3176,6 +3139,8 @@ func _validate() -> bool:
 	var dead_end_count := 0
 	for i in solid_ids:
 		if rooms[i]["is_corridor"] == true:
+			continue
+		if i in closet_ids:
 			continue
 		var deg: int = (_door_adj[i] as Array).size() if _door_adj.has(i) else 0
 		var is_perimeter := _room_touch_perimeter(i)
