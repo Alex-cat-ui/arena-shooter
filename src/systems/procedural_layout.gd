@@ -51,6 +51,7 @@ var _leaf_adj: Dictionary = {}
 var layout_mode_name: String = ""
 var _l_room_ids: Array = []
 var _l_room_notches: Array = []  # [{room_id:int, notch_rect:Rect2, corner:String}]
+var _perimeter_notches: Array = []  # [{room_id:int, notch_rect:Rect2, side:String}]
 var _entry_gate: Rect2 = Rect2()
 
 ## Composition enforcement (Part 4)
@@ -93,6 +94,7 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 		layout._leaf_adj.clear()
 		layout._l_room_ids.clear()
 		layout._l_room_notches.clear()
+		layout._perimeter_notches.clear()
 		layout._entry_gate = Rect2()
 		layout._protected_doors.clear()
 		layout._composition_ok = true
@@ -144,6 +146,7 @@ func _generate() -> void:
 	_leaf_adj.clear()
 	_l_room_ids.clear()
 	_l_room_notches.clear()
+	_perimeter_notches.clear()
 	_entry_gate = Rect2()
 	_protected_doors.clear()
 	_composition_ok = true
@@ -189,6 +192,9 @@ func _generate() -> void:
 
 	# 4.7) Assign VOID cutouts (Hotline silhouette — strengthened Part 5)
 	_assign_void_cutouts()
+
+	# 4.75) Perimeter notches (real silhouette cuts)
+	_apply_perimeter_notches()
 
 	# 4.8) Apply L-shaped rooms (internal notch cuts)
 	_apply_l_rooms()
@@ -649,6 +655,30 @@ func _room_total_area(room_id: int) -> float:
 	for r: Rect2 in rooms[room_id]["rects"]:
 		total += r.get_area()
 	return total
+
+
+func _area_weighted_center(rects: Array) -> Vector2:
+	var sum := Vector2.ZERO
+	var total_area := 0.0
+	for rect in rects:
+		var r := rect as Rect2
+		var a := r.get_area()
+		sum += r.get_center() * a
+		total_area += a
+	return sum / maxf(total_area, 1.0)
+
+
+func _perimeter_sides_for_rect(r: Rect2) -> Array:
+	var sides: Array = []
+	if absf(r.position.y - _arena.position.y) < 1.0:
+		sides.append("TOP")
+	if absf(r.end.y - _arena.end.y) < 1.0:
+		sides.append("BOTTOM")
+	if absf(r.position.x - _arena.position.x) < 1.0:
+		sides.append("LEFT")
+	if absf(r.end.x - _arena.end.x) < 1.0:
+		sides.append("RIGHT")
+	return sides
 
 
 func _assign_topology_roles() -> void:
@@ -1204,6 +1234,127 @@ func _solid_rooms_connected(test_void_ids: Array) -> bool:
 					queue.append(n)
 
 	return visited.size() == solid.size()
+
+
+## ============================================================================
+## PERIMETER NOTCHES (real 3-rect perimeter cuts)
+## ============================================================================
+
+func _apply_perimeter_notches() -> void:
+	_perimeter_notches.clear()
+	var notch_chance := 0.35
+	for i in range(rooms.size()):
+		if rooms[i]["is_corridor"] == true:
+			continue
+		if rooms[i].get("is_void", false) == true:
+			continue
+
+		var rects: Array = rooms[i]["rects"] as Array
+		if rects.size() != 1:
+			continue
+		var base := rects[0] as Rect2
+		var sides := _perimeter_sides_for_rect(base)
+		if sides.is_empty():
+			continue
+		if randf() > notch_chance:
+			continue
+
+		sides.shuffle()
+		for side_variant in sides:
+			var side: String = side_variant as String
+			var split := _build_perimeter_notch_split(base, side)
+			if split.is_empty():
+				continue
+			var new_rects: Array = split["rects"] as Array
+			rooms[i]["rects"] = new_rects
+			rooms[i]["center"] = _area_weighted_center(new_rects)
+			rooms[i]["is_perimeter_notched"] = true
+			_perimeter_notches.append({
+				"room_id": i,
+				"notch_rect": split["notch_rect"] as Rect2,
+				"side": side,
+			})
+			break
+
+
+func _build_perimeter_notch_split(base: Rect2, side: String) -> Dictionary:
+	var depth_min := 64.0
+	var depth_max := 128.0
+	var len_min := 80.0
+	var len_max := 160.0
+	var min_piece := 96.0
+
+	var rect_a := Rect2()
+	var rect_b := Rect2()
+	var rect_c := Rect2()
+	var notch := Rect2()
+
+	if side == "TOP" or side == "BOTTOM":
+		var max_depth := minf(depth_max, base.size.y - min_piece)
+		var max_len := minf(len_max, base.size.x - min_piece * 2.0)
+		if max_depth < depth_min or max_len < len_min:
+			return {}
+
+		var d := randf_range(depth_min, max_depth)
+		var l := randf_range(len_min, max_len)
+		var nx_min := base.position.x + min_piece
+		var nx_max := base.end.x - min_piece - l
+		if nx_max < nx_min:
+			return {}
+		var nx := randf_range(nx_min, nx_max)
+		var left_w := nx - base.position.x
+		var right_w := base.end.x - (nx + l)
+
+		if side == "TOP":
+			rect_a = Rect2(base.position.x, base.position.y, left_w, base.size.y)
+			rect_b = Rect2(nx, base.position.y + d, l, base.size.y - d)
+			rect_c = Rect2(nx + l, base.position.y, right_w, base.size.y)
+			notch = Rect2(nx, base.position.y, l, d)
+		else:
+			rect_a = Rect2(base.position.x, base.position.y, left_w, base.size.y)
+			rect_b = Rect2(nx, base.position.y, l, base.size.y - d)
+			rect_c = Rect2(nx + l, base.position.y, right_w, base.size.y)
+			notch = Rect2(nx, base.end.y - d, l, d)
+	elif side == "LEFT" or side == "RIGHT":
+		var max_depth := minf(depth_max, base.size.x - min_piece)
+		var max_len := minf(len_max, base.size.y - min_piece * 2.0)
+		if max_depth < depth_min or max_len < len_min:
+			return {}
+
+		var d := randf_range(depth_min, max_depth)
+		var l := randf_range(len_min, max_len)
+		var ny_min := base.position.y + min_piece
+		var ny_max := base.end.y - min_piece - l
+		if ny_max < ny_min:
+			return {}
+		var ny := randf_range(ny_min, ny_max)
+		var top_h := ny - base.position.y
+		var bottom_h := base.end.y - (ny + l)
+
+		if side == "LEFT":
+			rect_a = Rect2(base.position.x, base.position.y, base.size.x, top_h)
+			rect_b = Rect2(base.position.x + d, ny, base.size.x - d, l)
+			rect_c = Rect2(base.position.x, ny + l, base.size.x, bottom_h)
+			notch = Rect2(base.position.x, ny, d, l)
+		else:
+			rect_a = Rect2(base.position.x, base.position.y, base.size.x, top_h)
+			rect_b = Rect2(base.position.x, ny, base.size.x - d, l)
+			rect_c = Rect2(base.position.x, ny + l, base.size.x, bottom_h)
+			notch = Rect2(base.end.x - d, ny, d, l)
+	else:
+		return {}
+
+	var new_rects: Array = [rect_a, rect_b, rect_c]
+	for rect in new_rects:
+		var r := rect as Rect2
+		if r.size.x <= 0.0 or r.size.y <= 0.0:
+			return {}
+		if minf(r.size.x, r.size.y) < 96.0:
+			return {}
+		if _is_gut_rect(r):
+			return {}
+
+	return {"rects": new_rects, "notch_rect": notch}
 
 
 ## ============================================================================
@@ -2400,19 +2551,20 @@ func _build_walls(walls_node: Node2D) -> void:
 	var ax1 := _arena.end.x
 	var ay1 := _arena.end.y
 
-	# Perimeter walls only where SOLID rooms touch arena edge (use bounding box for L-rooms)
+	# Perimeter walls only where SOLID room rects touch arena edge.
 	for i in range(rooms.size()):
 		if i in _void_ids:
 			continue
-		var r := _room_bounding_box(i)
-		if absf(r.position.y - ay) < 1.0:
-			base_segs.append({"type": "H", "pos": ay, "t0": r.position.x, "t1": r.end.x})
-		if absf(r.end.y - ay1) < 1.0:
-			base_segs.append({"type": "H", "pos": ay1, "t0": r.position.x, "t1": r.end.x})
-		if absf(r.position.x - ax) < 1.0:
-			base_segs.append({"type": "V", "pos": ax, "t0": r.position.y, "t1": r.end.y})
-		if absf(r.end.x - ax1) < 1.0:
-			base_segs.append({"type": "V", "pos": ax1, "t0": r.position.y, "t1": r.end.y})
+		for rr in rooms[i]["rects"]:
+			var r := rr as Rect2
+			if absf(r.position.y - ay) < 1.0:
+				base_segs.append({"type": "H", "pos": ay, "t0": r.position.x, "t1": r.end.x})
+			if absf(r.end.y - ay1) < 1.0:
+				base_segs.append({"type": "H", "pos": ay1, "t0": r.position.x, "t1": r.end.x})
+			if absf(r.position.x - ax) < 1.0:
+				base_segs.append({"type": "V", "pos": ax, "t0": r.position.y, "t1": r.end.y})
+			if absf(r.end.x - ax1) < 1.0:
+				base_segs.append({"type": "V", "pos": ax1, "t0": r.position.y, "t1": r.end.y})
 
 	# Internal split walls: skip if ALL leaves on BOTH sides are VOID
 	for ss in _split_segs:
@@ -2454,6 +2606,28 @@ func _build_walls(walls_node: Node2D) -> void:
 			"SW":
 				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
 				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+
+	# Perimeter notches (3-segment inward walls).
+	for notch_data in _perimeter_notches:
+		var notch: Rect2 = notch_data["notch_rect"] as Rect2
+		var side: String = notch_data["side"] as String
+		match side:
+			"TOP":
+				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
+			"BOTTOM":
+				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
+				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+			"LEFT":
+				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
+				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
+			"RIGHT":
+				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
+				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
+				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
 
 	# Part 5: Merge collinear perimeter segments (dedup)
 	base_segs = _merge_collinear_segments(base_segs)
