@@ -290,8 +290,8 @@ var weapon_stats: Dictionary = {
 
 @export var layout_seed: int = 1337
 
-@export_range(2, 20) var rooms_count_min: int = 6
-@export_range(2, 20) var rooms_count_max: int = 9
+@export_range(2, 20) var rooms_count_min: int = 9
+@export_range(2, 20) var rooms_count_max: int = 15
 
 @export_range(4.0, 64.0) var wall_thickness: float = 16.0
 
@@ -303,8 +303,8 @@ var weapon_stats: Dictionary = {
 
 @export_range(0, 5) var corridor_count_min: int = 1
 @export_range(0, 5) var corridor_count_max: int = 3
-@export_range(40.0, 200.0) var corridor_w_min: float = 80.0
-@export_range(40.0, 300.0) var corridor_w_max: float = 110.0
+@export_range(40.0, 200.0) var corridor_w_min: float = 128.0
+@export_range(40.0, 300.0) var corridor_w_max: float = 128.0
 @export_range(100.0, 600.0) var corridor_len_min: float = 320.0
 @export_range(0.0, 1.0) var corridor_area_cap: float = 0.25
 @export_range(0, 3) var corridor_bends_max: int = 1
@@ -324,6 +324,13 @@ var weapon_stats: Dictionary = {
 @export_range(40.0, 400.0) var l_leg_min: float = 160.0
 @export_range(0.0, 1.0) var l_cut_max_frac: float = 0.40
 @export_range(0.0, 100.0) var inner_padding: float = 32.0
+
+## ---------- Composition (Hotline) ----------
+@export_range(0.3, 1.0) var cross_split_max_frac: float = 0.72
+@export_range(0.0, 0.3) var void_area_min_frac: float = 0.08
+@export_range(0, 5) var narrow_room_max: int = 1
+@export_range(2.0, 50.0) var corridor_max_aspect: float = 30.0
+@export var composition_enabled: bool = true
 
 @export var layout_debug_draw: bool = false
 @export var layout_debug_text: bool = true
@@ -472,8 +479,8 @@ func reset_to_defaults() -> void:
 	spawn_enemies_enabled = false
 	spawn_boss_enabled = false
 	layout_seed = 1337
-	rooms_count_min = 6
-	rooms_count_max = 9
+	rooms_count_min = 9
+	rooms_count_max = 15
 	wall_thickness = 16.0
 	door_opening_min = 96.0
 	door_opening_max = 128.0
@@ -482,8 +489,8 @@ func reset_to_defaults() -> void:
 	extra_loops_max = 1
 	corridor_count_min = 1
 	corridor_count_max = 3
-	corridor_w_min = 80.0
-	corridor_w_max = 110.0
+	corridor_w_min = 128.0
+	corridor_w_max = 128.0
 	corridor_len_min = 320.0
 	corridor_bends_max = 1
 	corridor_area_cap = 0.25
@@ -500,6 +507,11 @@ func reset_to_defaults() -> void:
 	l_leg_min = 160.0
 	l_cut_max_frac = 0.40
 	inner_padding = 32.0
+	cross_split_max_frac = 0.72
+	void_area_min_frac = 0.08
+	narrow_room_max = 1
+	corridor_max_aspect = 30.0
+	composition_enabled = true
 	layout_debug_draw = false
 	layout_debug_text = true
 
