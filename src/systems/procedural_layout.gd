@@ -217,7 +217,9 @@ func _generate() -> void:
 	_enforce_max_doors()
 
 	# 10) Ensure full connectivity (Part 7: BFS recompute after each door)
-	_ensure_connectivity()
+	if not _ensure_connectivity():
+		_composition_ok = false
+		return
 
 	# 11) Player room
 	_find_player_room()
@@ -825,12 +827,7 @@ func _door_pair_priority(a: int, b: int) -> float:
 
 func _max_doors_for_room(room_id: int) -> int:
 	if room_id in _hub_ids:
-		if _layout_mode == LayoutMode.CENTRAL_HALL or _layout_mode == LayoutMode.CENTRAL_LIKE_HUB:
-			return 5
-		elif _layout_mode == LayoutMode.CENTRAL_SPINE:
-			return 4
-		else:
-			return 3
+		return 3
 	if room_id in _ring_ids:
 		return 3
 	return mini(GameConfig.max_doors_per_room if GameConfig else 2, 2)
@@ -1043,6 +1040,78 @@ func _touches_arena_perimeter(room_id: int) -> bool:
 			return true
 		if absf(r.end.y - _arena.end.y) < 1.0:
 			return true
+	return false
+
+
+func _room_touch_perimeter(room_id: int) -> bool:
+	return _touches_arena_perimeter(room_id)
+
+
+func _rect_aspect(r: Rect2) -> float:
+	return maxf(r.size.x, r.size.y) / maxf(minf(r.size.x, r.size.y), 1.0)
+
+
+func _is_gut_rect(r: Rect2) -> bool:
+	var mn := minf(r.size.x, r.size.y)
+	var mx := maxf(r.size.x, r.size.y)
+	return mn < 128.0 and mx > 256.0
+
+
+func _is_bad_edge_corridor(room_id: int) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	if rooms[room_id]["is_corridor"] != true:
+		return false
+	if room_id in _void_ids:
+		return false
+	if not _room_touch_perimeter(room_id):
+		return false
+
+	var arena_major := maxf(_arena.size.x, _arena.size.y)
+	var has_edge_run := false
+	var rects: Array = rooms[room_id]["rects"] as Array
+	for rect in rects:
+		var r := rect as Rect2
+		var horizontal := r.size.x >= r.size.y
+		var along_edge := false
+		if horizontal:
+			along_edge = absf(r.position.y - _arena.position.y) < 1.0 or absf(r.end.y - _arena.end.y) < 1.0
+		else:
+			along_edge = absf(r.position.x - _arena.position.x) < 1.0 or absf(r.end.x - _arena.end.x) < 1.0
+		if not along_edge:
+			continue
+		has_edge_run = true
+		var width := minf(r.size.x, r.size.y)
+		var length := maxf(r.size.x, r.size.y)
+		if width < 128.0:
+			return true
+		if length / maxf(width, 1.0) > 12.0:
+			return true
+		if length > arena_major * 0.80:
+			return true
+
+	if not has_edge_run:
+		return false
+
+	var bbox := _room_bounding_box(room_id)
+	var bbox_horizontal := bbox.size.x >= bbox.size.y
+	var bbox_along_edge := false
+	if bbox_horizontal:
+		bbox_along_edge = absf(bbox.position.y - _arena.position.y) < 1.0 or absf(bbox.end.y - _arena.end.y) < 1.0
+	else:
+		bbox_along_edge = absf(bbox.position.x - _arena.position.x) < 1.0 or absf(bbox.end.x - _arena.end.x) < 1.0
+	if not bbox_along_edge:
+		return false
+
+	var bbox_width := minf(bbox.size.x, bbox.size.y)
+	var bbox_length := maxf(bbox.size.x, bbox.size.y)
+	if bbox_width < 128.0:
+		return true
+	if bbox_length / maxf(bbox_width, 1.0) > 12.0:
+		return true
+	if bbox_length > arena_major * 0.80:
+		return true
+
 	return false
 
 
@@ -1326,19 +1395,12 @@ func _create_doors_bsp(node: Dictionary) -> void:
 		if doors_on_split >= 1:
 			if left_solid <= 1 or right_solid <= 1:
 				break
-			if (_door_adj[a] as Array).size() >= _max_doors_for_room(a):
-				continue
-			if (_door_adj[b] as Array).size() >= _max_doors_for_room(b):
-				continue
 			if b in (_door_adj[a] as Array):
 				continue
 
 		var door := _make_door_on_split_line(split_type, split_pos, a, b, door_min, door_max, corner_min, wall_t)
-		if door.size != Vector2.ZERO:
-			if not _door_too_close(door):
-				doors.append(door)
-				_register_door_connection(a, b, door)
-				doors_on_split += 1
+		if _try_add_door(a, b, door):
+			doors_on_split += 1
 
 
 func _make_door_on_split_line(split_type: String, split_pos: float, a: int, b: int, dmin: float, dmax: float, cmin: float, wall_t: float) -> Rect2:
@@ -1385,6 +1447,36 @@ func _door_too_close(candidate: Rect2) -> bool:
 	return false
 
 
+func _can_add_door_between(a: int, b: int) -> bool:
+	if a == b:
+		return false
+	if a < 0 or b < 0 or a >= rooms.size() or b >= rooms.size():
+		return false
+	if a in _void_ids or b in _void_ids:
+		return false
+	if not _door_adj.has(a) or not _door_adj.has(b):
+		return false
+	if b in (_door_adj[a] as Array):
+		return false
+	if (_door_adj[a] as Array).size() >= _max_doors_for_room(a):
+		return false
+	if (_door_adj[b] as Array).size() >= _max_doors_for_room(b):
+		return false
+	return true
+
+
+func _try_add_door(a: int, b: int, rect: Rect2) -> bool:
+	if rect.size == Vector2.ZERO:
+		return false
+	if _door_too_close(rect):
+		return false
+	if not _can_add_door_between(a, b):
+		return false
+	doors.append(rect)
+	_register_door_connection(a, b, rect)
+	return true
+
+
 func _add_extra_loops(max_extra: int) -> void:
 	if max_extra <= 0:
 		return
@@ -1427,9 +1519,8 @@ func _add_extra_loops(max_extra: int) -> void:
 	for c in candidates:
 		if added >= max_extra:
 			break
-		doors.append(c["door"] as Rect2)
-		_register_door_connection(int(c["a"]), int(c["b"]), c["door"] as Rect2)
-		added += 1
+		if _try_add_door(int(c["a"]), int(c["b"]), c["door"] as Rect2):
+			added += 1
 	extra_loops = added
 
 
@@ -1471,8 +1562,8 @@ func _enforce_composition_hall() -> bool:
 	var corner_min: float = GameConfig.door_from_corner_min if GameConfig else 48.0
 	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
 
-	# Target degree 2..4
-	var target_deg := randi_range(2, 4)
+	# Target degree 2..4, capped by door limits
+	var target_deg := mini(randi_range(2, 4), _max_doors_for_room(hub))
 	var current_deg := (_door_adj[hub] as Array).size()
 
 	# Get leaf-adjacent neighbors not yet connected
@@ -1499,9 +1590,7 @@ func _enforce_composition_hall() -> bool:
 		if seg.is_empty():
 			continue
 		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), hub, ni, door_min, door_max, corner_min, wall_t)
-		if door.size != Vector2.ZERO and not _door_too_close(door):
-			doors.append(door)
-			_register_door_connection(hub, ni, door)
+		if _try_add_door(hub, ni, door):
 			_protected_doors.append({"a": mini(hub, ni), "b": maxi(hub, ni)})
 			current_deg += 1
 
@@ -1569,17 +1658,13 @@ func _enforce_composition_spine() -> bool:
 				if seg.is_empty():
 					continue
 				var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), i, ni, door_min, door_max, corner_min, wall_t)
-				if door.size != Vector2.ZERO and not _door_too_close(door):
-					doors.append(door)
-					_register_door_connection(i, ni, door)
+				if _try_add_door(i, ni, door):
 					_protected_doors.append({"a": mini(i, ni), "b": maxi(i, ni)})
 					connected = true
 					break
 				# Try relaxed
 				var door2 := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), i, ni, door_min * 0.6, door_max, corner_min * 0.5, wall_t)
-				if door2.size != Vector2.ZERO and not _door_too_close(door2):
-					doors.append(door2)
-					_register_door_connection(i, ni, door2)
+				if _try_add_door(i, ni, door2):
 					_protected_doors.append({"a": mini(i, ni), "b": maxi(i, ni)})
 					connected = true
 					break
@@ -1618,16 +1703,12 @@ func _enforce_composition_ring() -> bool:
 		if seg.is_empty():
 			return false
 		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), a, b, door_min, door_max, corner_min, wall_t)
-		if door.size != Vector2.ZERO and not _door_too_close(door):
-			doors.append(door)
-			_register_door_connection(a, b, door)
+		if _try_add_door(a, b, door):
 			_protected_doors.append({"a": pa, "b": pb})
 		else:
 			# Try relaxed constraints
 			var door2 := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), a, b, door_min * 0.6, door_max, corner_min * 0.5, wall_t)
-			if door2.size != Vector2.ZERO and not _door_too_close(door2):
-				doors.append(door2)
-				_register_door_connection(a, b, door2)
+			if _try_add_door(a, b, door2):
 				_protected_doors.append({"a": pa, "b": pb})
 			else:
 				return false
@@ -1657,9 +1738,7 @@ func _enforce_composition_dual_hub() -> bool:
 		if seg.is_empty():
 			return false
 		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), h1, h2, door_min, door_max, corner_min, wall_t)
-		if door.size != Vector2.ZERO and not _door_too_close(door):
-			doors.append(door)
-			_register_door_connection(h1, h2, door)
+		if _try_add_door(h1, h2, door):
 			_protected_doors.append({"a": pa, "b": pb})
 		else:
 			return false
@@ -1667,9 +1746,9 @@ func _enforce_composition_dual_hub() -> bool:
 		if not _is_protected_door(pa, pb):
 			_protected_doors.append({"a": pa, "b": pb})
 
-	# Each hub needs 3-4 total connections
+	# Each hub needs 3-4 total connections (capped by limits)
 	for hub in [h1, h2]:
-		var target_deg := randi_range(3, 4)
+		var target_deg := mini(randi_range(3, 4), _max_doors_for_room(hub))
 		var current_deg := (_door_adj[hub] as Array).size()
 		var neighbors: Array = []
 		if _leaf_adj.has(hub):
@@ -1688,9 +1767,7 @@ func _enforce_composition_dual_hub() -> bool:
 			if seg.is_empty():
 				continue
 			var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), hub, ni, door_min, door_max, corner_min, wall_t)
-			if door.size != Vector2.ZERO and not _door_too_close(door):
-				doors.append(door)
-				_register_door_connection(hub, ni, door)
+			if _try_add_door(hub, ni, door):
 				_protected_doors.append({"a": mini(hub, ni), "b": maxi(hub, ni)})
 				current_deg += 1
 
@@ -1795,9 +1872,9 @@ func _register_door_connection(a: int, b: int, rect: Rect2) -> void:
 ## CONNECTIVITY (Part 7: BFS recompute after each door)
 ## ============================================================================
 
-func _ensure_connectivity() -> void:
+func _ensure_connectivity() -> bool:
 	if rooms.size() <= 1:
-		return
+		return true
 
 	# Find first non-void room to start BFS
 	var start_id := -1
@@ -1806,7 +1883,7 @@ func _ensure_connectivity() -> void:
 			start_id = i
 			break
 	if start_id < 0:
-		return
+		return false
 
 	var door_min: float = GameConfig.door_opening_min if GameConfig else 96.0
 	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
@@ -1836,6 +1913,7 @@ func _ensure_connectivity() -> void:
 					cand_j.append({"j": int(j), "dist": ci.distance_to(cj), "seg": seg})
 			cand_j.sort_custom(func(a, b): return float(a["dist"]) < float(b["dist"]))
 
+			var repaired := false
 			for cj in cand_j:
 				var j_id: int = int(cj["j"])
 				var seg: Dictionary = cj["seg"]
@@ -1843,23 +1921,26 @@ func _ensure_connectivity() -> void:
 				var door := _make_door_on_split_line(
 					seg["type"] as String, float(seg["pos"]),
 					i, j_id, door_min, door_max, corner_min, wall_t)
-				if door.size != Vector2.ZERO:
-					doors.append(door)
-					_register_door_connection(i, j_id, door)
+				if _try_add_door(i, j_id, door):
+					repaired = true
 					break
 				# Try relaxed constraints
 				var door2 := _make_door_on_split_line(
 					seg["type"] as String, float(seg["pos"]),
 					i, j_id, door_min * 0.5, door_max, corner_min * 0.5, wall_t)
-				if door2.size != Vector2.ZERO:
-					doors.append(door2)
-					_register_door_connection(i, j_id, door2)
+				if _try_add_door(i, j_id, door2):
+					repaired = true
 					break
+
+			if not repaired:
+				return false
 
 			break  # Restart BFS from top after any connection attempt
 
 		if all_connected:
-			break
+			return true
+
+	return false
 
 
 ## ============================================================================
@@ -1905,15 +1986,46 @@ func _validate() -> bool:
 	if solid_ids.size() < (GameConfig.rooms_count_min if GameConfig else 5):
 		return false
 
+	# Global geometry constraints for non-void rooms:
+	# - gut rects are forbidden
+	# - closet rooms allowed only as single-rect non-corridor, max 2 per layout
+	var closet_count := 0
+	for i in solid_ids:
+		var room: Dictionary = rooms[i]
+		var is_corridor: bool = room["is_corridor"] == true
+		var rects: Array = room["rects"] as Array
+
+		for rect in rects:
+			var r := rect as Rect2
+			if _is_gut_rect(r):
+				return false
+
+		if is_corridor:
+			continue
+
+		if rects.size() == 1:
+			var base := rects[0] as Rect2
+			var min_side := minf(base.size.x, base.size.y)
+			if min_side >= 96.0 and min_side <= 127.0 and _rect_aspect(base) <= 2.5:
+				closet_count += 1
+
+	if closet_count > 2:
+		return false
+
 	var corr_max_aspect: float = GameConfig.corridor_max_aspect if GameConfig else 30.0
 	for i in range(rooms.size()):
 		if rooms[i]["is_corridor"] != true:
 			continue
 		if i in _void_ids:
 			continue
-		var r: Rect2 = (rooms[i]["rects"] as Array)[0] as Rect2
-		var aspect := maxf(r.size.x, r.size.y) / maxf(minf(r.size.x, r.size.y), 1.0)
-		if aspect > corr_max_aspect:
+		var corr_rects: Array = rooms[i]["rects"] as Array
+		for rect in corr_rects:
+			var r := rect as Rect2
+			if minf(r.size.x, r.size.y) < 128.0:
+				return false
+			if _rect_aspect(r) > corr_max_aspect:
+				return false
+		if _is_bad_edge_corridor(i):
 			return false
 
 	var total_corr_area := 0.0
@@ -1994,6 +2106,37 @@ func _validate() -> bool:
 		var hdeg: int = (_door_adj[hid] as Array).size() if _door_adj.has(hid) else 0
 		if hdeg < 2:
 			return false
+		if hdeg > 3:
+			return false
+
+	# Dead-end rules for solid non-corridor rooms:
+	# - degree==1 allowed only on perimeter rooms
+	# - interior rooms must have degree >= 2
+	# - dead_end_count <= 3 and ratio <= 0.20 of perimeter rooms
+	var perimeter_room_count := 0
+	var dead_end_count := 0
+	for i in solid_ids:
+		if rooms[i]["is_corridor"] == true:
+			continue
+		var deg: int = (_door_adj[i] as Array).size() if _door_adj.has(i) else 0
+		var is_perimeter := _room_touch_perimeter(i)
+		if is_perimeter:
+			perimeter_room_count += 1
+		if deg == 1:
+			if not is_perimeter:
+				return false
+			dead_end_count += 1
+		elif not is_perimeter and deg < 2:
+			return false
+
+	if dead_end_count > 3:
+		return false
+	if perimeter_room_count > 0:
+		var dead_end_ratio := float(dead_end_count) / float(perimeter_room_count)
+		if dead_end_ratio > 0.20:
+			return false
+	elif dead_end_count > 0:
+		return false
 
 	if not _validate_structure():
 		return false
