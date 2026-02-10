@@ -674,8 +674,8 @@ func _assign_topology_roles() -> void:
 		if perim_contact > long_side * 0.5:
 			_low_priority_ids.append(i)
 
-	# Pick topology mode
-	_layout_mode = randi() % 4
+	# Pick topology mode (weighted)
+	_layout_mode = _choose_composition_mode()
 	var mode_names := ["HALL", "SPINE", "RING", "DUAL_HUB"]
 	layout_mode_name = mode_names[_layout_mode]
 	var center := _arena.get_center()
@@ -688,6 +688,19 @@ func _assign_topology_roles() -> void:
 		_assign_central_ring(center)
 	else:
 		_assign_central_like_hub(center)
+
+
+func _choose_composition_mode() -> int:
+	# CENTRAL_SPINE fixed at 20%.
+	# Remaining 80% distributed across HALL, RING, DUAL_HUB.
+	var roll := randf()
+	if roll < 0.20:
+		return LayoutMode.CENTRAL_SPINE
+	if roll < 0.55:
+		return LayoutMode.CENTRAL_HALL
+	if roll < 0.80:
+		return LayoutMode.CENTRAL_RING
+	return LayoutMode.CENTRAL_LIKE_HUB
 
 
 func _assign_central_hall(center: Vector2) -> void:
