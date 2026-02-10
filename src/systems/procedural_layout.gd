@@ -50,9 +50,12 @@ var _void_ids: Array = []
 var _leaf_adj: Dictionary = {}
 var layout_mode_name: String = ""
 const COMPLEX_SHAPES_CHANCE := 0.15
+const MAX_GENERATION_ATTEMPTS := 60
+const MODE_STICKY_ATTEMPTS := 3
 var _l_room_ids: Array = []
 var _l_room_notches: Array = []  # [{room_id:int, notch_rect:Rect2, corner:String}]
 var _perimeter_notches: Array = []  # [{room_id:int, notch_rect:Rect2, side:String}]
+var _t_u_reserved_ids: Array = []
 var _t_u_room_ids: Array = []
 var _complex_shape_wall_segs: Array = []
 var _entry_gate: Rect2 = Rect2()
@@ -60,6 +63,7 @@ var _entry_gate: Rect2 = Rect2()
 ## Composition enforcement (Part 4)
 var _protected_doors: Array = []  # [{a:int, b:int}] normalized (a<b)
 var _composition_ok: bool = true
+var _forced_layout_mode: int = -1
 
 
 ## ============================================================================
@@ -70,39 +74,26 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 	var layout := ProceduralLayout.new()
 	layout._arena = arena_rect
 
-	var current_seed := p_seed
-	for attempt in range(30):
-		seed(current_seed)
-		layout.layout_seed = current_seed
-		layout._generate()
-		if layout._validate():
-			layout.valid = true
-			break
-		current_seed += 1
-		layout.rooms.clear()
-		layout.corridors.clear()
-		layout.doors.clear()
-		layout._door_adj.clear()
-		layout._door_map.clear()
-		layout._logical_corr_count = 0
-		layout._big_leaf_set.clear()
-		layout._leaves.clear()
-		layout._split_segs.clear()
-		layout._wall_segs.clear()
-		layout._hub_ids.clear()
-		layout._ring_ids.clear()
-		layout._low_priority_ids.clear()
-		layout._void_ids.clear()
-		layout.void_rects.clear()
-		layout._leaf_adj.clear()
-		layout._l_room_ids.clear()
-		layout._l_room_notches.clear()
-		layout._perimeter_notches.clear()
-		layout._t_u_room_ids.clear()
-		layout._complex_shape_wall_segs.clear()
-		layout._entry_gate = Rect2()
-		layout._protected_doors.clear()
-		layout._composition_ok = true
+	var base_seed := p_seed
+	var attempts_used := 0
+	while attempts_used < MAX_GENERATION_ATTEMPTS and not layout.valid:
+		# Sticky mode per input seed: try several geometric variations before mode/seed switch.
+		seed(base_seed)
+		var sticky_mode := layout._choose_composition_mode()
+		for local_attempt in range(MODE_STICKY_ATTEMPTS):
+			if attempts_used >= MAX_GENERATION_ATTEMPTS:
+				break
+			var attempt_seed := base_seed + local_attempt * 10007
+			seed(attempt_seed)
+			layout.layout_seed = attempt_seed
+			layout._forced_layout_mode = sticky_mode
+			layout._generate()
+			attempts_used += 1
+			if layout._validate():
+				layout.valid = true
+				break
+		base_seed += 1
+	layout._forced_layout_mode = -1
 
 	if layout.valid:
 		layout._build_walls(walls_node)
@@ -123,7 +114,7 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 			layout._void_ids.size(), void_area_pct, layout._l_room_ids.size(),
 			str(layout._entry_gate != Rect2())])
 	else:
-		push_warning("[ProceduralLayout] FAILED after 30 attempts")
+		push_warning("[ProceduralLayout] FAILED after %d attempts" % MAX_GENERATION_ATTEMPTS)
 
 	return layout
 
@@ -152,6 +143,7 @@ func _generate() -> void:
 	_l_room_ids.clear()
 	_l_room_notches.clear()
 	_perimeter_notches.clear()
+	_t_u_reserved_ids.clear()
 	_t_u_room_ids.clear()
 	_complex_shape_wall_segs.clear()
 	_entry_gate = Rect2()
@@ -199,6 +191,9 @@ func _generate() -> void:
 
 	# 4.7) Assign VOID cutouts (Hotline silhouette — strengthened Part 5)
 	_assign_void_cutouts()
+
+	# 4.72) Reserve 1..2 large single-rect rooms for T/U shapes.
+	_reserve_t_u_rooms()
 
 	# 4.75) Perimeter notches (real silhouette cuts)
 	_apply_perimeter_notches()
@@ -718,7 +713,10 @@ func _assign_topology_roles() -> void:
 			_low_priority_ids.append(i)
 
 	# Pick topology mode (weighted)
-	_layout_mode = _choose_composition_mode()
+	if _forced_layout_mode >= 0:
+		_layout_mode = _forced_layout_mode
+	else:
+		_layout_mode = _choose_composition_mode()
 	var mode_names := ["HALL", "SPINE", "RING", "DUAL_HUB"]
 	layout_mode_name = mode_names[_layout_mode]
 	var center := _arena.get_center()
@@ -796,6 +794,9 @@ func _assign_central_ring(center: Vector2) -> void:
 	# Detect 3-5 adjacent leaves forming a loop
 	var cycle := _find_short_cycle(3, 5)
 	if cycle.is_empty():
+		# Sticky mode retries should fail fast instead of silently degrading to HALL.
+		if _forced_layout_mode == LayoutMode.CENTRAL_RING:
+			return
 		# Fallback: switch mode to HALL
 		_layout_mode = LayoutMode.CENTRAL_HALL
 		layout_mode_name = "HALL"
@@ -857,6 +858,9 @@ func _assign_central_like_hub(center: Vector2) -> void:
 		_hub_ids.append(best_pair[0])
 		_hub_ids.append(best_pair[1])
 	else:
+		# Sticky mode retries should fail fast instead of silently degrading to HALL.
+		if _forced_layout_mode == LayoutMode.CENTRAL_LIKE_HUB:
+			return
 		# Fallback: switch mode to HALL
 		_layout_mode = LayoutMode.CENTRAL_HALL
 		layout_mode_name = "HALL"
@@ -1253,6 +1257,34 @@ func _solid_rooms_connected(test_void_ids: Array) -> bool:
 ## PERIMETER NOTCHES (real 3-rect perimeter cuts)
 ## ============================================================================
 
+func _reserve_t_u_rooms() -> void:
+	_t_u_reserved_ids.clear()
+	var candidates: Array = []
+	for i in range(rooms.size()):
+		if rooms[i]["is_corridor"] == true:
+			continue
+		if rooms[i].get("is_void", false) == true:
+			continue
+		var rects: Array = rooms[i]["rects"] as Array
+		if rects.size() != 1:
+			continue
+		var r := rects[0] as Rect2
+		if r.size.x < 320.0 or r.size.y < 320.0:
+			continue
+		candidates.append({"id": i, "area": r.get_area()})
+
+	if candidates.is_empty():
+		return
+
+	candidates.sort_custom(func(a, b): return float(a["area"]) > float(b["area"]))
+	var reserve_max := mini(2, candidates.size())
+	var reserve_count := reserve_max
+	if reserve_max > 1 and randf() < 0.5:
+		reserve_count = 1
+	for idx in range(reserve_count):
+		_t_u_reserved_ids.append(int(candidates[idx]["id"]))
+
+
 func _apply_perimeter_notches() -> void:
 	_perimeter_notches.clear()
 	var notch_chance := 0.35
@@ -1260,6 +1292,8 @@ func _apply_perimeter_notches() -> void:
 		if rooms[i]["is_corridor"] == true:
 			continue
 		if rooms[i].get("is_void", false) == true:
+			continue
+		if i in _t_u_reserved_ids:
 			continue
 
 		var rects: Array = rooms[i]["rects"] as Array
@@ -1387,6 +1421,8 @@ func _apply_l_rooms() -> void:
 		if rooms[i]["is_corridor"] == true:
 			continue
 		if rooms[i].get("is_void", false) == true:
+			continue
+		if i in _t_u_reserved_ids:
 			continue
 		if i in _hub_ids:
 			continue
@@ -1520,7 +1556,8 @@ func _apply_t_u_shapes() -> void:
 	_t_u_room_ids.clear()
 	_complex_shape_wall_segs.clear()
 
-	var candidates: Array = []
+	var reserved_candidates: Array = []
+	var optional_candidates: Array = []
 	for i in range(rooms.size()):
 		if rooms[i]["is_corridor"] == true:
 			continue
@@ -1532,46 +1569,76 @@ func _apply_t_u_shapes() -> void:
 		var r := rects[0] as Rect2
 		if r.size.x < 320.0 or r.size.y < 320.0:
 			continue
-		candidates.append(i)
+		if i in _t_u_reserved_ids:
+			reserved_candidates.append(i)
+		else:
+			optional_candidates.append(i)
+
+	var candidates: Array = []
+	reserved_candidates.shuffle()
+	optional_candidates.shuffle()
+	candidates.append_array(reserved_candidates)
+	candidates.append_array(optional_candidates)
 
 	if candidates.is_empty():
 		return
 
-	candidates.shuffle()
 	var target_count := randi_range(0, mini(2, candidates.size()))
-	for idx in range(target_count):
-		if randf() > COMPLEX_SHAPES_CHANCE:
-			continue
+	if not reserved_candidates.is_empty():
+		target_count = maxi(target_count, 1)
 
-		var room_id := int(candidates[idx])
-		var base := ((rooms[room_id]["rects"] as Array)[0] as Rect2)
-		var shape_data: Dictionary = {}
-		if randf() < 0.5:
-			shape_data = _build_t_shape_from_rect(base)
-			if shape_data.is_empty():
-				shape_data = _build_u_shape_from_rect(base)
-		else:
-			shape_data = _build_u_shape_from_rect(base)
-			if shape_data.is_empty():
-				shape_data = _build_t_shape_from_rect(base)
+	for candidate in candidates:
+		if _t_u_room_ids.size() >= target_count:
+			break
+		var room_id := int(candidate)
+		var apply_chance := COMPLEX_SHAPES_CHANCE
+		if room_id in _t_u_reserved_ids:
+			apply_chance = maxf(COMPLEX_SHAPES_CHANCE, 0.70)
+		if randf() > apply_chance:
+			continue
+		_try_apply_t_u_shape(room_id)
+
+	if _t_u_room_ids.is_empty() and not reserved_candidates.is_empty():
+		_try_apply_t_u_shape(int(reserved_candidates[0]))
+
+
+func _try_apply_t_u_shape(room_id: int) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	var rects: Array = rooms[room_id]["rects"] as Array
+	if rects.size() != 1:
+		return false
+	var base := rects[0] as Rect2
+
+	var shape_data: Dictionary = {}
+	if randf() < 0.5:
+		shape_data = _build_t_shape_from_rect(base)
 		if shape_data.is_empty():
-			continue
+			shape_data = _build_u_shape_from_rect(base)
+	else:
+		shape_data = _build_u_shape_from_rect(base)
+		if shape_data.is_empty():
+			shape_data = _build_t_shape_from_rect(base)
+	if shape_data.is_empty():
+		return false
 
-		var new_rects: Array = shape_data["rects"] as Array
-		if not _rects_pass_complex_shape_rules(new_rects):
-			continue
-		var total_area := 0.0
-		for rr in new_rects:
-			total_area += (rr as Rect2).get_area()
-		if total_area < base.get_area() * 0.65:
-			continue
+	var new_rects: Array = shape_data["rects"] as Array
+	if not _rects_pass_complex_shape_rules(new_rects):
+		return false
+	var total_area := 0.0
+	for rr in new_rects:
+		total_area += (rr as Rect2).get_area()
+	if total_area < base.get_area() * 0.65:
+		return false
 
-		rooms[room_id]["rects"] = new_rects
-		rooms[room_id]["center"] = _area_weighted_center(new_rects)
-		rooms[room_id]["complex_shape"] = shape_data["shape"] as String
+	rooms[room_id]["rects"] = new_rects
+	rooms[room_id]["center"] = _area_weighted_center(new_rects)
+	rooms[room_id]["complex_shape"] = shape_data["shape"] as String
+	if room_id not in _t_u_room_ids:
 		_t_u_room_ids.append(room_id)
-		for seg in (shape_data["wall_segs"] as Array):
-			_complex_shape_wall_segs.append(seg)
+	for seg in (shape_data["wall_segs"] as Array):
+		_complex_shape_wall_segs.append(seg)
+	return true
 
 
 func _rects_pass_complex_shape_rules(rects: Array) -> bool:
