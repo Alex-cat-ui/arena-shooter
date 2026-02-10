@@ -2,6 +2,14 @@
 
 ## 2026-02-10
 
+### Walkability + route rhythm hardening (latest)
+- Added: flood-fill walkability validation to reject internal unreachable pockets/void-like leftovers inside playable silhouette.
+- Added: main path rhythm validation (minimum turns + max straight run cap) to reduce long boring "door-in-line" routes.
+- Added: bend-aware door scoring in both BSP door placement and connectivity repair.
+- Added: regression checks in `tests/test_layout_visual_regression.gd` for linear path failures and unreachable walk cells.
+- Result: `test_hotline_similarity` reached **95.50/100**; visual regression shows `walkability_failures=0`, `linear_path_failures=0`.
+- Files: `src/systems/procedural_layout.gd`, `tests/test_layout_visual_regression.gd`
+
 ### Hotline similarity tuning (brief)
 - Added: T/U room reservation + mode-sticky retries in procedural layout generation.
 - Added: Feasibility-aware composition mode pick (choose only feasible HALL/SPINE/RING/DUAL_HUB for current leaf graph).
