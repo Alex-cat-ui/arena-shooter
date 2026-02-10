@@ -712,14 +712,19 @@ func _assign_topology_roles() -> void:
 		if perim_contact > long_side * 0.5:
 			_low_priority_ids.append(i)
 
-	# Pick topology mode (weighted)
-	if _forced_layout_mode >= 0:
-		_layout_mode = _forced_layout_mode
+	var center := _arena.get_center()
+	var feasible_modes := _get_feasible_composition_modes(center)
+	if feasible_modes.is_empty():
+		_layout_mode = LayoutMode.CENTRAL_HALL
 	else:
-		_layout_mode = _choose_composition_mode()
+		var preferred_mode := _forced_layout_mode if _forced_layout_mode >= 0 else _choose_composition_mode()
+		if preferred_mode in feasible_modes:
+			_layout_mode = preferred_mode
+		else:
+			_layout_mode = _choose_feasible_composition_mode(feasible_modes)
+
 	var mode_names := ["HALL", "SPINE", "RING", "DUAL_HUB"]
 	layout_mode_name = mode_names[_layout_mode]
-	var center := _arena.get_center()
 
 	if _layout_mode == LayoutMode.CENTRAL_HALL:
 		_assign_central_hall(center)
@@ -733,59 +738,25 @@ func _assign_topology_roles() -> void:
 
 func _choose_composition_mode() -> int:
 	# CENTRAL_SPINE fixed at 20%.
-	# Remaining 80% distributed across HALL, RING, DUAL_HUB.
+	# Remaining 80%: HALL 30%, RING 25%, DUAL_HUB 25%.
 	var roll := randf()
 	if roll < 0.20:
 		return LayoutMode.CENTRAL_SPINE
-	if roll < 0.55:
+	if roll < 0.50:
 		return LayoutMode.CENTRAL_HALL
-	if roll < 0.80:
+	if roll < 0.75:
 		return LayoutMode.CENTRAL_RING
 	return LayoutMode.CENTRAL_LIKE_HUB
 
 
 func _assign_central_hall(center: Vector2) -> void:
-	# Largest non-corridor leaf near arena center → hub
-	var best_id := -1
-	var best_score := -1.0
-	for i in range(rooms.size()):
-		if rooms[i]["is_corridor"] == true:
-			continue
-		if i in _low_priority_ids:
-			continue
-		var r: Rect2 = (rooms[i]["rects"] as Array)[0] as Rect2
-		var dist := r.get_center().distance_to(center)
-		var score := r.get_area() / maxf(dist, 1.0)
-		if score > best_score:
-			best_score = score
-			best_id = i
+	var best_id := _find_hall_candidate(center)
 	if best_id >= 0:
 		_hub_ids.append(best_id)
 
 
 func _assign_central_spine(center: Vector2) -> void:
-	# Interior corridor leaf nearest center; fallback to longest rectangular leaf
-	var best_id := -1
-	var best_dist := INF
-	for i in range(rooms.size()):
-		if rooms[i]["is_corridor"] != true:
-			continue
-		if i in _low_priority_ids:
-			continue
-		var dist := (rooms[i]["center"] as Vector2).distance_to(center)
-		if dist < best_dist:
-			best_dist = dist
-			best_id = i
-	if best_id < 0:
-		var best_ratio := 0.0
-		for i in range(rooms.size()):
-			if i in _low_priority_ids:
-				continue
-			var r: Rect2 = (rooms[i]["rects"] as Array)[0] as Rect2
-			var ratio := maxf(r.size.x, r.size.y) / maxf(minf(r.size.x, r.size.y), 1.0)
-			if ratio > best_ratio:
-				best_ratio = ratio
-				best_id = i
+	var best_id := _find_spine_candidate(center)
 	if best_id >= 0:
 		_hub_ids.append(best_id)
 
@@ -794,13 +765,6 @@ func _assign_central_ring(center: Vector2) -> void:
 	# Detect 3-5 adjacent leaves forming a loop
 	var cycle := _find_short_cycle(3, 5)
 	if cycle.is_empty():
-		# Sticky mode retries should fail fast instead of silently degrading to HALL.
-		if _forced_layout_mode == LayoutMode.CENTRAL_RING:
-			return
-		# Fallback: switch mode to HALL
-		_layout_mode = LayoutMode.CENTRAL_HALL
-		layout_mode_name = "HALL"
-		_assign_central_hall(center)
 		return
 	_ring_ids = cycle
 	_hub_ids = cycle.duplicate()
@@ -834,7 +798,57 @@ func _dfs_cycle(start: int, current: int, path: Array, min_len: int, max_len: in
 
 
 func _assign_central_like_hub(center: Vector2) -> void:
-	# Select 2 adjacent large non-corridor leaves → dual hub
+	var best_pair := _find_dual_hub_pair(center)
+	if best_pair[0] >= 0:
+		_hub_ids.append(best_pair[0])
+		_hub_ids.append(best_pair[1])
+
+
+func _find_hall_candidate(center: Vector2) -> int:
+	var best_id := -1
+	var best_score := -1.0
+	for i in range(rooms.size()):
+		if rooms[i]["is_corridor"] == true:
+			continue
+		if i in _low_priority_ids:
+			continue
+		var r: Rect2 = (rooms[i]["rects"] as Array)[0] as Rect2
+		var dist := r.get_center().distance_to(center)
+		var score := r.get_area() / maxf(dist, 1.0)
+		if score > best_score:
+			best_score = score
+			best_id = i
+	return best_id
+
+
+func _find_spine_candidate(center: Vector2) -> int:
+	var best_id := -1
+	var best_dist := INF
+	for i in range(rooms.size()):
+		if rooms[i]["is_corridor"] != true:
+			continue
+		if i in _low_priority_ids:
+			continue
+		var dist := (rooms[i]["center"] as Vector2).distance_to(center)
+		if dist < best_dist:
+			best_dist = dist
+			best_id = i
+	if best_id >= 0:
+		return best_id
+
+	var best_ratio := 0.0
+	for i in range(rooms.size()):
+		if i in _low_priority_ids:
+			continue
+		var r: Rect2 = (rooms[i]["rects"] as Array)[0] as Rect2
+		var ratio := maxf(r.size.x, r.size.y) / maxf(minf(r.size.x, r.size.y), 1.0)
+		if ratio > best_ratio:
+			best_ratio = ratio
+			best_id = i
+	return best_id
+
+
+func _find_dual_hub_pair(center: Vector2) -> Array:
 	var best_pair := [-1, -1]
 	var best_score := 0.0
 	for i in range(rooms.size()):
@@ -854,17 +868,31 @@ func _assign_central_like_hub(center: Vector2) -> void:
 			if score > best_score:
 				best_score = score
 				best_pair = [i, jj]
-	if best_pair[0] >= 0:
-		_hub_ids.append(best_pair[0])
-		_hub_ids.append(best_pair[1])
-	else:
-		# Sticky mode retries should fail fast instead of silently degrading to HALL.
-		if _forced_layout_mode == LayoutMode.CENTRAL_LIKE_HUB:
-			return
-		# Fallback: switch mode to HALL
-		_layout_mode = LayoutMode.CENTRAL_HALL
-		layout_mode_name = "HALL"
-		_assign_central_hall(center)
+	return best_pair
+
+
+func _get_feasible_composition_modes(center: Vector2) -> Array:
+	var feasible: Array = []
+	if _find_hall_candidate(center) >= 0:
+		feasible.append(LayoutMode.CENTRAL_HALL)
+	if _find_spine_candidate(center) >= 0:
+		feasible.append(LayoutMode.CENTRAL_SPINE)
+	if not _find_short_cycle(3, 5).is_empty():
+		feasible.append(LayoutMode.CENTRAL_RING)
+	var pair := _find_dual_hub_pair(center)
+	if int(pair[0]) >= 0:
+		feasible.append(LayoutMode.CENTRAL_LIKE_HUB)
+	return feasible
+
+
+func _choose_feasible_composition_mode(feasible_modes: Array) -> int:
+	if feasible_modes.is_empty():
+		return LayoutMode.CENTRAL_HALL
+	for _try in range(8):
+		var mode := _choose_composition_mode()
+		if mode in feasible_modes:
+			return mode
+	return int(feasible_modes[randi() % feasible_modes.size()])
 
 
 func _door_pair_priority(a: int, b: int) -> float:
