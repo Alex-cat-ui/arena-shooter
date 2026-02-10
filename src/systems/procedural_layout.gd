@@ -49,9 +49,12 @@ var _low_priority_ids: Array = []
 var _void_ids: Array = []
 var _leaf_adj: Dictionary = {}
 var layout_mode_name: String = ""
+const COMPLEX_SHAPES_CHANCE := 0.15
 var _l_room_ids: Array = []
 var _l_room_notches: Array = []  # [{room_id:int, notch_rect:Rect2, corner:String}]
 var _perimeter_notches: Array = []  # [{room_id:int, notch_rect:Rect2, side:String}]
+var _t_u_room_ids: Array = []
+var _complex_shape_wall_segs: Array = []
 var _entry_gate: Rect2 = Rect2()
 
 ## Composition enforcement (Part 4)
@@ -95,6 +98,8 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 		layout._l_room_ids.clear()
 		layout._l_room_notches.clear()
 		layout._perimeter_notches.clear()
+		layout._t_u_room_ids.clear()
+		layout._complex_shape_wall_segs.clear()
 		layout._entry_gate = Rect2()
 		layout._protected_doors.clear()
 		layout._composition_ok = true
@@ -147,6 +152,8 @@ func _generate() -> void:
 	_l_room_ids.clear()
 	_l_room_notches.clear()
 	_perimeter_notches.clear()
+	_t_u_room_ids.clear()
+	_complex_shape_wall_segs.clear()
 	_entry_gate = Rect2()
 	_protected_doors.clear()
 	_composition_ok = true
@@ -198,6 +205,9 @@ func _generate() -> void:
 
 	# 4.8) Apply L-shaped rooms (internal notch cuts)
 	_apply_l_rooms()
+
+	# 4.9) Apply T/U complex room shapes
+	_apply_t_u_shapes()
 
 	# 5) Collect split segments from BSP tree
 	_collect_split_segments(_bsp_root)
@@ -1443,6 +1453,147 @@ func _apply_l_rooms() -> void:
 
 
 ## ============================================================================
+## T/U COMPLEX SHAPES
+## ============================================================================
+
+func _apply_t_u_shapes() -> void:
+	_t_u_room_ids.clear()
+	_complex_shape_wall_segs.clear()
+
+	var candidates: Array = []
+	for i in range(rooms.size()):
+		if rooms[i]["is_corridor"] == true:
+			continue
+		if rooms[i].get("is_void", false) == true:
+			continue
+		var rects: Array = rooms[i]["rects"] as Array
+		if rects.size() != 1:
+			continue
+		var r := rects[0] as Rect2
+		if r.size.x < 320.0 or r.size.y < 320.0:
+			continue
+		candidates.append(i)
+
+	if candidates.is_empty():
+		return
+
+	candidates.shuffle()
+	var target_count := randi_range(0, mini(2, candidates.size()))
+	for idx in range(target_count):
+		if randf() > COMPLEX_SHAPES_CHANCE:
+			continue
+
+		var room_id := int(candidates[idx])
+		var base := ((rooms[room_id]["rects"] as Array)[0] as Rect2)
+		var shape_data: Dictionary = {}
+		if randf() < 0.5:
+			shape_data = _build_t_shape_from_rect(base)
+			if shape_data.is_empty():
+				shape_data = _build_u_shape_from_rect(base)
+		else:
+			shape_data = _build_u_shape_from_rect(base)
+			if shape_data.is_empty():
+				shape_data = _build_t_shape_from_rect(base)
+		if shape_data.is_empty():
+			continue
+
+		var new_rects: Array = shape_data["rects"] as Array
+		if not _rects_pass_complex_shape_rules(new_rects):
+			continue
+		var total_area := 0.0
+		for rr in new_rects:
+			total_area += (rr as Rect2).get_area()
+		if total_area < base.get_area() * 0.65:
+			continue
+
+		rooms[room_id]["rects"] = new_rects
+		rooms[room_id]["center"] = _area_weighted_center(new_rects)
+		rooms[room_id]["complex_shape"] = shape_data["shape"] as String
+		_t_u_room_ids.append(room_id)
+		for seg in (shape_data["wall_segs"] as Array):
+			_complex_shape_wall_segs.append(seg)
+
+
+func _rects_pass_complex_shape_rules(rects: Array) -> bool:
+	for rect in rects:
+		var r := rect as Rect2
+		if r.size.x <= 0.0 or r.size.y <= 0.0:
+			return false
+		if minf(r.size.x, r.size.y) < 96.0:
+			return false
+		if _is_gut_rect(r):
+			return false
+	return true
+
+
+func _build_t_shape_from_rect(base: Rect2) -> Dictionary:
+	var stem_min := 128.0
+	var stem_max := minf(base.size.x - 192.0, base.size.x * 0.45)
+	if stem_max < stem_min:
+		return {}
+	var stem_w := randf_range(stem_min, stem_max)
+	var stem_x_min := 96.0
+	var stem_x_max := base.size.x - 96.0 - stem_w
+	if stem_x_max < stem_x_min:
+		return {}
+	var stem_x := randf_range(stem_x_min, stem_x_max)
+
+	var bar_h_min := 128.0
+	var bar_h_max := minf(192.0, base.size.y - 96.0)
+	if bar_h_max < bar_h_min:
+		return {}
+	var bar_h := randf_range(bar_h_min, bar_h_max)
+
+	var rect_stem := Rect2(base.position.x + stem_x, base.position.y, stem_w, base.size.y)
+	var rect_left := Rect2(base.position.x, base.position.y, stem_x, bar_h)
+	var rect_right := Rect2(base.position.x + stem_x + stem_w, base.position.y, base.size.x - stem_x - stem_w, bar_h)
+	var rects: Array = [rect_stem, rect_left, rect_right]
+
+	var y_cut := base.position.y + bar_h
+	var x_left := base.position.x + stem_x
+	var x_right := base.position.x + stem_x + stem_w
+	var wall_segs: Array = [
+		{"type": "V", "pos": x_left, "t0": y_cut, "t1": base.end.y},
+		{"type": "H", "pos": y_cut, "t0": base.position.x, "t1": x_left},
+		{"type": "V", "pos": x_right, "t0": y_cut, "t1": base.end.y},
+		{"type": "H", "pos": y_cut, "t0": x_right, "t1": base.end.x},
+	]
+	return {"shape": "T", "rects": rects, "wall_segs": wall_segs}
+
+
+func _build_u_shape_from_rect(base: Rect2) -> Dictionary:
+	var leg_min := 128.0
+	var leg_max := minf(180.0, (base.size.x - 96.0) * 0.5)
+	if leg_max < leg_min:
+		return {}
+	var leg_w := randf_range(leg_min, leg_max)
+
+	var bridge_h_min := 128.0
+	var bridge_h_max := minf(192.0, base.size.y - 96.0)
+	if bridge_h_max < bridge_h_min:
+		return {}
+	var bridge_h := randf_range(bridge_h_min, bridge_h_max)
+	var bridge_w := base.size.x - leg_w * 2.0
+	if bridge_w < 96.0:
+		return {}
+
+	var rect_left := Rect2(base.position.x, base.position.y, leg_w, base.size.y)
+	var rect_right := Rect2(base.end.x - leg_w, base.position.y, leg_w, base.size.y)
+	var rect_bridge := Rect2(base.position.x + leg_w, base.end.y - bridge_h, bridge_w, bridge_h)
+	var rects: Array = [rect_left, rect_right, rect_bridge]
+
+	var x_left := base.position.x + leg_w
+	var x_right := base.end.x - leg_w
+	var y_cut := base.end.y - bridge_h
+	var wall_segs: Array = [
+		{"type": "V", "pos": x_left, "t0": base.position.y, "t1": y_cut},
+		{"type": "V", "pos": x_right, "t0": base.position.y, "t1": y_cut},
+		{"type": "H", "pos": y_cut, "t0": x_left, "t1": x_right},
+	]
+	return {"shape": "U", "rects": rects, "wall_segs": wall_segs}
+
+
+## ============================================================================
 ## SPLIT SEGMENTS (source of walls + door placement)
 ## ============================================================================
 
@@ -2628,6 +2779,10 @@ func _build_walls(walls_node: Node2D) -> void:
 				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
 				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
 				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
+
+	# T/U complex shape cut walls.
+	for seg in _complex_shape_wall_segs:
+		base_segs.append(seg)
 
 	# Part 5: Merge collinear perimeter segments (dedup)
 	base_segs = _merge_collinear_segments(base_segs)
