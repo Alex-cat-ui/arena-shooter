@@ -50,14 +50,19 @@ var _void_ids: Array = []
 var _leaf_adj: Dictionary = {}
 var layout_mode_name: String = ""
 const COMPLEX_SHAPES_CHANCE := 0.15
-const MAX_GENERATION_ATTEMPTS := 60
-const MODE_STICKY_ATTEMPTS := 3
+const MAX_GENERATION_ATTEMPTS := 200
+const MODE_PRIMARY_ATTEMPTS := 170
+const HM_CORRIDOR_MAX_ASPECT := 10.0
+const HM_CORRIDOR_SOFT_MAX_LEN_FRAC := 0.48
+const HM_CORRIDOR_HARD_MAX_LEN_FRAC := 0.72
+const INTERIOR_BLOCKER_CHANCE := 0.45
 var _l_room_ids: Array = []
 var _l_room_notches: Array = []  # [{room_id:int, notch_rect:Rect2, corner:String}]
 var _perimeter_notches: Array = []  # [{room_id:int, notch_rect:Rect2, side:String}]
 var _t_u_reserved_ids: Array = []
 var _t_u_room_ids: Array = []
 var _complex_shape_wall_segs: Array = []
+var _interior_blocker_segs: Array = []
 var _entry_gate: Rect2 = Rect2()
 
 ## Composition enforcement (Part 4)
@@ -74,25 +79,20 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 	var layout := ProceduralLayout.new()
 	layout._arena = arena_rect
 
-	var base_seed := p_seed
+	# Sticky mode per input seed: try many geometric variations in the same composition mode first.
+	seed(p_seed)
+	var sticky_mode := layout._choose_composition_mode()
 	var attempts_used := 0
 	while attempts_used < MAX_GENERATION_ATTEMPTS and not layout.valid:
-		# Sticky mode per input seed: try several geometric variations before mode/seed switch.
-		seed(base_seed)
-		var sticky_mode := layout._choose_composition_mode()
-		for local_attempt in range(MODE_STICKY_ATTEMPTS):
-			if attempts_used >= MAX_GENERATION_ATTEMPTS:
-				break
-			var attempt_seed := base_seed + local_attempt * 10007
-			seed(attempt_seed)
-			layout.layout_seed = attempt_seed
-			layout._forced_layout_mode = sticky_mode
-			layout._generate()
-			attempts_used += 1
-			if layout._validate():
-				layout.valid = true
-				break
-		base_seed += 1
+		var attempt_seed := p_seed + attempts_used * 10007
+		seed(attempt_seed)
+		layout.layout_seed = attempt_seed
+		layout._forced_layout_mode = sticky_mode if attempts_used < MODE_PRIMARY_ATTEMPTS else -1
+		layout._generate()
+		attempts_used += 1
+		if layout._validate():
+			layout.valid = true
+			break
 	layout._forced_layout_mode = -1
 
 	if layout.valid:
@@ -105,13 +105,13 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 		for vr: Rect2 in layout.void_rects:
 			void_area_pct += vr.get_area()
 		void_area_pct = void_area_pct / maxf(arena_area, 1.0) * 100.0
-		print("[ProceduralLayout] OK seed=%d arena=%.0fx%.0f rooms=%d corridors=%d doors=%d big=%d avg_deg=%.1f max_doors=%d loops=%d isolated=%d corr_leaves=%d mode=%s hubs=%d voids=%d void%%=%.1f l_rooms=%d gate=%s" % [
+		print("[ProceduralLayout] OK seed=%d arena=%.0fx%.0f rooms=%d corridors=%d doors=%d big=%d avg_deg=%.1f max_doors=%d loops=%d isolated=%d corr_leaves=%d mode=%s hubs=%d voids=%d void%%=%.1f l_rooms=%d blockers=%d gate=%s" % [
 			layout.layout_seed, layout._arena.size.x, layout._arena.size.y,
 			layout.rooms.size(), layout.corridors.size(),
 			layout.doors.size(), layout.big_rooms_count,
 			layout.avg_degree, layout.max_doors_stat, layout.extra_loops, layout.isolated_fixed,
 			layout._logical_corr_count, layout.layout_mode_name, layout._hub_ids.size(),
-			layout._void_ids.size(), void_area_pct, layout._l_room_ids.size(),
+			layout._void_ids.size(), void_area_pct, layout._l_room_ids.size(), layout._interior_blocker_segs.size(),
 			str(layout._entry_gate != Rect2())])
 	else:
 		push_warning("[ProceduralLayout] FAILED after %d attempts" % MAX_GENERATION_ATTEMPTS)
@@ -146,6 +146,7 @@ func _generate() -> void:
 	_t_u_reserved_ids.clear()
 	_t_u_room_ids.clear()
 	_complex_shape_wall_segs.clear()
+	_interior_blocker_segs.clear()
 	_entry_gate = Rect2()
 	_protected_doors.clear()
 	_composition_ok = true
@@ -206,6 +207,9 @@ func _generate() -> void:
 
 	# 4.9) Apply T/U complex room shapes
 	_apply_t_u_shapes()
+
+	# 4.92) Add short interior blockers in oversized single-rect rooms.
+	_apply_interior_blockers()
 
 	# 5) Collect split segments from BSP tree
 	_collect_split_segments(_bsp_root)
@@ -293,6 +297,7 @@ func _bsp_split_with_corridors(target_count: int) -> Dictionary:
 	var MAX_ASPECT := 5.0
 	var cross_max_frac: float = GameConfig.cross_split_max_frac if GameConfig else 0.72
 	var arena_major := maxf(_arena.size.x, _arena.size.y)
+	var corridor_len_cap := maxf(corridor_len_min_val + 64.0, arena_major * HM_CORRIDOR_SOFT_MAX_LEN_FRAC)
 	var center_avoid := 0.08
 
 	var root := {"rect": _arena, "left": null, "right": null, "leaf_id": -1, "is_corridor": false}
@@ -316,16 +321,16 @@ func _bsp_split_with_corridors(target_count: int) -> Dictionary:
 			if n["is_corridor"] == true:
 				continue
 			var lf: Rect2 = n["rect"]
-			var can_v := lf.size.x >= min_leaf_w + corr_w_min_val + min_leaf_w and lf.size.y >= corridor_len_min_val
-			var can_h := lf.size.y >= min_leaf_h + corr_w_min_val + min_leaf_h and lf.size.x >= corridor_len_min_val
+			var can_v := lf.size.x >= min_leaf_w + corr_w_min_val + min_leaf_w and lf.size.y >= corridor_len_min_val and lf.size.y <= corridor_len_cap
+			var can_h := lf.size.y >= min_leaf_h + corr_w_min_val + min_leaf_h and lf.size.x >= corridor_len_min_val and lf.size.x <= corridor_len_cap
 			if (can_v or can_h) and lf.get_area() > best_triple_area:
 				best_triple_area = lf.get_area()
 				best_triple = n
 
 		if best_triple != null:
 			var lf: Rect2 = best_triple["rect"]
-			var can_v := lf.size.x >= min_leaf_w + corr_w_min_val + min_leaf_w and lf.size.y >= corridor_len_min_val
-			var can_h := lf.size.y >= min_leaf_h + corr_w_min_val + min_leaf_h and lf.size.x >= corridor_len_min_val
+			var can_v := lf.size.x >= min_leaf_w + corr_w_min_val + min_leaf_w and lf.size.y >= corridor_len_min_val and lf.size.y <= corridor_len_cap
+			var can_h := lf.size.y >= min_leaf_h + corr_w_min_val + min_leaf_h and lf.size.x >= corridor_len_min_val and lf.size.x <= corridor_len_cap
 			var do_vert: bool
 			if can_v and can_h:
 				do_vert = randf() > 0.5
@@ -381,8 +386,8 @@ func _bsp_split_with_corridors(target_count: int) -> Dictionary:
 			if n["is_corridor"] == true:
 				continue
 			var lf: Rect2 = n["rect"]
-			var can_v := lf.size.x >= corr_w_min_val + min_leaf_w and lf.size.y >= corridor_len_min_val
-			var can_h := lf.size.y >= corr_w_min_val + min_leaf_h and lf.size.x >= corridor_len_min_val
+			var can_v := lf.size.x >= corr_w_min_val + min_leaf_w and lf.size.y >= corridor_len_min_val and lf.size.y <= corridor_len_cap
+			var can_h := lf.size.y >= corr_w_min_val + min_leaf_h and lf.size.x >= corridor_len_min_val and lf.size.x <= corridor_len_cap
 			if (can_v or can_h) and lf.get_area() > best_area:
 				best_area = lf.get_area()
 				best = n
@@ -390,8 +395,8 @@ func _bsp_split_with_corridors(target_count: int) -> Dictionary:
 			continue
 
 		var lf2: Rect2 = best["rect"]
-		var can_v2 := lf2.size.x >= corr_w_min_val + min_leaf_w and lf2.size.y >= corridor_len_min_val
-		var can_h2 := lf2.size.y >= corr_w_min_val + min_leaf_h and lf2.size.x >= corridor_len_min_val
+		var can_v2 := lf2.size.x >= corr_w_min_val + min_leaf_w and lf2.size.y >= corridor_len_min_val and lf2.size.y <= corridor_len_cap
+		var can_h2 := lf2.size.y >= corr_w_min_val + min_leaf_h and lf2.size.x >= corridor_len_min_val and lf2.size.x <= corridor_len_cap
 		var do_vert2: bool
 		if can_v2 and can_h2:
 			do_vert2 = randf() > 0.5
@@ -474,11 +479,12 @@ func _bsp_split_with_corridors(target_count: int) -> Dictionary:
 			orientations = [false]
 
 		var split_ok := false
+		var allow_long_split := leaf_count <= 2
 		for horiz in orientations:
 			if horiz:
 				# Part 2: horizontal split creates line of length lf.size.x
 				var line_len := lf.size.x
-				if line_len > arena_major * cross_max_frac:
+				if line_len > arena_major * cross_max_frac and not allow_long_split:
 					continue  # Too long — would create cross
 
 				# Try split position with center-avoid
@@ -508,7 +514,7 @@ func _bsp_split_with_corridors(target_count: int) -> Dictionary:
 			else:
 				# Part 2: vertical split creates line of length lf.size.y
 				var line_len := lf.size.y
-				if line_len > arena_major * cross_max_frac:
+				if line_len > arena_major * cross_max_frac and not allow_long_split:
 					continue  # Too long — would create cross
 
 				# Try split position with center-avoid
@@ -541,6 +547,61 @@ func _bsp_split_with_corridors(target_count: int) -> Dictionary:
 
 		all_nodes.append(best["left"])
 		all_nodes.append(best["right"])
+
+	# Corridor fallback: if forced corridor carving could not run on huge root leaves,
+	# retag 1..N elongated leaves as corridors after BSP.
+	if _logical_corr_count <= 0:
+		var corr_min_cfg: int = GameConfig.corridor_count_min if GameConfig else 1
+		var corr_max_cfg: int = GameConfig.corridor_count_max if GameConfig else 3
+		var corridor_target := clampi(randi_range(corr_min_cfg, corr_max_cfg), 1, 3)
+		var corridor_candidates: Array = []
+		for n in all_nodes:
+			if n["left"] != null:
+				continue
+			if n["is_corridor"] == true:
+				continue
+			var lf: Rect2 = n["rect"]
+			var width := minf(lf.size.x, lf.size.y)
+			var length := maxf(lf.size.x, lf.size.y)
+			var aspect := length / maxf(width, 1.0)
+			if width < corr_w_min_val:
+				continue
+			if length < corridor_len_min_val * 0.8:
+				continue
+			if length > corridor_len_cap:
+				continue
+			if aspect < 1.8:
+				continue
+			var touches_perimeter := (
+				absf(lf.position.x - _arena.position.x) < 1.0
+				or absf(lf.end.x - _arena.end.x) < 1.0
+				or absf(lf.position.y - _arena.position.y) < 1.0
+				or absf(lf.end.y - _arena.end.y) < 1.0
+			)
+			var score := aspect * 1000.0 + lf.get_area() * 0.001
+			if touches_perimeter:
+				score -= 250.0
+			corridor_candidates.append({
+				"node": n,
+				"score": score,
+				"touches_perimeter": touches_perimeter,
+			})
+
+		corridor_candidates.sort_custom(func(a, b): return float(a["score"]) > float(b["score"]))
+		var selected := 0
+		var perimeter_selected := 0
+		for cand in corridor_candidates:
+			if selected >= corridor_target:
+				break
+			var touches: bool = cand["touches_perimeter"] == true
+			if touches and perimeter_selected >= 1:
+				continue
+			var node: Dictionary = cand["node"] as Dictionary
+			node["is_corridor"] = true
+			selected += 1
+			if touches:
+				perimeter_selected += 1
+		_logical_corr_count += selected
 
 	return root
 
@@ -821,6 +882,20 @@ func _find_hall_candidate(center: Vector2) -> int:
 	return best_id
 
 
+func _leaf_neighbor_count(room_id: int) -> int:
+	if not _leaf_adj.has(room_id):
+		return 0
+	var count := 0
+	for n in (_leaf_adj[room_id] as Array):
+		var ni := int(n)
+		if ni == room_id:
+			continue
+		if ni in _void_ids:
+			continue
+		count += 1
+	return count
+
+
 func _find_spine_candidate(center: Vector2) -> int:
 	var best_id := -1
 	var best_dist := INF
@@ -828,6 +903,8 @@ func _find_spine_candidate(center: Vector2) -> int:
 		if rooms[i]["is_corridor"] != true:
 			continue
 		if i in _low_priority_ids:
+			continue
+		if _leaf_neighbor_count(i) < 2:
 			continue
 		var dist := (rooms[i]["center"] as Vector2).distance_to(center)
 		if dist < best_dist:
@@ -840,9 +917,11 @@ func _find_spine_candidate(center: Vector2) -> int:
 	for i in range(rooms.size()):
 		if i in _low_priority_ids:
 			continue
+		if _leaf_neighbor_count(i) < 3:
+			continue
 		var r: Rect2 = (rooms[i]["rects"] as Array)[0] as Rect2
 		var ratio := maxf(r.size.x, r.size.y) / maxf(minf(r.size.x, r.size.y), 1.0)
-		if ratio > best_ratio:
+		if ratio >= 1.6 and ratio > best_ratio:
 			best_ratio = ratio
 			best_id = i
 	return best_id
@@ -1143,6 +1222,63 @@ func _is_gut_rect(r: Rect2) -> bool:
 	var mn := minf(r.size.x, r.size.y)
 	var mx := maxf(r.size.x, r.size.y)
 	return mn < 128.0 and mx > 256.0
+
+
+func _corridor_has_turn(room_id: int) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	var has_horizontal := false
+	var has_vertical := false
+	for rect in (rooms[room_id]["rects"] as Array):
+		var r := rect as Rect2
+		if r.size.x >= r.size.y:
+			has_horizontal = true
+		else:
+			has_vertical = true
+		if has_horizontal and has_vertical:
+			return true
+	return false
+
+
+func _is_bad_corridor_geometry(room_id: int) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	if rooms[room_id]["is_corridor"] != true:
+		return false
+	if room_id in _void_ids:
+		return false
+
+	var has_turn := _corridor_has_turn(room_id)
+	var max_aspect_cfg: float = GameConfig.corridor_max_aspect if GameConfig else HM_CORRIDOR_MAX_ASPECT
+	var max_aspect := minf(max_aspect_cfg, HM_CORRIDOR_MAX_ASPECT)
+	var arena_major := maxf(_arena.size.x, _arena.size.y)
+	var soft_len_cap := arena_major * HM_CORRIDOR_SOFT_MAX_LEN_FRAC
+	var hard_len_cap := arena_major * HM_CORRIDOR_HARD_MAX_LEN_FRAC
+
+	for rect in (rooms[room_id]["rects"] as Array):
+		var r := rect as Rect2
+		var width := minf(r.size.x, r.size.y)
+		var length := maxf(r.size.x, r.size.y)
+		if width < 128.0:
+			return true
+		if length / maxf(width, 1.0) > max_aspect and not has_turn:
+			return true
+		if length > hard_len_cap:
+			return true
+
+	var bbox := _room_bounding_box(room_id)
+	var bbox_width := minf(bbox.size.x, bbox.size.y)
+	var bbox_length := maxf(bbox.size.x, bbox.size.y)
+	if bbox_width < 128.0:
+		return true
+	if bbox_length / maxf(bbox_width, 1.0) > max_aspect and not has_turn:
+		return true
+	if bbox_length > soft_len_cap and not has_turn:
+		return true
+	if bbox_length > hard_len_cap:
+		return true
+
+	return false
 
 
 func _is_bad_edge_corridor(room_id: int) -> bool:
@@ -1630,6 +1766,75 @@ func _apply_t_u_shapes() -> void:
 		_try_apply_t_u_shape(int(reserved_candidates[0]))
 
 
+func _apply_interior_blockers() -> void:
+	_interior_blocker_segs.clear()
+	var max_blockers := 4
+	var margin := 96.0
+
+	for i in range(rooms.size()):
+		if _interior_blocker_segs.size() >= max_blockers:
+			break
+		if rooms[i]["is_corridor"] == true:
+			continue
+		if rooms[i].get("is_void", false) == true:
+			continue
+
+		var rects: Array = rooms[i]["rects"] as Array
+		if rects.size() != 1:
+			continue
+		var r := rects[0] as Rect2
+		if minf(r.size.x, r.size.y) < 300.0:
+			continue
+		if r.get_area() < 140000.0:
+			continue
+		if randf() > INTERIOR_BLOCKER_CHANCE:
+			continue
+
+		var prefer_horizontal := r.size.x >= r.size.y
+		if prefer_horizontal:
+			var seg_len_max := minf(320.0, r.size.x - margin * 2.0)
+			if seg_len_max < 160.0:
+				continue
+			var seg_len := randf_range(160.0, seg_len_max)
+			var x0_min := r.position.x + margin
+			var x0_max := r.end.x - margin - seg_len
+			if x0_max < x0_min:
+				continue
+			var x0 := randf_range(x0_min, x0_max)
+			var y := clampf(
+				r.get_center().y + randf_range(-56.0, 56.0),
+				r.position.y + margin,
+				r.end.y - margin
+			)
+			_interior_blocker_segs.append({
+				"type": "H",
+				"pos": y,
+				"t0": x0,
+				"t1": x0 + seg_len,
+			})
+		else:
+			var seg_len_max := minf(320.0, r.size.y - margin * 2.0)
+			if seg_len_max < 160.0:
+				continue
+			var seg_len := randf_range(160.0, seg_len_max)
+			var y0_min := r.position.y + margin
+			var y0_max := r.end.y - margin - seg_len
+			if y0_max < y0_min:
+				continue
+			var y0 := randf_range(y0_min, y0_max)
+			var x := clampf(
+				r.get_center().x + randf_range(-56.0, 56.0),
+				r.position.x + margin,
+				r.end.x - margin
+			)
+			_interior_blocker_segs.append({
+				"type": "V",
+				"pos": x,
+				"t0": y0,
+				"t1": y0 + seg_len,
+			})
+
+
 func _try_apply_t_u_shape(room_id: int) -> bool:
 	if room_id < 0 or room_id >= rooms.size():
 		return false
@@ -2093,7 +2298,8 @@ func _enforce_composition_spine() -> bool:
 		var ni := int(n)
 		_protected_doors.append({"a": mini(spine, ni), "b": maxi(spine, ni)})
 
-	# Every non-corridor room must be within 2 hops of spine
+	# Every non-corridor room should be within 3 hops of spine.
+	# 3 hops keeps spine readability while avoiding mode collapse under strict retries.
 	for i in range(rooms.size()):
 		if i in _void_ids:
 			continue
@@ -2103,7 +2309,7 @@ func _enforce_composition_spine() -> bool:
 			continue
 
 		var dist := _bfs_distance(i, spine)
-		if dist <= 2:
+		if dist <= 3:
 			continue
 
 		# Try to add a door to get closer
@@ -2482,19 +2688,13 @@ func _validate() -> bool:
 	if closet_count > 2:
 		return false
 
-	var corr_max_aspect: float = GameConfig.corridor_max_aspect if GameConfig else 30.0
 	for i in range(rooms.size()):
 		if rooms[i]["is_corridor"] != true:
 			continue
 		if i in _void_ids:
 			continue
-		var corr_rects: Array = rooms[i]["rects"] as Array
-		for rect in corr_rects:
-			var r := rect as Rect2
-			if minf(r.size.x, r.size.y) < 128.0:
-				return false
-			if _rect_aspect(r) > corr_max_aspect:
-				return false
+		if _is_bad_corridor_geometry(i):
+			return false
 		if _is_bad_edge_corridor(i):
 			return false
 
@@ -2939,6 +3139,10 @@ func _build_walls(walls_node: Node2D) -> void:
 	for seg in _complex_shape_wall_segs:
 		base_segs.append(seg)
 
+	# Interior blocker walls (short cover lines in oversized rooms).
+	for seg in _interior_blocker_segs:
+		base_segs.append(seg)
+
 	# Part 5: Merge collinear perimeter segments (dedup)
 	base_segs = _merge_collinear_segments(base_segs)
 
@@ -3170,9 +3374,9 @@ func _build_debug(debug_node: Node2D) -> void:
 	# Part 9: Enhanced layout mode label with composition info
 	var ring_len := _ring_ids.size() if not _ring_ids.is_empty() else 0
 	var mode_lbl := Label.new()
-	mode_lbl.text = "Mode:%s  Hubs:%d  Voids:%d  L:%d  Gate:%s  AvgDeg:%.1f  MaxD:%d  Ring:%d" % [
+	mode_lbl.text = "Mode:%s  Hubs:%d  Voids:%d  L:%d  Bk:%d  Gate:%s  AvgDeg:%.1f  MaxD:%d  Ring:%d" % [
 		layout_mode_name, _hub_ids.size(), _void_ids.size(), _l_room_ids.size(),
-		str(_entry_gate != Rect2()), avg_degree, max_doors_stat, ring_len]
+		_interior_blocker_segs.size(), str(_entry_gate != Rect2()), avg_degree, max_doors_stat, ring_len]
 	mode_lbl.position = Vector2(_arena.position.x + 4, _arena.position.y + 4)
 	mode_lbl.add_theme_color_override("font_color", Color(1.0, 0.5, 0.0, 0.9))
 	debug_node.add_child(mode_lbl)

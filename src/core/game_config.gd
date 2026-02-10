@@ -329,7 +329,7 @@ var weapon_stats: Dictionary = {
 @export_range(0.3, 1.0) var cross_split_max_frac: float = 0.72
 @export_range(0.0, 0.3) var void_area_min_frac: float = 0.08
 @export_range(0, 5) var narrow_room_max: int = 1
-@export_range(2.0, 50.0) var corridor_max_aspect: float = 30.0
+@export_range(2.0, 50.0) var corridor_max_aspect: float = 12.0
 @export var composition_enabled: bool = true
 
 @export var layout_debug_draw: bool = false
@@ -510,7 +510,7 @@ func reset_to_defaults() -> void:
 	cross_split_max_frac = 0.72
 	void_area_min_frac = 0.08
 	narrow_room_max = 1
-	corridor_max_aspect = 30.0
+	corridor_max_aspect = 12.0
 	composition_enabled = true
 	layout_debug_draw = false
 	layout_debug_text = true
