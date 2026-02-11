@@ -2,6 +2,54 @@
 
 ## 2026-02-11
 
+### Phase 3.1: Outcrop candidate expansion (anti-box silhouette follow-up)
+- Changed: perimeter outcrop pass now supports multi-rect edge rooms by selecting a per-side anchor rect (`_outcrop_base_rect_for_side`) instead of requiring single-rect rooms only.
+- Changed: outcrop candidate sampling attempts per selected room increased (`10 -> 14`) to improve successful protrusion placement without relaxing geometry contracts.
+- Result:
+  - `godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`50/50 valid`, `avg outcrop_count: 0.12`, `pseudo_gaps=0`, `north_exit_fail=0`)
+  - `godot-4 --headless res://tests/test_layout_visual_regression.tscn`: PASS
+  - `godot-4 --headless res://tests/test_hotline_similarity.tscn`: PASS (`98.75/100`)
+- Files: `src/systems/procedural_layout.gd`
+
+### Phase 2.1: Gap sealing + north-core exit + black non-walkable
+- Added: non-door micro-gap sealing in wall finalization (`_seal_non_door_gaps`) and validation metric (`pseudo_gap_count_stat`).
+- Added: strict north-core exit enforcement (`_enforce_north_core_exit`) so the northern central room always has a perimeter-side escape when feasible under door caps; otherwise layout is retried.
+- Added: runtime validation guard for pseudo-gaps and north-core exit failures.
+- Changed: floor rendering now uses black non-walkable background under walkable grass patches.
+- Changed: disabled rectangular dark arena silhouette overlays (ArenaBoundary visibility off by default in level runtime; floor full-rect overlay disabled).
+- Added: shape metrics in tests (`pseudo_gaps`, `north_exit_fail`, `outcrop_count`, `outer_run_pct`) and stricter regression assertions.
+- Result:
+  - `godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`50/50 valid`, `pseudo_gaps=0`, `north_exit_fail=0`)
+  - `godot-4 --headless res://tests/test_layout_visual_regression.tscn`: PASS
+  - `godot-4 --headless res://tests/test_hotline_similarity.tscn`: PASS (`98.75/100`)
+
+### Phase 2: anti-box shaping (less square silhouettes)
+- Added: anti-box shaping pass in procedural generation (`_apply_anti_box_shaping`) right after T/U shaping.
+- Refactored: perimeter notch application into reusable pass helper (`_apply_perimeter_notches_pass`) so generator can do an extra controlled perimeter-cut pass when layout looks too boxy.
+- Added: boxiness heuristic (`_is_boxy_layout`) based on near-square bbox, fill ratio, and low shape complexity.
+- Added: soft anti-box validation guard for extreme flat box cases with zero perimeter notches.
+- Result:
+  - `godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`50/50 valid`, `avg notched_rooms_count: 1.56`)
+  - `godot-4 --headless res://tests/test_hotline_similarity.tscn`: PASS (`99.25/100`)
+- Files: `src/systems/procedural_layout.gd`
+
+### Stage 1: orphan wall prune + 50px doors/camera+debug stats stabilization
+- Changed: procedural door openings are fixed to `50px` (`uniform/min/max = 50`) in runtime config and defaults.
+- Added: camera follow easing in `level_mvp` (smooth catch-up while moving + smooth roll-on-stop).
+- Added: per-generation room type counters in `level_mvp` debug/log output:
+  - corridors
+  - interior rooms
+  - exterior rooms
+  - closets
+- Added: post-door-cut wall cleanup in layout build/validation to prune redundant internal wall segments that split the same walkable room on both sides.
+- Changed: generation retry budget for 50px door feasibility:
+  - `MAX_GENERATION_ATTEMPTS: 200 -> 320`
+  - `MODE_PRIMARY_ATTEMPTS: 170 -> 140`
+- Result:
+  - `godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`50/50 valid`)
+  - `godot-4 --headless res://tests/test_hotline_similarity.tscn`: PASS (`97.75/100`)
+- Files: `src/core/game_config.gd`, `src/levels/level_mvp.gd`, `src/systems/procedural_layout.gd`
+
 ### Door uniformity + central adjacency + walkable grass
 - Changed: procedural doors now use a uniform opening size from config (`door_opening_uniform`), with no relaxed smaller-door fallback in composition/connectivity repair.
 - Added: hub-adjacency enforcement pass (`_enforce_hub_adjacent_doors`) so central rooms connect to feasible adjacent rooms under existing caps/checks.

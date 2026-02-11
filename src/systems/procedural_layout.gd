@@ -44,14 +44,15 @@ var _big_leaf_set: Array = []
 enum LayoutMode { CENTRAL_HALL, CENTRAL_SPINE, CENTRAL_RING, CENTRAL_LIKE_HUB }
 var _layout_mode: int = 0
 var _hub_ids: Array = []
+var _core_ids: Array = []
 var _ring_ids: Array = []
 var _low_priority_ids: Array = []
 var _void_ids: Array = []
 var _leaf_adj: Dictionary = {}
 var layout_mode_name: String = ""
-const COMPLEX_SHAPES_CHANCE := 0.15
-const MAX_GENERATION_ATTEMPTS := 200
-const MODE_PRIMARY_ATTEMPTS := 170
+const COMPLEX_SHAPES_CHANCE := 0.28
+const MAX_GENERATION_ATTEMPTS := 320
+const MODE_PRIMARY_ATTEMPTS := 140
 const HM_CORRIDOR_MAX_ASPECT := 10.0
 const HM_CORRIDOR_SOFT_MAX_LEN_FRAC := 0.48
 const HM_CORRIDOR_HARD_MAX_LEN_FRAC := 0.72
@@ -60,6 +61,7 @@ const WALK_CLEARANCE_RADIUS := 16.0
 const MAX_UNREACHABLE_WALK_CELLS := 1
 const MIN_MAIN_PATH_TURNS := 1
 const MAX_MAIN_PATH_STRAIGHT_RUN := 4
+const MAX_OUTCROP_OVERHANG := 320.0
 var _l_room_ids: Array = []
 var _l_room_notches: Array = []  # [{room_id:int, notch_rect:Rect2, corner:String}]
 var _perimeter_notches: Array = []  # [{room_id:int, notch_rect:Rect2, side:String}]
@@ -67,11 +69,17 @@ var _t_u_reserved_ids: Array = []
 var _t_u_room_ids: Array = []
 var _complex_shape_wall_segs: Array = []
 var _interior_blocker_segs: Array = []
+var _master_envelope_rects: Array = []
+var _master_envelope_bounds: Rect2 = Rect2()
 var _entry_gate: Rect2 = Rect2()
 var walk_unreachable_cells_stat: int = 0
 var main_path_turns_stat: int = 0
 var main_path_edges_stat: int = 0
 var main_path_straight_run_stat: int = 0
+var pseudo_gap_count_stat: int = 0
+var north_core_exit_fail_stat: int = 0
+var outcrop_count_stat: int = 0
+var outer_longest_run_pct_stat: float = 0.0
 
 ## Composition enforcement (Part 4)
 var _protected_doors: Array = []  # [{a:int, b:int}] normalized (a<b)
@@ -113,7 +121,7 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 		for vr: Rect2 in layout.void_rects:
 			void_area_pct += vr.get_area()
 		void_area_pct = void_area_pct / maxf(arena_area, 1.0) * 100.0
-		print("[ProceduralLayout] OK seed=%d arena=%.0fx%.0f rooms=%d corridors=%d doors=%d big=%d avg_deg=%.1f max_doors=%d loops=%d isolated=%d corr_leaves=%d mode=%s hubs=%d voids=%d void%%=%.1f l_rooms=%d blockers=%d turns=%d straight=%d uwalk=%d gate=%s" % [
+		print("[ProceduralLayout] OK seed=%d arena=%.0fx%.0f rooms=%d corridors=%d doors=%d big=%d avg_deg=%.1f max_doors=%d loops=%d isolated=%d corr_leaves=%d mode=%s hubs=%d voids=%d void%%=%.1f l_rooms=%d blockers=%d turns=%d straight=%d uwalk=%d gaps=%d outcrops=%d run%%=%.1f gate=%s" % [
 			layout.layout_seed, layout._arena.size.x, layout._arena.size.y,
 			layout.rooms.size(), layout.corridors.size(),
 			layout.doors.size(), layout.big_rooms_count,
@@ -121,6 +129,7 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 			layout._logical_corr_count, layout.layout_mode_name, layout._hub_ids.size(),
 			layout._void_ids.size(), void_area_pct, layout._l_room_ids.size(), layout._interior_blocker_segs.size(),
 			layout.main_path_turns_stat, layout.main_path_straight_run_stat, layout.walk_unreachable_cells_stat,
+			layout.pseudo_gap_count_stat, layout.outcrop_count_stat, layout.outer_longest_run_pct_stat,
 			str(layout._entry_gate != Rect2())])
 	else:
 		push_warning("[ProceduralLayout] FAILED after %d attempts" % MAX_GENERATION_ATTEMPTS)
@@ -144,6 +153,7 @@ func _generate() -> void:
 	_logical_corr_count = 0
 	_big_leaf_set.clear()
 	_hub_ids.clear()
+	_core_ids.clear()
 	_ring_ids.clear()
 	_low_priority_ids.clear()
 	_void_ids.clear()
@@ -156,11 +166,17 @@ func _generate() -> void:
 	_t_u_room_ids.clear()
 	_complex_shape_wall_segs.clear()
 	_interior_blocker_segs.clear()
+	_master_envelope_rects.clear()
+	_master_envelope_bounds = Rect2()
 	_entry_gate = Rect2()
 	walk_unreachable_cells_stat = 0
 	main_path_turns_stat = 0
 	main_path_edges_stat = 0
 	main_path_straight_run_stat = 0
+	pseudo_gap_count_stat = 0
+	north_core_exit_fail_stat = 0
+	outcrop_count_stat = 0
+	outer_longest_run_pct_stat = 0.0
 	_protected_doors.clear()
 	_composition_ok = true
 	_layout_mode = 0
@@ -221,6 +237,15 @@ func _generate() -> void:
 	# 4.9) Apply T/U complex room shapes
 	_apply_t_u_shapes()
 
+	# 4.93) Anti-box shaping: if silhouette is too "boxy", force extra perimeter cuts.
+	_apply_anti_box_shaping()
+
+	# 4.935) Build master envelope guide (stepped silhouette target).
+	_build_master_envelope()
+
+	# 4.94) Outcrops: push some edge rooms outward from the current silhouette.
+	_apply_perimeter_outcrops()
+
 	# 4.92) Disabled for now: interior blockers create unwanted "floating walls" in rooms.
 	_interior_blocker_segs.clear()
 
@@ -239,7 +264,10 @@ func _generate() -> void:
 		if not _enforce_composition():
 			_composition_ok = false
 			return
-		if not _enforce_hub_adjacent_doors():
+		if not _enforce_core_adjacent_doors():
+			_composition_ok = false
+			return
+		if not _enforce_north_core_exit():
 			_composition_ok = false
 			return
 
@@ -812,6 +840,8 @@ func _assign_topology_roles() -> void:
 	else:
 		_assign_central_like_hub(center)
 
+	_refresh_core_room_ids(center)
+
 
 func _choose_composition_mode() -> int:
 	# CENTRAL_SPINE fixed at 20%.
@@ -879,6 +909,52 @@ func _assign_central_like_hub(center: Vector2) -> void:
 	if best_pair[0] >= 0:
 		_hub_ids.append(best_pair[0])
 		_hub_ids.append(best_pair[1])
+
+
+func _refresh_core_room_ids(center: Vector2) -> void:
+	_core_ids.clear()
+	for hub_variant in _hub_ids:
+		var hub := int(hub_variant)
+		if hub < 0 or hub >= rooms.size():
+			continue
+		if hub not in _core_ids:
+			_core_ids.append(hub)
+
+	var arena_minor := minf(_arena.size.x, _arena.size.y)
+	var anchor_radius := arena_minor * 0.22
+	var anchors: Array = []
+	for i in range(rooms.size()):
+		if rooms[i]["is_corridor"] == true:
+			continue
+		if i in _low_priority_ids:
+			continue
+		var bbox := _room_bounding_box(i)
+		var dist := bbox.get_center().distance_to(center)
+		if dist > anchor_radius:
+			continue
+		if _leaf_neighbor_count(i) < 2:
+			continue
+		anchors.append({
+			"id": i,
+			"dist": dist,
+			"area": _room_total_area(i),
+		})
+
+	anchors.sort_custom(func(a, b):
+		if absf(float(a["dist"]) - float(b["dist"])) > 4.0:
+			return float(a["dist"]) < float(b["dist"])
+		return float(a["area"]) > float(b["area"]))
+
+	for anchor in anchors:
+		if _core_ids.size() >= 3:
+			break
+		var rid := int(anchor["id"])
+		if rid not in _core_ids:
+			_core_ids.append(rid)
+
+
+func _is_core_room(room_id: int) -> bool:
+	return room_id in _core_ids
 
 
 func _find_hall_candidate(center: Vector2) -> int:
@@ -1029,7 +1105,11 @@ func _door_opening_len() -> float:
 
 
 func _door_corner_clearance() -> float:
-	return GameConfig.door_from_corner_min if GameConfig else 48.0
+	var base := float(GameConfig.door_from_corner_min) if GameConfig else 48.0
+	# Shorter fixed doors need smaller edge margins, otherwise many feasible
+	# adjacent pairs become non-placeable and layouts feel under-connected.
+	var adaptive := _door_opening_len() * 0.34
+	return clampf(minf(base, adaptive), 20.0, 64.0)
 
 
 func _door_wall_thickness() -> float:
@@ -1046,11 +1126,16 @@ func _is_closet_rect(r: Rect2) -> bool:
 func _max_doors_for_room(room_id: int) -> int:
 	if _is_closet_room(room_id):
 		return 1
+	if room_id >= 0 and room_id < rooms.size() and rooms[room_id]["is_corridor"] == true:
+		return 2
 	if room_id in _hub_ids:
+		return 3
+	if _is_core_room(room_id):
 		return 3
 	if room_id in _ring_ids:
 		return 3
-	return mini(GameConfig.max_doors_per_room if GameConfig else 2, 2)
+	var cfg_cap := GameConfig.max_doors_per_room if GameConfig else 3
+	return clampi(cfg_cap, 2, 3)
 
 
 func _is_hub_adjacent(room_id: int) -> bool:
@@ -1134,8 +1219,13 @@ func _assign_void_cutouts() -> void:
 	_void_ids.clear()
 	void_rects.clear()
 
-	# Part 5: Always attempt voids; target 1..3
-	var void_target := randi_range(1, 3)
+	# Part 5: Always attempt voids; target 2..4 (biased toward 2-3 to preserve room mass).
+	var roll := randf()
+	var void_target := 2
+	if roll >= 0.55 and roll < 0.90:
+		void_target = 3
+	elif roll >= 0.90:
+		void_target = 4
 	var min_center_dist := minf(_arena.size.x, _arena.size.y) * 0.15
 	var arena_center := _arena.get_center()
 
@@ -1150,22 +1240,27 @@ func _assign_void_cutouts() -> void:
 	if leaf_areas.size() > 0:
 		median_area = float(leaf_areas[leaf_areas.size() / 2])
 
-	# Candidates: exterior-void-valid, non-corridor, non-hub, non-ring
+	# Candidates:
+	# - exterior voids (primary silhouette cuts)
+	# - micro voids (tiny dead-end pockets that should not become closets)
 	var candidates: Array = []
+	var micro_candidates: Array = []
 	for i in range(rooms.size()):
 		if rooms[i]["is_corridor"] == true:
 			continue
-		if i in _hub_ids:
+		if i in _core_ids:
 			continue
 		if i in _ring_ids:
 			continue
-		if not _is_valid_exterior_void(i):
+		if _is_valid_exterior_void(i):
+			# Part 5: center distance check
+			var rc: Vector2 = rooms[i]["center"] as Vector2
+			if rc.distance_to(arena_center) < min_center_dist:
+				continue
+			candidates.append(i)
 			continue
-		# Part 5: center distance check
-		var rc: Vector2 = rooms[i]["center"] as Vector2
-		if rc.distance_to(arena_center) < min_center_dist:
-			continue
-		candidates.append(i)
+		if _is_micro_void_candidate(i):
+			micro_candidates.append(i)
 
 	# Sort: corner rooms first (touching >= 2 sides), then by area descending
 	candidates.sort_custom(func(a, b):
@@ -1178,6 +1273,9 @@ func _assign_void_cutouts() -> void:
 		var area_a: float = ((rooms[int(a)]["rects"] as Array)[0] as Rect2).get_area()
 		var area_b: float = ((rooms[int(b)]["rects"] as Array)[0] as Rect2).get_area()
 		return area_a > area_b)
+
+	micro_candidates.sort_custom(func(a, b):
+		return _room_total_area(int(a)) < _room_total_area(int(b)))
 
 	# First pass: pick top candidates
 	var chosen: Array = []
@@ -1225,6 +1323,20 @@ func _assign_void_cutouts() -> void:
 			if not _solid_rooms_connected(chosen):
 				chosen.pop_back()
 
+	# Third pass: fill remaining slots with micro voids.
+	if chosen.size() < void_target:
+		for c in micro_candidates:
+			if chosen.size() >= void_target:
+				break
+			var cid := int(c)
+			if cid in chosen:
+				continue
+			var test_void := chosen.duplicate()
+			test_void.append(cid)
+			if not _solid_rooms_connected(test_void):
+				continue
+			chosen.append(cid)
+
 	# Part 5: Ensure at least 1 large void (area >= median)
 	var has_large := false
 	for vid in chosen:
@@ -1232,15 +1344,22 @@ func _assign_void_cutouts() -> void:
 			has_large = true
 			break
 	if not has_large and chosen.size() > 0:
-		# Replace smallest void with largest available candidate
+		# Replace smallest void with a large candidate (do not exceed void_target).
 		for c in candidates:
 			if int(c) in chosen:
 				continue
 			if _room_total_area(int(c)) >= median_area:
 				var test := chosen.duplicate()
-				test.append(int(c))
+				var smallest_idx := 0
+				var smallest_area := INF
+				for idx in range(test.size()):
+					var area := _room_total_area(int(test[idx]))
+					if area < smallest_area:
+						smallest_area = area
+						smallest_idx = idx
+				test[smallest_idx] = int(c)
 				if _solid_rooms_connected(test):
-					chosen.append(int(c))
+					chosen = test
 					has_large = true
 					break
 
@@ -1428,6 +1547,37 @@ func _is_valid_exterior_void(room_id: int) -> bool:
 	return exposure_ratio >= 0.60
 
 
+func _is_micro_void_candidate(room_id: int) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	if rooms[room_id]["is_corridor"] == true:
+		return false
+	if room_id in _core_ids or room_id in _ring_ids:
+		return false
+	if room_id in _t_u_reserved_ids or room_id in _t_u_room_ids:
+		return false
+	if room_id in _l_room_ids:
+		return false
+
+	var rects: Array = rooms[room_id]["rects"] as Array
+	if rects.size() != 1:
+		return false
+	var r := rects[0] as Rect2
+	var min_side := minf(r.size.x, r.size.y)
+	var max_side := maxf(r.size.x, r.size.y)
+	var area := r.get_area()
+
+	var neighbor_count := _leaf_neighbor_count(room_id)
+	if not _room_touch_perimeter(room_id) and neighbor_count > 1:
+		return false
+
+	if min_side <= 112.0 and max_side <= 240.0 and area <= 28000.0:
+		return true
+	if min_side <= 96.0 and max_side <= 320.0 and area <= 42000.0:
+		return true
+	return false
+
+
 func _count_perimeter_sides(room_id: int) -> int:
 	var sides := 0
 	for r: Rect2 in rooms[room_id]["rects"]:
@@ -1486,7 +1636,7 @@ func _reserve_t_u_rooms() -> void:
 		if rects.size() != 1:
 			continue
 		var r := rects[0] as Rect2
-		if r.size.x < 320.0 or r.size.y < 320.0:
+		if r.size.x < 280.0 or r.size.y < 280.0:
 			continue
 		candidates.append({"id": i, "area": r.get_area()})
 
@@ -1504,23 +1654,39 @@ func _reserve_t_u_rooms() -> void:
 
 func _apply_perimeter_notches() -> void:
 	_perimeter_notches.clear()
-	var notch_chance := 0.35
+	_apply_perimeter_notches_pass(0.35, -1, true)
+
+
+func _apply_perimeter_notches_pass(notch_chance: float, max_additional: int = -1, skip_reserved: bool = true) -> int:
+	var added := 0
+	var candidates: Array = []
 	for i in range(rooms.size()):
 		if rooms[i]["is_corridor"] == true:
 			continue
 		if rooms[i].get("is_void", false) == true:
 			continue
-		if i in _t_u_reserved_ids:
+		if skip_reserved and i in _t_u_reserved_ids:
 			continue
+		if rooms[i].get("is_perimeter_notched", false) == true:
+			continue
+		var rects: Array = rooms[i]["rects"] as Array
+		if rects.size() != 1:
+			continue
+		candidates.append(i)
 
+	candidates.shuffle()
+	for room_id_variant in candidates:
+		if max_additional >= 0 and added >= max_additional:
+			break
+		var i := int(room_id_variant)
+		if randf() > notch_chance:
+			continue
 		var rects: Array = rooms[i]["rects"] as Array
 		if rects.size() != 1:
 			continue
 		var base := rects[0] as Rect2
 		var sides := _perimeter_sides_for_rect(base)
 		if sides.is_empty():
-			continue
-		if randf() > notch_chance:
 			continue
 
 		sides.shuffle()
@@ -1538,7 +1704,462 @@ func _apply_perimeter_notches() -> void:
 				"notch_rect": split["notch_rect"] as Rect2,
 				"side": side,
 			})
+			added += 1
 			break
+
+	return added
+
+
+func _is_boxy_layout() -> bool:
+	var solid_count := 0
+	var solid_area := 0.0
+	var has_bbox := false
+	var bbox := Rect2()
+	for i in range(rooms.size()):
+		if i in _void_ids:
+			continue
+		solid_count += 1
+		solid_area += _room_total_area(i)
+		var rb := _room_bounding_box(i)
+		if not has_bbox:
+			bbox = rb
+			has_bbox = true
+		else:
+			bbox = bbox.merge(rb)
+
+	if not has_bbox or solid_count < 6:
+		return false
+
+	var aspect := bbox.size.x / maxf(bbox.size.y, 1.0)
+	var fill_ratio := solid_area / maxf(bbox.get_area(), 1.0)
+	var near_square := aspect >= 0.82 and aspect <= 1.22
+	if not near_square:
+		return false
+	if fill_ratio < 0.70:
+		return false
+
+	var shape_complexity := _perimeter_notches.size() + _l_room_ids.size() + _t_u_room_ids.size()
+	var longest_outer_run := _outer_longest_run_ratio()
+	return shape_complexity < 3 or longest_outer_run > 0.78
+
+
+func _merge_span_dicts(spans: Array) -> Array:
+	if spans.is_empty():
+		return []
+	spans.sort_custom(func(a, b): return float(a["t0"]) < float(b["t0"]))
+	var merged: Array = [spans[0].duplicate()]
+	for i in range(1, spans.size()):
+		var curr := spans[i] as Dictionary
+		var last := merged[merged.size() - 1] as Dictionary
+		if float(curr["t0"]) <= float(last["t1"]) + 1.0:
+			last["t1"] = maxf(float(last["t1"]), float(curr["t1"]))
+			merged[merged.size() - 1] = last
+		else:
+			merged.append(curr.duplicate())
+	return merged
+
+
+func _outer_longest_run_ratio() -> float:
+	var bbox := _compute_solid_bbox()
+	if bbox == Rect2():
+		return 0.0
+	var best := 0.0
+	var sides: Array = ["TOP", "BOTTOM", "LEFT", "RIGHT"]
+	for side_variant in sides:
+		var side := side_variant as String
+		var spans: Array = []
+		for i in range(rooms.size()):
+			if i in _void_ids:
+				continue
+			for rect_variant in (rooms[i]["rects"] as Array):
+				var r := rect_variant as Rect2
+				match side:
+					"TOP":
+						if absf(r.position.y - bbox.position.y) < 1.0:
+							spans.append({"t0": r.position.x, "t1": r.end.x})
+					"BOTTOM":
+						if absf(r.end.y - bbox.end.y) < 1.0:
+							spans.append({"t0": r.position.x, "t1": r.end.x})
+					"LEFT":
+						if absf(r.position.x - bbox.position.x) < 1.0:
+							spans.append({"t0": r.position.y, "t1": r.end.y})
+					"RIGHT":
+						if absf(r.end.x - bbox.end.x) < 1.0:
+							spans.append({"t0": r.position.y, "t1": r.end.y})
+
+		if spans.is_empty():
+			continue
+		var merged := _merge_span_dicts(spans)
+		var longest := 0.0
+		for span_variant in merged:
+			var span := span_variant as Dictionary
+			longest = maxf(longest, float(span["t1"]) - float(span["t0"]))
+		var side_len := bbox.size.x if side in ["TOP", "BOTTOM"] else bbox.size.y
+		if side_len <= 1.0:
+			continue
+		best = maxf(best, longest / side_len)
+	return best
+
+
+func _apply_anti_box_shaping() -> void:
+	if not _is_boxy_layout():
+		return
+	# First forced pass: try to carve up to 2 additional perimeter cuts.
+	_apply_perimeter_notches_pass(0.85, 2, false)
+	# If still boxy, make one final deterministic cut attempt.
+	if _is_boxy_layout():
+		_apply_perimeter_notches_pass(1.0, 1, false)
+
+
+func _compute_solid_bbox() -> Rect2:
+	var has_bbox := false
+	var bbox := Rect2()
+	for i in range(rooms.size()):
+		if i in _void_ids:
+			continue
+		var rb := _room_bounding_box(i)
+		if not has_bbox:
+			bbox = rb
+			has_bbox = true
+		else:
+			bbox = bbox.merge(rb)
+	return bbox if has_bbox else Rect2()
+
+
+func _build_master_envelope() -> void:
+	_master_envelope_rects.clear()
+	_master_envelope_bounds = Rect2()
+
+	var base_w := _arena.size.x * randf_range(0.70, 0.80)
+	var base_h := _arena.size.y * randf_range(0.70, 0.80)
+	var base_x := _arena.position.x + (_arena.size.x - base_w) * 0.5
+	var base_y := _arena.position.y + (_arena.size.y - base_h) * 0.5
+	var core := Rect2(base_x, base_y, base_w, base_h)
+	_master_envelope_rects.append(core)
+
+	var sides: Array = ["LEFT", "RIGHT", "TOP", "BOTTOM"]
+	sides.shuffle()
+	var out_target := randi_range(3, 6)
+	var added := 0
+	var side_cursor := 0
+
+	while added < out_target and side_cursor < out_target * 3:
+		var side := sides[side_cursor % sides.size()] as String
+		side_cursor += 1
+		var out_rect := Rect2()
+		if side == "LEFT" or side == "RIGHT":
+			var span := clampf(core.size.y * randf_range(0.28, 0.55), 180.0, core.size.y - 96.0)
+			var ny := randf_range(core.position.y, core.end.y - span)
+			var depth_cap := core.position.x - _arena.position.x if side == "LEFT" else _arena.end.x - core.end.x
+			if depth_cap < 128.0:
+				continue
+			var depth := randf_range(128.0, minf(320.0, depth_cap))
+			if side == "LEFT":
+				out_rect = Rect2(core.position.x - depth, ny, depth, span)
+			else:
+				out_rect = Rect2(core.end.x, ny, depth, span)
+		else:
+			var span_x := clampf(core.size.x * randf_range(0.28, 0.55), 180.0, core.size.x - 96.0)
+			var nx := randf_range(core.position.x, core.end.x - span_x)
+			var depth_cap_y := core.position.y - _arena.position.y if side == "TOP" else _arena.end.y - core.end.y
+			if depth_cap_y < 128.0:
+				continue
+			var depth_y := randf_range(128.0, minf(320.0, depth_cap_y))
+			if side == "TOP":
+				out_rect = Rect2(nx, core.position.y - depth_y, span_x, depth_y)
+			else:
+				out_rect = Rect2(nx, core.end.y, span_x, depth_y)
+
+		if out_rect == Rect2():
+			continue
+		if out_rect.position.x < _arena.position.x - MAX_OUTCROP_OVERHANG or out_rect.position.y < _arena.position.y - MAX_OUTCROP_OVERHANG:
+			continue
+		if out_rect.end.x > _arena.end.x + MAX_OUTCROP_OVERHANG or out_rect.end.y > _arena.end.y + MAX_OUTCROP_OVERHANG:
+			continue
+		_master_envelope_rects.append(out_rect)
+		added += 1
+
+	if _master_envelope_rects.is_empty():
+		return
+	_master_envelope_bounds = _master_envelope_rects[0] as Rect2
+	for i in range(1, _master_envelope_rects.size()):
+		_master_envelope_bounds = _master_envelope_bounds.merge(_master_envelope_rects[i] as Rect2)
+
+
+func _master_envelope_target_for_side(side: String) -> float:
+	if _master_envelope_bounds == Rect2():
+		return NAN
+	match side:
+		"LEFT":
+			return _master_envelope_bounds.position.x
+		"RIGHT":
+			return _master_envelope_bounds.end.x
+		"TOP":
+			return _master_envelope_bounds.position.y
+		_:
+			return _master_envelope_bounds.end.y
+
+
+func _outcrop_base_rect_for_side(room_id: int, side: String, solid_bbox: Rect2) -> Rect2:
+	if room_id < 0 or room_id >= rooms.size():
+		return Rect2()
+	var best := Rect2()
+	var best_area := -1.0
+	for rect_variant in (rooms[room_id]["rects"] as Array):
+		var r := rect_variant as Rect2
+		var touches_side := false
+		match side:
+			"LEFT":
+				touches_side = absf(r.position.x - solid_bbox.position.x) < 1.0
+			"RIGHT":
+				touches_side = absf(r.end.x - solid_bbox.end.x) < 1.0
+			"TOP":
+				touches_side = absf(r.position.y - solid_bbox.position.y) < 1.0
+			"BOTTOM":
+				touches_side = absf(r.end.y - solid_bbox.end.y) < 1.0
+		if not touches_side:
+			continue
+		# Outcrop builder needs enough thickness on the anchor axis.
+		if side == "LEFT" or side == "RIGHT":
+			if r.size.x < 176.0 or r.size.y < 140.0:
+				continue
+		else:
+			if r.size.y < 176.0 or r.size.x < 140.0:
+				continue
+		var area := r.get_area()
+		if area > best_area:
+			best = r
+			best_area = area
+	return best
+
+
+func _rect_overlaps_other_solid_rooms(test_rect: Rect2, owner_id: int) -> bool:
+	for i in range(rooms.size()):
+		if i == owner_id or i in _void_ids:
+			continue
+		for rect_variant in (rooms[i]["rects"] as Array):
+			var r := rect_variant as Rect2
+			if test_rect.intersects(r):
+				return true
+	return false
+
+
+func _is_valid_outcrop_rect(test_rect: Rect2, owner_id: int) -> bool:
+	if test_rect.size.x <= 0.0 or test_rect.size.y <= 0.0:
+		return false
+	if test_rect.position.x < _arena.position.x - MAX_OUTCROP_OVERHANG or test_rect.position.y < _arena.position.y - MAX_OUTCROP_OVERHANG:
+		return false
+	if test_rect.end.x > _arena.end.x + MAX_OUTCROP_OVERHANG or test_rect.end.y > _arena.end.y + MAX_OUTCROP_OVERHANG:
+		return false
+	if minf(test_rect.size.x, test_rect.size.y) < 128.0:
+		return false
+	if _is_gut_rect(test_rect):
+		return false
+	if _rect_overlaps_other_solid_rooms(test_rect, owner_id):
+		return false
+	return true
+
+
+func _build_outcrop_rect(base: Rect2, side: String, target_edge: float = NAN) -> Rect2:
+	var depth_min := 128.0
+	var depth_max := 260.0
+	var span_min := 128.0
+
+	if side == "LEFT" or side == "RIGHT":
+		var span_max := minf(base.size.y * 0.65, 260.0)
+		if span_max < span_min:
+			return Rect2()
+		var span := randf_range(span_min, span_max)
+		var ny_min := base.position.y
+		var ny_max := base.end.y - span
+		if ny_max < ny_min:
+			return Rect2()
+		var ny := randf_range(ny_min, ny_max)
+		var max_depth := minf(depth_max, base.size.x * 0.75)
+		if max_depth < depth_min:
+			return Rect2()
+		var depth := randf_range(depth_min, max_depth)
+		if not is_nan(target_edge):
+			var desired := (base.position.x - target_edge) if side == "LEFT" else (target_edge - base.end.x)
+			if desired >= depth_min:
+				var lo := clampf(desired - 24.0, depth_min, max_depth)
+				var hi := clampf(desired + 24.0, lo, max_depth)
+				depth = randf_range(lo, hi)
+		if side == "LEFT":
+			return Rect2(base.position.x - depth, ny, depth, span)
+		return Rect2(base.end.x, ny, depth, span)
+
+	# TOP / BOTTOM
+	var span_max_x := minf(base.size.x * 0.65, 260.0)
+	if span_max_x < span_min:
+		return Rect2()
+	var span_x := randf_range(span_min, span_max_x)
+	var nx_min := base.position.x
+	var nx_max := base.end.x - span_x
+	if nx_max < nx_min:
+		return Rect2()
+	var nx := randf_range(nx_min, nx_max)
+	var max_depth_y := minf(depth_max, base.size.y * 0.75)
+	if max_depth_y < depth_min:
+		return Rect2()
+	var depth_y := randf_range(depth_min, max_depth_y)
+	if not is_nan(target_edge):
+		var desired_y := (base.position.y - target_edge) if side == "TOP" else (target_edge - base.end.y)
+		if desired_y >= depth_min:
+			var lo_y := clampf(desired_y - 24.0, depth_min, max_depth_y)
+			var hi_y := clampf(desired_y + 24.0, lo_y, max_depth_y)
+			depth_y = randf_range(lo_y, hi_y)
+	if side == "TOP":
+		return Rect2(nx, base.position.y - depth_y, span_x, depth_y)
+	return Rect2(nx, base.end.y, span_x, depth_y)
+
+
+func _append_outcrop_wall_segs(outcrop: Rect2, side: String) -> void:
+	match side:
+		"LEFT":
+			_complex_shape_wall_segs.append({"type": "V", "pos": outcrop.position.x, "t0": outcrop.position.y, "t1": outcrop.end.y})
+			_complex_shape_wall_segs.append({"type": "H", "pos": outcrop.position.y, "t0": outcrop.position.x, "t1": outcrop.end.x})
+			_complex_shape_wall_segs.append({"type": "H", "pos": outcrop.end.y, "t0": outcrop.position.x, "t1": outcrop.end.x})
+		"RIGHT":
+			_complex_shape_wall_segs.append({"type": "V", "pos": outcrop.end.x, "t0": outcrop.position.y, "t1": outcrop.end.y})
+			_complex_shape_wall_segs.append({"type": "H", "pos": outcrop.position.y, "t0": outcrop.position.x, "t1": outcrop.end.x})
+			_complex_shape_wall_segs.append({"type": "H", "pos": outcrop.end.y, "t0": outcrop.position.x, "t1": outcrop.end.x})
+		"TOP":
+			_complex_shape_wall_segs.append({"type": "H", "pos": outcrop.position.y, "t0": outcrop.position.x, "t1": outcrop.end.x})
+			_complex_shape_wall_segs.append({"type": "V", "pos": outcrop.position.x, "t0": outcrop.position.y, "t1": outcrop.end.y})
+			_complex_shape_wall_segs.append({"type": "V", "pos": outcrop.end.x, "t0": outcrop.position.y, "t1": outcrop.end.y})
+		"BOTTOM":
+			_complex_shape_wall_segs.append({"type": "H", "pos": outcrop.end.y, "t0": outcrop.position.x, "t1": outcrop.end.x})
+			_complex_shape_wall_segs.append({"type": "V", "pos": outcrop.position.x, "t0": outcrop.position.y, "t1": outcrop.end.y})
+			_complex_shape_wall_segs.append({"type": "V", "pos": outcrop.end.x, "t0": outcrop.position.y, "t1": outcrop.end.y})
+
+
+func _apply_perimeter_outcrops() -> void:
+	var solid_bbox := _compute_solid_bbox()
+	if solid_bbox == Rect2():
+		return
+	var boxy := _is_boxy_layout()
+	# Keep this pass probabilistic unless silhouette is clearly too boxy.
+	if not boxy and randf() > 0.42:
+		outcrop_count_stat = 0
+		return
+
+	var side_candidates: Dictionary = {
+		"LEFT": [],
+		"RIGHT": [],
+		"TOP": [],
+		"BOTTOM": [],
+	}
+	for i in range(rooms.size()):
+		if i in _void_ids:
+			continue
+		if rooms[i]["is_corridor"] == true:
+			continue
+		var touch_count := _leaf_neighbor_count(i)
+		for side_variant in ["LEFT", "RIGHT", "TOP", "BOTTOM"]:
+			var side := side_variant as String
+			var base := _outcrop_base_rect_for_side(i, side, solid_bbox)
+			if base == Rect2():
+				continue
+			(side_candidates[side] as Array).append({
+				"room": i,
+				"area": base.get_area(),
+				"touch": touch_count,
+				"base": base,
+			})
+
+	var sides: Array = ["LEFT", "RIGHT", "TOP", "BOTTOM"]
+	sides.shuffle()
+
+	var target := 1
+	if boxy:
+		target = 2
+	elif _perimeter_notches.size() <= 1:
+		target = 2
+
+	var selected: Array = []
+	var used_rooms: Dictionary = {}
+
+	# First pass: force side coverage (at most one room per side).
+	for side_variant in sides:
+		if selected.size() >= target:
+			break
+		var side := side_variant as String
+		var arr := side_candidates[side] as Array
+		arr.sort_custom(func(a, b):
+			var ta := int(a["touch"])
+			var tb := int(b["touch"])
+			if ta != tb:
+				return ta < tb
+			return float(a["area"]) > float(b["area"]))
+		for cand in arr:
+			var rid := int(cand["room"])
+			if used_rooms.has(rid):
+				continue
+			selected.append({"room": rid, "side": side, "base": cand["base"] as Rect2})
+			used_rooms[rid] = true
+			break
+
+	# Second pass: fill remaining slots by area priority across all sides.
+	if selected.size() < target:
+		var fallback: Array = []
+		for side_variant in ["LEFT", "RIGHT", "TOP", "BOTTOM"]:
+			var side := side_variant as String
+			var arr := side_candidates[side] as Array
+			for cand in arr:
+				fallback.append({
+					"room": int(cand["room"]),
+					"side": side,
+					"area": float(cand["area"]),
+					"touch": int(cand["touch"]),
+					"base": cand["base"] as Rect2,
+				})
+		fallback.sort_custom(func(a, b):
+			var ta := int(a["touch"])
+			var tb := int(b["touch"])
+			if ta != tb:
+				return ta < tb
+			return float(a["area"]) > float(b["area"]))
+		for item in fallback:
+			if selected.size() >= target:
+				break
+			var rid := int(item["room"])
+			if used_rooms.has(rid):
+				continue
+			selected.append({
+				"room": rid,
+				"side": item["side"] as String,
+				"base": item["base"] as Rect2,
+			})
+			used_rooms[rid] = true
+
+	var applied := 0
+	for picked in selected:
+		var rid := int(picked["room"])
+		var side := picked["side"] as String
+		var base := picked["base"] as Rect2
+		if base == Rect2():
+			continue
+		var rects: Array = rooms[rid]["rects"] as Array
+		var target_edge := _master_envelope_target_for_side(side)
+		var outcrop := Rect2()
+		for _try_idx in range(14):
+			var candidate := _build_outcrop_rect(base, side, target_edge)
+			if candidate == Rect2():
+				continue
+			if _is_valid_outcrop_rect(candidate, rid):
+				outcrop = candidate
+				break
+		if outcrop == Rect2():
+			continue
+		rects.append(outcrop)
+		rooms[rid]["rects"] = rects
+		rooms[rid]["center"] = _area_weighted_center(rects)
+		rooms[rid]["has_outcrop"] = true
+		_append_outcrop_wall_segs(outcrop, side)
+		applied += 1
+
+	outcrop_count_stat = applied
 
 
 func _build_perimeter_notch_split(base: Rect2, side: String) -> Dictionary:
@@ -1784,7 +2405,7 @@ func _apply_t_u_shapes() -> void:
 		if rects.size() != 1:
 			continue
 		var r := rects[0] as Rect2
-		if r.size.x < 320.0 or r.size.y < 320.0:
+		if r.size.x < 280.0 or r.size.y < 280.0:
 			continue
 		if i in _t_u_reserved_ids:
 			reserved_candidates.append(i)
@@ -1810,7 +2431,7 @@ func _apply_t_u_shapes() -> void:
 		var room_id := int(candidate)
 		var apply_chance := COMPLEX_SHAPES_CHANCE
 		if room_id in _t_u_reserved_ids:
-			apply_chance = maxf(COMPLEX_SHAPES_CHANCE, 0.70)
+			apply_chance = maxf(COMPLEX_SHAPES_CHANCE, 0.80)
 		if randf() > apply_chance:
 			continue
 		_try_apply_t_u_shape(room_id)
@@ -2126,7 +2747,9 @@ func _make_door_on_split_line(split_type: String, split_pos: float, a: int, b: i
 
 ## Check if a candidate door overlaps an existing door on same wall line.
 func _door_too_close(candidate: Rect2) -> bool:
-	var min_spacing := clampf(_door_opening_len() * 0.75, 64.0, 128.0)
+	# Keep spacing proportional to door size; small uniform doors (e.g. 50px)
+	# need tighter spacing than the old 64px floor to remain placeable.
+	var min_spacing := clampf(_door_opening_len() * 0.35, 18.0, 96.0)
 	for existing_dm in _door_map:
 		var er: Rect2 = existing_dm["rect"]
 		if absf(candidate.position.x - er.position.x) < 8.0:
@@ -2325,34 +2948,34 @@ func _enforce_composition() -> bool:
 	return true
 
 
-func _enforce_hub_adjacent_doors() -> bool:
-	if _hub_ids.is_empty():
+func _enforce_core_adjacent_doors() -> bool:
+	if _core_ids.is_empty():
 		return true
 
-	var hub_ids: Array = []
-	for hub_variant in _hub_ids:
-		var hub := int(hub_variant)
-		if hub in _void_ids:
+	var core_ids: Array = []
+	for core_variant in _core_ids:
+		var core := int(core_variant)
+		if core in _void_ids:
 			continue
-		if hub not in hub_ids:
-			hub_ids.append(hub)
+		if core not in core_ids:
+			core_ids.append(core)
 
-	for hub in hub_ids:
-		if not _leaf_adj.has(hub):
+	for core in core_ids:
+		if not _leaf_adj.has(core):
 			continue
 
 		var candidates: Array = []
-		for n_variant in (_leaf_adj[hub] as Array):
+		for n_variant in (_leaf_adj[core] as Array):
 			var ni := int(n_variant)
-			if ni in _void_ids or ni == hub:
+			if ni in _void_ids or ni == core:
 				continue
-			var seg := _find_shared_split_seg(hub, ni)
+			var seg := _find_shared_split_seg(core, ni)
 			if seg.is_empty():
 				continue
 			candidates.append({
 				"id": ni,
 				"seg": seg,
-				"priority": _door_pair_priority(hub, ni),
+				"priority": _door_pair_priority(core, ni),
 				"area": _room_total_area(ni),
 			})
 
@@ -2365,27 +2988,119 @@ func _enforce_hub_adjacent_doors() -> bool:
 
 		for candidate in candidates:
 			var ni := int(candidate["id"])
-			if ni in (_door_adj[hub] as Array):
+			if ni in (_door_adj[core] as Array):
 				continue
-			if not _can_add_door_between(hub, ni):
+			if not _can_add_door_between(core, ni):
 				continue
-			if _try_add_door_on_split(hub, ni, candidate["seg"] as Dictionary):
-				var pa := mini(hub, ni)
-				var pb := maxi(hub, ni)
+			if _try_add_door_on_split(core, ni, candidate["seg"] as Dictionary):
+				var pa := mini(core, ni)
+				var pb := maxi(core, ni)
 				if not _is_protected_door(pa, pb):
 					_protected_doors.append({"a": pa, "b": pb})
 
 		for candidate in candidates:
 			var ni := int(candidate["id"])
-			if ni in (_door_adj[hub] as Array):
+			if ni in (_door_adj[core] as Array):
 				continue
-			if not _can_add_door_between(hub, ni):
+			if not _can_add_door_between(core, ni):
 				continue
 			var seg := candidate["seg"] as Dictionary
-			if _can_place_door_on_split(hub, ni, seg):
+			if _can_place_door_on_split(core, ni, seg):
 				return false
 
 	return true
+
+
+func _north_core_room_id() -> int:
+	var candidates: Array = []
+	for core_variant in _core_ids:
+		var rid := int(core_variant)
+		if rid in _void_ids:
+			continue
+		candidates.append(rid)
+	if candidates.is_empty():
+		for hub_variant in _hub_ids:
+			var rid := int(hub_variant)
+			if rid in _void_ids:
+				continue
+			candidates.append(rid)
+	if candidates.is_empty():
+		return -1
+
+	candidates.sort_custom(func(a, b):
+		var ay := float((rooms[int(a)]["center"] as Vector2).y)
+		var by := float((rooms[int(b)]["center"] as Vector2).y)
+		if absf(ay - by) > 1.0:
+			return ay < by
+		return _room_total_area(int(a)) > _room_total_area(int(b)))
+	return int(candidates[0])
+
+
+func _has_perimeter_exit_from(room_id: int) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	if not _door_adj.has(room_id):
+		return false
+	for n_variant in (_door_adj[room_id] as Array):
+		var ni := int(n_variant)
+		if ni in _void_ids:
+			continue
+		if _room_touch_perimeter(ni):
+			return true
+	return false
+
+
+func _enforce_north_core_exit() -> bool:
+	var north_core := _north_core_room_id()
+	if north_core < 0:
+		return true
+	if _has_perimeter_exit_from(north_core):
+		return true
+	if not _leaf_adj.has(north_core):
+		return false
+
+	var candidates: Array = []
+	for n_variant in (_leaf_adj[north_core] as Array):
+		var ni := int(n_variant)
+		if ni in _void_ids or ni == north_core:
+			continue
+		if not _room_touch_perimeter(ni):
+			continue
+		var seg := _find_shared_split_seg(north_core, ni)
+		if seg.is_empty():
+			continue
+		candidates.append({
+			"id": ni,
+			"seg": seg,
+			"priority": _door_pair_priority(north_core, ni),
+			"area": _room_total_area(ni),
+		})
+
+	candidates.sort_custom(func(a, b):
+		var pa := float(a["priority"])
+		var pb := float(b["priority"])
+		if absf(pa - pb) > 0.1:
+			return pa > pb
+		return float(a["area"]) > float(b["area"]))
+
+	for candidate in candidates:
+		var ni := int(candidate["id"])
+		if ni in (_door_adj[north_core] as Array):
+			var pa := mini(north_core, ni)
+			var pb := maxi(north_core, ni)
+			if not _is_protected_door(pa, pb):
+				_protected_doors.append({"a": pa, "b": pb})
+			return true
+		if not _can_add_door_between(north_core, ni):
+			continue
+		if _try_add_door_on_split(north_core, ni, candidate["seg"] as Dictionary):
+			var pa := mini(north_core, ni)
+			var pb := maxi(north_core, ni)
+			if not _is_protected_door(pa, pb):
+				_protected_doors.append({"a": pa, "b": pb})
+			return true
+
+	return false
 
 
 func _enforce_composition_hall() -> bool:
@@ -2890,12 +3605,20 @@ func _compute_cut_wall_segments_for_validation() -> Array:
 	# Mirrors wall topology assembly from _build_walls, but returns segments only.
 	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
 	var base_segs: Array = _collect_base_wall_segments()
-
-	base_segs = _merge_collinear_segments(base_segs)
 	var all_door_rects: Array = doors.duplicate()
 	if _entry_gate != Rect2():
 		all_door_rects.append(_entry_gate)
-	return _cut_doors_from_segments(base_segs, all_door_rects, wall_t)
+	return _finalize_wall_segments(base_segs, all_door_rects, wall_t)
+
+
+func _finalize_wall_segments(base_segs: Array, all_door_rects: Array, wall_t: float) -> Array:
+	var merged := _merge_collinear_segments(base_segs)
+	var cut := _cut_doors_from_segments(merged, all_door_rects, wall_t)
+	var sealed := _seal_non_door_gaps(cut, all_door_rects, wall_t)
+	var pruned := _prune_redundant_wall_segments(sealed, wall_t)
+	# Keep this metric from finalized walls so validation/runtime use the same topology.
+	pseudo_gap_count_stat = _count_non_door_gaps(pruned, all_door_rects, wall_t)
+	return pruned
 
 
 func _find_nearest_walk_cell(mask: Array, cols: int, rows: int, sx: int, sy: int) -> Vector2i:
@@ -2952,16 +3675,20 @@ func _analyze_walkability() -> Dictionary:
 			wr = Rect2(seg_pos - wall_t * 0.5, seg_t0 - 2.0, wall_t, seg_len + 4.0)
 		wall_rects.append(wr.grow(WALK_CLEARANCE_RADIUS))
 
+	var analysis_bounds := _compute_solid_bbox()
+	if analysis_bounds == Rect2():
+		analysis_bounds = _arena
+
 	var cell := WALK_GRID_CELL
-	var cols := maxi(int(ceilf(_arena.size.x / cell)), 1)
-	var rows := maxi(int(ceilf(_arena.size.y / cell)), 1)
+	var cols := maxi(int(ceilf(analysis_bounds.size.x / cell)), 1)
+	var rows := maxi(int(ceilf(analysis_bounds.size.y / cell)), 1)
 	var walk_mask: Array = []
 	var walkable_cells := 0
 
 	for y in range(rows):
 		var row: Array = []
 		for x in range(cols):
-			var p := _arena.position + Vector2((float(x) + 0.5) * cell, (float(y) + 0.5) * cell)
+			var p := analysis_bounds.position + Vector2((float(x) + 0.5) * cell, (float(y) + 0.5) * cell)
 			var in_solid := false
 			for rr in solid_rects:
 				if (rr as Rect2).has_point(p):
@@ -2984,8 +3711,8 @@ func _analyze_walkability() -> Dictionary:
 	if walkable_cells <= 0:
 		return analysis
 
-	var sx := int(floor((player_spawn_pos.x - _arena.position.x) / cell))
-	var sy := int(floor((player_spawn_pos.y - _arena.position.y) / cell))
+	var sx := int(floor((player_spawn_pos.x - analysis_bounds.position.x) / cell))
+	var sy := int(floor((player_spawn_pos.y - analysis_bounds.position.y) / cell))
 	var start := _find_nearest_walk_cell(walk_mask, cols, rows, sx, sy)
 	if start.x < 0:
 		return analysis
@@ -3155,6 +3882,8 @@ func _validate_walkability() -> bool:
 func _validate() -> bool:
 	if not _composition_ok:
 		return false
+
+	north_core_exit_fail_stat = 0
 
 	if _arena_is_too_tight():
 		return false
@@ -3329,6 +4058,11 @@ func _validate() -> bool:
 	elif dead_end_count > 0:
 		return false
 
+	var north_core := _north_core_room_id()
+	if north_core >= 0 and not _has_perimeter_exit_from(north_core):
+		north_core_exit_fail_stat = 1
+		return false
+
 	if not _validate_structure():
 		return false
 
@@ -3340,7 +4074,9 @@ func _validate() -> bool:
 		if total_void_area < arena_area * void_min_frac:
 			return false
 
-	if _void_ids.size() < 1:
+	if _void_ids.size() < 2:
+		return false
+	if _void_ids.size() > 4:
 		return false
 
 	var has_diverse := false
@@ -3355,10 +4091,21 @@ func _validate() -> bool:
 	if not has_diverse and solid_ids.size() >= 6:
 		return false
 
+	# Soft anti-box guard: reject only the flattest "box-like" silhouettes.
+	if _is_boxy_layout() and _perimeter_notches.is_empty():
+		return false
+
 	if not _validate_main_path_rhythm():
 		return false
 
 	if not _validate_walkability():
+		return false
+
+	outer_longest_run_pct_stat = _outer_longest_run_ratio() * 100.0
+	if outer_longest_run_pct_stat > 86.0:
+		return false
+
+	if pseudo_gap_count_stat > 0:
 		return false
 
 	return true
@@ -3578,14 +4325,11 @@ func _build_walls(walls_node: Node2D) -> void:
 	# 1) Base wall segments: VOID-aware perimeter + filtered split lines
 	var base_segs: Array = _collect_base_wall_segments()
 
-	# Part 5: Merge collinear perimeter segments (dedup)
-	base_segs = _merge_collinear_segments(base_segs)
-
 	# 2) Cut door openings (include entry gate)
 	var all_door_rects: Array = doors.duplicate()
 	if _entry_gate != Rect2():
 		all_door_rects.append(_entry_gate)
-	_wall_segs = _cut_doors_from_segments(base_segs, all_door_rects, wall_t)
+	_wall_segs = _finalize_wall_segments(base_segs, all_door_rects, wall_t)
 
 	# 3) Build StaticBody2D walls
 	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
@@ -3737,6 +4481,186 @@ func _cut_doors_from_segments(base_segs: Array, door_rects: Array, wall_t: float
 		result = new_result
 
 	return result
+
+
+func _pseudo_gap_limit() -> float:
+	return clampf(_door_opening_len() * 0.80, 24.0, 68.0)
+
+
+func _is_intentional_gap(seg_type: String, seg_pos: float, gap_t0: float, gap_t1: float, door_rects: Array, wall_t: float) -> bool:
+	var gap_len := gap_t1 - gap_t0
+	if gap_len <= 0.5:
+		return true
+	for door_variant in door_rects:
+		var door := door_variant as Rect2
+		if seg_type == "H":
+			var door_y := door.position.y + door.size.y * 0.5
+			if absf(door_y - seg_pos) > wall_t:
+				continue
+			var ov0 := maxf(gap_t0, door.position.x)
+			var ov1 := minf(gap_t1, door.end.x)
+			if ov1 - ov0 >= minf(gap_len * 0.6, _door_opening_len() * 0.5):
+				return true
+		else:
+			var door_x := door.position.x + door.size.x * 0.5
+			if absf(door_x - seg_pos) > wall_t:
+				continue
+			var ov0 := maxf(gap_t0, door.position.y)
+			var ov1 := minf(gap_t1, door.end.y)
+			if ov1 - ov0 >= minf(gap_len * 0.6, _door_opening_len() * 0.5):
+				return true
+	return false
+
+
+func _seal_non_door_gaps(segs: Array, door_rects: Array, wall_t: float) -> Array:
+	if segs.is_empty():
+		return segs
+
+	var grouped: Dictionary = {}
+	for seg_variant in segs:
+		var seg := seg_variant as Dictionary
+		var seg_type := seg["type"] as String
+		var seg_pos := float(seg["pos"])
+		var key := "%s:%.1f" % [seg_type, roundf(seg_pos * 2.0) / 2.0]
+		if not grouped.has(key):
+			grouped[key] = []
+		(grouped[key] as Array).append(seg)
+
+	var result: Array = []
+	var max_gap := _pseudo_gap_limit()
+
+	for key_variant in grouped.keys():
+		var group := grouped[key_variant] as Array
+		group.sort_custom(func(a, b): return float(a["t0"]) < float(b["t0"]))
+		if group.is_empty():
+			continue
+
+		var merged_group: Array = [group[0].duplicate()]
+		for i in range(1, group.size()):
+			var curr := (group[i] as Dictionary).duplicate()
+			var last := merged_group[merged_group.size() - 1] as Dictionary
+			var last_t1 := float(last["t1"])
+			var curr_t0 := float(curr["t0"])
+			var curr_t1 := float(curr["t1"])
+			var seg_type := last["type"] as String
+			var seg_pos := float(last["pos"])
+			var gap := curr_t0 - last_t1
+
+			if gap <= 0.5:
+				last["t1"] = maxf(last_t1, curr_t1)
+				merged_group[merged_group.size() - 1] = last
+				continue
+
+			var should_seal := gap <= max_gap and not _is_intentional_gap(seg_type, seg_pos, last_t1, curr_t0, door_rects, wall_t)
+			if should_seal:
+				last["t1"] = curr_t1
+				merged_group[merged_group.size() - 1] = last
+				continue
+
+			merged_group.append(curr)
+
+		result.append_array(merged_group)
+
+	return result
+
+
+func _count_non_door_gaps(segs: Array, door_rects: Array, wall_t: float) -> int:
+	if segs.is_empty():
+		return 0
+	var grouped: Dictionary = {}
+	for seg_variant in segs:
+		var seg := seg_variant as Dictionary
+		var seg_type := seg["type"] as String
+		var seg_pos := float(seg["pos"])
+		var key := "%s:%.1f" % [seg_type, roundf(seg_pos * 2.0) / 2.0]
+		if not grouped.has(key):
+			grouped[key] = []
+		(grouped[key] as Array).append(seg)
+
+	var count := 0
+	var max_gap := _pseudo_gap_limit()
+	for key_variant in grouped.keys():
+		var group := grouped[key_variant] as Array
+		group.sort_custom(func(a, b): return float(a["t0"]) < float(b["t0"]))
+		for i in range(1, group.size()):
+			var prev := group[i - 1] as Dictionary
+			var curr := group[i] as Dictionary
+			var gap_t0 := float(prev["t1"])
+			var gap_t1 := float(curr["t0"])
+			var gap := gap_t1 - gap_t0
+			if gap <= 0.5 or gap > max_gap:
+				continue
+			var seg_type := prev["type"] as String
+			var seg_pos := float(prev["pos"])
+			if not _is_intentional_gap(seg_type, seg_pos, gap_t0, gap_t1, door_rects, wall_t):
+				count += 1
+	return count
+
+
+func _prune_redundant_wall_segments(segs: Array, wall_t: float) -> Array:
+	if segs.is_empty():
+		return segs
+	var pruned: Array = []
+	for seg in segs:
+		if not _is_redundant_wall_segment(seg as Dictionary, wall_t):
+			pruned.append(seg)
+	return pruned
+
+
+func _is_perimeter_segment(seg: Dictionary) -> bool:
+	var seg_type := seg["type"] as String
+	var seg_pos := float(seg["pos"])
+	if seg_type == "H":
+		return absf(seg_pos - _arena.position.y) < 1.0 or absf(seg_pos - _arena.end.y) < 1.0
+	return absf(seg_pos - _arena.position.x) < 1.0 or absf(seg_pos - _arena.end.x) < 1.0
+
+
+func _room_id_at_point(p: Vector2) -> int:
+	for i in range(rooms.size()):
+		if i in _void_ids:
+			continue
+		var rects: Array = rooms[i]["rects"] as Array
+		for rect_variant in rects:
+			var r := rect_variant as Rect2
+			if r.grow(0.25).has_point(p):
+				return i
+	return -1
+
+
+func _is_redundant_wall_segment(seg: Dictionary, wall_t: float) -> bool:
+	var seg_type := seg["type"] as String
+	var seg_pos := float(seg["pos"])
+	var t0 := float(seg["t0"])
+	var t1 := float(seg["t1"])
+	var length := t1 - t0
+	if length <= 4.0:
+		return false
+
+	var side_offset := maxf(wall_t * 0.55, 2.0)
+	var checks := PackedFloat32Array([0.1, 0.3, 0.5, 0.7, 0.9])
+	var matched_samples := 0
+
+	for ratio in checks:
+		var t := lerpf(t0, t1, ratio)
+		var p_a: Vector2
+		var p_b: Vector2
+		if seg_type == "H":
+			p_a = Vector2(t, seg_pos - side_offset)
+			p_b = Vector2(t, seg_pos + side_offset)
+		else:
+			p_a = Vector2(seg_pos - side_offset, t)
+			p_b = Vector2(seg_pos + side_offset, t)
+
+		var room_a := _room_id_at_point(p_a)
+		var room_b := _room_id_at_point(p_b)
+		if room_a < 0 or room_b < 0:
+			continue
+		if room_a != room_b:
+			return false
+		matched_samples += 1
+
+	# Require multiple confirmations before pruning to avoid accidental removals.
+	return matched_samples >= 2
 
 
 ## ============================================================================
