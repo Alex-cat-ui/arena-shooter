@@ -28,6 +28,7 @@ func _ready() -> void:
 	var valid_count := 0
 	var invalid_count := 0
 	var composition_mode_stats: Dictionary = {}
+	var fail_reason_stats: Dictionary = {}
 
 	var total_count_rooms := 0
 	var total_count_corridors := 0
@@ -40,6 +41,10 @@ func _ready() -> void:
 	var total_t_u_rooms := 0
 	var total_central_missing := 0
 	var total_non_uniform_door_layouts := 0
+	var total_pseudo_gaps := 0
+	var total_north_core_exit_fails := 0
+	var total_outcrops := 0
+	var total_outer_longest_run_pct := 0.0
 
 	for s in range(1, SEED_COUNT + 1):
 		for child in walls_node.get_children():
@@ -64,6 +69,11 @@ func _ready() -> void:
 		var t_u_rooms_count := layout._t_u_room_ids.size()
 		var central_missing := 0
 		var door_size_variants: Dictionary = {}
+		var pseudo_gap_count := layout.pseudo_gap_count_stat
+		var north_core_exit_fail := layout.north_core_exit_fail_stat
+		var outcrop_count := layout.outcrop_count_stat
+		var outer_longest_run_pct := layout.outer_longest_run_pct_stat
+		var fail_reason: String = layout.validate_fail_reason if not layout.valid else ""
 
 		for door_variant in layout.doors:
 			var door_rect := door_variant as Rect2
@@ -71,12 +81,17 @@ func _ready() -> void:
 			var opening_key := str(int(roundf(opening_len)))
 			door_size_variants[opening_key] = true
 
-		var unique_hubs: Array = []
-		for hub_variant in layout._hub_ids:
-			var hub_id := int(hub_variant)
-			if hub_id not in unique_hubs:
-				unique_hubs.append(hub_id)
-		for hub_id in unique_hubs:
+		var central_ids: Array = []
+		for core_variant in layout._core_ids:
+			var core_id := int(core_variant)
+			if core_id not in central_ids:
+				central_ids.append(core_id)
+		if central_ids.is_empty():
+			for hub_variant in layout._hub_ids:
+				var hub_id := int(hub_variant)
+				if hub_id not in central_ids:
+					central_ids.append(hub_id)
+		for hub_id in central_ids:
 			if hub_id in layout._void_ids:
 				continue
 			if not layout._leaf_adj.has(hub_id):
@@ -128,7 +143,7 @@ func _ready() -> void:
 				if deg != 1:
 					closet_bad_entries_found += 1
 
-		print("\n  seed=%d valid=%s mode=%s count_rooms=%d count_corridors=%d closets=%d closet_bad_entries=%d gut_rects=%d bad_edge_corridors=%d dead_end=%d notched=%d t_u=%d central_missing=%d door_variants=%d" % [
+		print("\n  seed=%d valid=%s mode=%s count_rooms=%d count_corridors=%d closets=%d closet_bad_entries=%d gut_rects=%d bad_edge_corridors=%d dead_end=%d notched=%d t_u=%d central_missing=%d pseudo_gaps=%d north_exit_fail=%d outcrops=%d outer_run%%=%.1f door_variants=%d fail_reason=%s" % [
 			s,
 			str(layout.valid),
 			mode_name,
@@ -142,13 +157,21 @@ func _ready() -> void:
 			notched_rooms_count,
 			t_u_rooms_count,
 			central_missing,
+			pseudo_gap_count,
+			north_core_exit_fail,
+			outcrop_count,
+			outer_longest_run_pct,
 			door_size_variants.size(),
+			fail_reason,
 		])
 
 		if layout.valid:
 			valid_count += 1
 		else:
 			invalid_count += 1
+			if not fail_reason_stats.has(fail_reason):
+				fail_reason_stats[fail_reason] = 0
+			fail_reason_stats[fail_reason] = int(fail_reason_stats[fail_reason]) + 1
 
 		total_count_rooms += count_rooms
 		total_count_corridors += count_corridors
@@ -160,6 +183,10 @@ func _ready() -> void:
 		total_notched_rooms += notched_rooms_count
 		total_t_u_rooms += t_u_rooms_count
 		total_central_missing += central_missing
+		total_pseudo_gaps += pseudo_gap_count
+		total_north_core_exit_fails += north_core_exit_fail
+		total_outcrops += outcrop_count
+		total_outer_longest_run_pct += outer_longest_run_pct
 		if door_size_variants.size() > 1:
 			total_non_uniform_door_layouts += 1
 
@@ -179,6 +206,10 @@ func _ready() -> void:
 	print("  Avg notched_rooms_count:  %.2f" % (float(total_notched_rooms) / float(SEED_COUNT)))
 	print("  Avg t_u_rooms_count:      %.2f" % (float(total_t_u_rooms) / float(SEED_COUNT)))
 	print("  Total central_missing:    %d" % total_central_missing)
+	print("  Total pseudo_gaps:        %d" % total_pseudo_gaps)
+	print("  Total north_exit_fails:   %d" % total_north_core_exit_fails)
+	print("  Avg outcrop_count:        %.2f" % (float(total_outcrops) / float(SEED_COUNT)))
+	print("  Avg outer_run_pct:        %.2f" % (total_outer_longest_run_pct / float(SEED_COUNT)))
 	print("  Non-uniform door layouts: %d" % total_non_uniform_door_layouts)
 	print("")
 	print("  composition_mode_stats:")
@@ -187,6 +218,14 @@ func _ready() -> void:
 	for m in sorted_modes:
 		var cnt := int(composition_mode_stats[m])
 		print("    %-20s %d (%.0f%%)" % [m, cnt, float(cnt) / float(SEED_COUNT) * 100.0])
+	if not fail_reason_stats.is_empty():
+		print("")
+		print("  validate_fail_reason_stats:")
+		var sorted_reasons: Array = fail_reason_stats.keys()
+		sorted_reasons.sort()
+		for reason in sorted_reasons:
+			var rcnt := int(fail_reason_stats[reason])
+			print("    %-24s %d (%.0f%% invalid)" % [reason, rcnt, float(rcnt) / maxf(float(invalid_count), 1.0) * 100.0])
 
 	print("")
 	print("=".repeat(60))
@@ -199,6 +238,8 @@ func _ready() -> void:
 		or total_bad_edge_corridors > 0
 		or total_closet_bad_entries > 0
 		or total_central_missing > 0
+		or total_pseudo_gaps > 0
+		or total_north_core_exit_fails > 0
 		or total_non_uniform_door_layouts > 0
 	)
 	get_tree().quit(1 if has_errors else 0)

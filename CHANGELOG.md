@@ -615,3 +615,17 @@
 - **Added**: Initial project structure
 - **Pushed**: https://github.com/Alex-cat-ui/arena-shooter
 - **Files**: all project files
+
+## 2026-02-11
+
+### 19:04 UTC - Procedural Layout Stability + Phase Continuation
+- **Fixed**: Composition retry collapse; added `HALL` fallback path when strict composition enforcement fails (`_enforce_composition`, `_enforce_core_adjacent_doors`, `_enforce_north_core_exit`).
+- **Fixed**: Over-strict room access enforcement causing generation aborts; policy is now best-effort without hard fail on remaining placeable links.
+- **Updated**: Door-cap policy for small perimeter rooms — single-entry now applies only to **corner-small** rooms, not every perimeter-small room.
+- **Updated**: Access policy to keep stronger interior/perimeter connectivity while preserving corner pocket behavior.
+- **Updated**: Validation threshold for solid rooms to account for mandatory exterior voids (`rooms_count_min - 2`, floor 6).
+- **Added**: Validation diagnostics (`validate_fail_reason`, `composition_fail_reason`) and test-side reason stats for faster regression triage.
+- **Result**:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn` -> **PASS** (50/50 valid, no gut rects, no bad edge corridors, no pseudo gaps, no north-exit fails, uniform door sizes)
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_visual_regression.tscn` -> **PASS**
+- **Files**: `src/systems/procedural_layout.gd`, `tests/test_layout_stats.gd`, `CHANGELOG.md`

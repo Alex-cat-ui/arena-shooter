@@ -95,7 +95,7 @@ enum DirectionRenderMode {
 @export_group("Physics")
 
 ## Player movement speed in tiles per second
-@export_range(1.0, 50.0) var player_speed_tiles: float = 5.0
+@export_range(1.0, 50.0) var player_speed_tiles: float = 10.0
 
 ## ============================================================================
 ## SECTION: Weapons (Phase 3)
@@ -295,33 +295,33 @@ var weapon_stats: Dictionary = {
 
 @export_range(4.0, 64.0) var wall_thickness: float = 16.0
 
-@export_range(40.0, 320.0) var door_opening_uniform: float = 112.0
-@export_range(40.0, 300.0) var door_opening_min: float = 96.0
-@export_range(40.0, 400.0) var door_opening_max: float = 128.0
+@export_range(40.0, 320.0) var door_opening_uniform: float = 75.0
+@export_range(40.0, 300.0) var door_opening_min: float = 75.0
+@export_range(40.0, 400.0) var door_opening_max: float = 75.0
 @export_range(0.0, 100.0) var door_from_corner_min: float = 48.0
-@export_range(1, 5) var max_doors_per_room: int = 2
+@export_range(1, 5) var max_doors_per_room: int = 3
 @export_range(0, 3) var extra_loops_max: int = 1
 
 @export_range(0, 5) var corridor_count_min: int = 1
 @export_range(0, 5) var corridor_count_max: int = 3
 @export_range(40.0, 200.0) var corridor_w_min: float = 128.0
 @export_range(40.0, 300.0) var corridor_w_max: float = 128.0
-@export_range(100.0, 600.0) var corridor_len_min: float = 320.0
+@export_range(100.0, 600.0) var corridor_len_min: float = 220.0
 @export_range(0.0, 1.0) var corridor_area_cap: float = 0.25
 @export_range(0, 3) var corridor_bends_max: int = 1
 
-@export_range(60.0, 800.0) var room_min_w: float = 220.0
-@export_range(60.0, 800.0) var room_min_h: float = 200.0
-@export_range(100.0, 1200.0) var room_max_w: float = 520.0
-@export_range(100.0, 1200.0) var room_max_h: float = 420.0
+@export_range(60.0, 800.0) var room_min_w: float = 150.0
+@export_range(60.0, 800.0) var room_min_h: float = 140.0
+@export_range(100.0, 1200.0) var room_max_w: float = 350.0
+@export_range(100.0, 1200.0) var room_max_h: float = 280.0
 @export_range(0.2, 5.0) var room_aspect_min: float = 0.65
 @export_range(0.2, 5.0) var room_aspect_max: float = 1.75
 
 @export_range(0, 5) var big_rooms_target: int = 2
-@export_range(100.0, 800.0) var big_room_min_w: float = 360.0
-@export_range(100.0, 800.0) var big_room_min_h: float = 280.0
+@export_range(100.0, 800.0) var big_room_min_w: float = 240.0
+@export_range(100.0, 800.0) var big_room_min_h: float = 190.0
 
-@export_range(0.0, 1.0) var l_room_chance: float = 0.12
+@export_range(0.0, 1.0) var l_room_chance: float = 0.35
 @export_range(40.0, 400.0) var l_leg_min: float = 160.0
 @export_range(0.0, 1.0) var l_cut_max_frac: float = 0.40
 @export_range(0.0, 100.0) var inner_padding: float = 32.0
@@ -371,7 +371,7 @@ func reset_to_defaults() -> void:
 	music_fade_out_sec = 0.7
 
 	# Physics
-	player_speed_tiles = 5.0
+	player_speed_tiles = 10.0
 
 	# Weapons
 	weapon_stats = {
@@ -483,29 +483,29 @@ func reset_to_defaults() -> void:
 	rooms_count_min = 9
 	rooms_count_max = 15
 	wall_thickness = 16.0
-	door_opening_uniform = 112.0
-	door_opening_min = 96.0
-	door_opening_max = 128.0
+	door_opening_uniform = 75.0
+	door_opening_min = 75.0
+	door_opening_max = 75.0
 	door_from_corner_min = 48.0
-	max_doors_per_room = 2
+	max_doors_per_room = 3
 	extra_loops_max = 1
 	corridor_count_min = 1
 	corridor_count_max = 3
 	corridor_w_min = 128.0
 	corridor_w_max = 128.0
-	corridor_len_min = 320.0
+	corridor_len_min = 220.0
 	corridor_bends_max = 1
 	corridor_area_cap = 0.25
-	room_min_w = 220.0
-	room_min_h = 200.0
-	room_max_w = 520.0
-	room_max_h = 420.0
+	room_min_w = 150.0
+	room_min_h = 140.0
+	room_max_w = 350.0
+	room_max_h = 280.0
 	room_aspect_min = 0.65
 	room_aspect_max = 1.75
 	big_rooms_target = 2
-	big_room_min_w = 360.0
-	big_room_min_h = 280.0
-	l_room_chance = 0.12
+	big_room_min_w = 240.0
+	big_room_min_h = 190.0
+	l_room_chance = 0.35
 	l_leg_min = 160.0
 	l_cut_max_frac = 0.40
 	inner_padding = 32.0

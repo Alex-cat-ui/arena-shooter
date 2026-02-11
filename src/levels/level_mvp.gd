@@ -59,6 +59,7 @@ var layout_walls: Node2D = null
 var layout_debug: Node2D = null
 var _layout: ProceduralLayout = null
 var _walkable_floor: Node2D = null
+var _non_walkable_floor_bg: Sprite2D = null
 
 ## Start delay timer
 var _start_delay_timer: float = 0.0
@@ -76,6 +77,18 @@ var _vignette_rect: ColorRect = null
 var _floor_overlay: ColorRect = null
 var _debug_container: VBoxContainer = null
 var _momentum_label: Label = null
+var _camera_follow_pos: Vector2 = Vector2.ZERO
+var _camera_follow_initialized: bool = false
+var _layout_room_stats: Dictionary = {
+	"corridors": 0,
+	"interior_rooms": 0,
+	"exterior_rooms": 0,
+	"closets": 0,
+}
+
+const CAMERA_FOLLOW_LERP_MOVING := 5.0
+const CAMERA_FOLLOW_LERP_STOPPING := 2.0
+const CAMERA_VELOCITY_EPSILON := 6.0
 
 
 func _ready() -> void:
@@ -127,14 +140,14 @@ func _random_arena_rect() -> Rect2:
 	var cx := 0.0
 	var cy := 0.0
 	if preset == ArenaPreset.SQUARE:
-		var s := randf_range(2100.0, 2700.0)
+		var s := randf_range(1400.0, 1800.0)
 		return Rect2(cx - s * 0.5, cy - s * 0.5, s, s)
 	elif preset == ArenaPreset.LANDSCAPE:
-		var h := randf_range(1650.0, 2100.0)
+		var h := randf_range(1100.0, 1400.0)
 		var w := h * randf_range(1.3, 1.6)
 		return Rect2(cx - w * 0.5, cy - h * 0.5, w, h)
 	else:  # PORTRAIT
-		var w := randf_range(1650.0, 2100.0)
+		var w := randf_range(1100.0, 1400.0)
 		var h := w * randf_range(1.3, 1.6)
 		return Rect2(cx - w * 0.5, cy - h * 0.5, w, h)
 
@@ -201,6 +214,8 @@ func _init_systems() -> void:
 	arena_boundary = ArenaBoundary.new()
 	arena_boundary.name = "ArenaBoundary"
 	arena_boundary.z_index = -1  # Behind entities
+	# Disabled by default: rectangular dark silhouette conflicts with irregular HM-style shapes.
+	arena_boundary.visible = false
 	add_child(arena_boundary)
 	# Random arena shape
 	if GameConfig and GameConfig.procedural_layout_enabled:
@@ -230,6 +245,8 @@ func _init_systems() -> void:
 			s = int(Time.get_ticks_msec()) % 999999
 		_layout = ProceduralLayout.generate_and_build(arena_rect, s, layout_walls, layout_debug, player)
 	_rebuild_walkable_floor()
+	_update_layout_room_stats()
+	_reset_camera_follow()
 
 	# Ensure player collision_mask includes bit 1 (walls)
 	if player and player is CharacterBody2D:
@@ -260,8 +277,57 @@ func _ensure_walkable_floor_node() -> void:
 func _clear_walkable_floor() -> void:
 	if not _walkable_floor:
 		return
+	_non_walkable_floor_bg = null
 	for child in _walkable_floor.get_children():
 		child.queue_free()
+
+
+func _ensure_non_walkable_background() -> void:
+	if not _walkable_floor:
+		return
+	var bg_bounds := _compute_layout_render_bounds()
+	if _non_walkable_floor_bg and is_instance_valid(_non_walkable_floor_bg):
+		_non_walkable_floor_bg.position = bg_bounds.get_center()
+		_non_walkable_floor_bg.scale = bg_bounds.size
+		return
+
+	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	img.set_pixel(0, 0, Color.BLACK)
+	var tex := ImageTexture.create_from_image(img)
+
+	var bg := Sprite2D.new()
+	bg.name = "NonWalkableBlack"
+	bg.texture = tex
+	bg.centered = true
+	bg.position = bg_bounds.get_center()
+	bg.scale = bg_bounds.size
+	bg.z_index = -50
+	_walkable_floor.add_child(bg)
+	_non_walkable_floor_bg = bg
+
+
+func _compute_layout_render_bounds() -> Rect2:
+	var bounds := Rect2(_arena_min, _arena_max - _arena_min)
+	if not _layout or not _layout.valid:
+		return bounds
+
+	var has_rect := false
+	var merged := Rect2()
+	for i in range(_layout.rooms.size()):
+		if i in _layout._void_ids:
+			continue
+		var room: Dictionary = _layout.rooms[i]
+		for rect_variant in (room["rects"] as Array):
+			var r := rect_variant as Rect2
+			if not has_rect:
+				merged = r
+				has_rect = true
+			else:
+				merged = merged.merge(r)
+
+	if not has_rect:
+		return bounds
+	return bounds.merge(merged).grow(220.0)
 
 
 func _rebuild_walkable_floor() -> void:
@@ -279,6 +345,7 @@ func _rebuild_walkable_floor() -> void:
 		return
 
 	floor_sprite.visible = false
+	_ensure_non_walkable_background()
 	var sx := floor_sprite.scale.x
 	var sy := floor_sprite.scale.y
 	if absf(sx) < 0.0001:
@@ -308,6 +375,7 @@ func _rebuild_walkable_floor() -> void:
 				r.size.x / sx,
 				r.size.y / sy
 			)
+			patch.z_index = -40
 			_walkable_floor.add_child(patch)
 
 
@@ -394,32 +462,7 @@ func _create_vignette() -> void:
 
 
 func _create_floor_overlay() -> void:
-	# Subtle dark overlay on floor for readability
-	_floor_overlay = ColorRect.new()
-	_floor_overlay.name = "FloorOverlay"
-	_floor_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var overlay_alpha := GameConfig.floor_overlay_alpha if GameConfig else 0.15
-	_floor_overlay.color = Color(0, 0, 0, overlay_alpha)
-	# Position over arena floor (world space)
-	_floor_overlay.position = _arena_min
-	_floor_overlay.size = _arena_max - _arena_min
-	# Add as Node2D child (not CanvasLayer) so it's in world space
-	var overlay_node := Node2D.new()
-	overlay_node.name = "FloorOverlayNode"
-	overlay_node.z_index = -8  # Above floor decals, below blood
-	add_child(overlay_node)
-	# Use a Sprite2D with generated texture instead for world-space overlay
-	var overlay_sprite := Sprite2D.new()
-	var arena_w := int(_arena_max.x - _arena_min.x)
-	var arena_h := int(_arena_max.y - _arena_min.y)
-	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
-	img.set_pixel(0, 0, Color(0, 0, 0, overlay_alpha))
-	overlay_sprite.texture = ImageTexture.create_from_image(img)
-	overlay_sprite.scale = Vector2(arena_w, arena_h)
-	overlay_sprite.position = (_arena_min + _arena_max) / 2.0
-	overlay_node.add_child(overlay_sprite)
-	# Remove the ColorRect since we're using world-space sprite
-	_floor_overlay.queue_free()
+	# Disabled: full-rect dark overlay reintroduces the "box silhouette" behind layout.
 	_floor_overlay = null
 
 
@@ -430,7 +473,7 @@ func _create_debug_overlay() -> void:
 	_debug_container.anchor_bottom = 1.0
 	_debug_container.offset_left = 10.0
 	_debug_container.offset_bottom = -10.0
-	_debug_container.offset_top = -120.0
+	_debug_container.offset_top = -145.0
 	_debug_container.offset_right = 400.0
 	_debug_container.visible = _debug_overlay_visible
 	hud.add_child(_debug_container)
@@ -460,6 +503,11 @@ func _create_debug_overlay() -> void:
 	layout_label.name = "LayoutLabel"
 	layout_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
 	_debug_container.add_child(layout_label)
+
+	var room_types_label := Label.new()
+	room_types_label.name = "RoomTypesLabel"
+	room_types_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
+	_debug_container.add_child(room_types_label)
 
 
 func _style_hud_labels() -> void:
@@ -540,7 +588,14 @@ func _process(delta: float) -> void:
 
 	# Camera follows player (CANON: no rotation)
 	if player and camera:
-		camera.position = player.position
+		if not _camera_follow_initialized:
+			_camera_follow_pos = player.position
+			_camera_follow_initialized = true
+		var speed := player.velocity.length()
+		var follow_speed := CAMERA_FOLLOW_LERP_MOVING if speed > CAMERA_VELOCITY_EPSILON else CAMERA_FOLLOW_LERP_STOPPING
+		var w := clampf(1.0 - exp(-follow_speed * delta), 0.0, 1.0)
+		_camera_follow_pos = _camera_follow_pos.lerp(player.position, w)
+		camera.position = _camera_follow_pos
 		camera.rotation = 0  # Ensure no rotation
 		# Phase 3: Apply camera shake
 		if camera_shake:
@@ -693,6 +748,15 @@ func _update_debug_overlay() -> void:
 			else:
 				layout_label.text = "Layout: disabled"
 
+	var room_types_label := _debug_container.get_node_or_null("RoomTypesLabel") as Label
+	if room_types_label:
+		room_types_label.text = "RoomTypes: corr=%d | inner=%d | outer=%d | closet=%d" % [
+			int(_layout_room_stats["corridors"]),
+			int(_layout_room_stats["interior_rooms"]),
+			int(_layout_room_stats["exterior_rooms"]),
+			int(_layout_room_stats["closets"]),
+		]
+
 
 ## ============================================================================
 ## EVENT HANDLERS
@@ -787,6 +851,49 @@ func regenerate_layout(new_seed: int = 0) -> void:
 		s = int(Time.get_ticks_msec()) % 999999
 	_layout = ProceduralLayout.generate_and_build(arena_rect, s, layout_walls, layout_debug, player)
 	_rebuild_walkable_floor()
+	_update_layout_room_stats()
+	_reset_camera_follow()
+
+
+func _reset_camera_follow() -> void:
+	if not player or not camera:
+		return
+	_camera_follow_pos = player.position
+	_camera_follow_initialized = true
+	camera.position = _camera_follow_pos
+
+
+func _update_layout_room_stats() -> void:
+	_layout_room_stats["corridors"] = 0
+	_layout_room_stats["interior_rooms"] = 0
+	_layout_room_stats["exterior_rooms"] = 0
+	_layout_room_stats["closets"] = 0
+
+	if not _layout or not _layout.valid:
+		print("[LevelMVP] Room stats: layout invalid or disabled")
+		return
+
+	for i in range(_layout.rooms.size()):
+		if i in _layout._void_ids:
+			continue
+		var room: Dictionary = _layout.rooms[i]
+		if room["is_corridor"] == true:
+			_layout_room_stats["corridors"] = int(_layout_room_stats["corridors"]) + 1
+			continue
+		if _layout._is_closet_room(i):
+			_layout_room_stats["closets"] = int(_layout_room_stats["closets"]) + 1
+			continue
+		if _layout._room_touch_perimeter(i):
+			_layout_room_stats["exterior_rooms"] = int(_layout_room_stats["exterior_rooms"]) + 1
+		else:
+			_layout_room_stats["interior_rooms"] = int(_layout_room_stats["interior_rooms"]) + 1
+
+	print("[LevelMVP] Room stats: corr=%d inner=%d outer=%d closet=%d" % [
+		int(_layout_room_stats["corridors"]),
+		int(_layout_room_stats["interior_rooms"]),
+		int(_layout_room_stats["exterior_rooms"]),
+		int(_layout_room_stats["closets"]),
+	])
 
 
 ## ============================================================================

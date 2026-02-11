@@ -10,6 +10,9 @@ const MIN_AVG_BLOCKERS := 0.0
 const MAX_LINEAR_PATH_FAILS := 0
 const MAX_WALKABILITY_FAILS := 0
 const MAX_UNREACHABLE_CELLS_PER_LAYOUT := 1
+const MAX_TOTAL_PSEUDO_GAPS := 0
+const MAX_TOTAL_NORTH_EXIT_FAILS := 0
+const MAX_AVG_OUTER_RUN_PCT := 86.0
 
 
 func _ready() -> void:
@@ -40,6 +43,9 @@ func _ready() -> void:
 	var total_main_path_turns := 0
 	var total_main_path_edges := 0
 	var total_main_path_straight := 0
+	var total_pseudo_gaps := 0
+	var total_north_exit_fails := 0
+	var total_outer_run_pct := 0.0
 
 	for s in range(1, SEED_COUNT + 1):
 		for child in walls_node.get_children():
@@ -56,6 +62,9 @@ func _ready() -> void:
 		total_main_path_turns += layout.main_path_turns_stat
 		total_main_path_edges += layout.main_path_edges_stat
 		total_main_path_straight += layout.main_path_straight_run_stat
+		total_pseudo_gaps += layout.pseudo_gap_count_stat
+		total_north_exit_fails += layout.north_core_exit_fail_stat
+		total_outer_run_pct += layout.outer_longest_run_pct_stat
 		if layout.walk_unreachable_cells_stat > MAX_UNREACHABLE_CELLS_PER_LAYOUT:
 			walkability_failures += 1
 		if layout.main_path_edges_stat >= 4 and layout.main_path_turns_stat < 1:
@@ -96,6 +105,7 @@ func _ready() -> void:
 	var avg_unreachable := float(total_unreachable_cells) / maxf(float(SEED_COUNT), 1.0)
 	var avg_turns := float(total_main_path_turns) / maxf(float(SEED_COUNT), 1.0)
 	var avg_straight_run := float(total_main_path_straight) / maxf(float(SEED_COUNT), 1.0)
+	var avg_outer_run_pct := total_outer_run_pct / maxf(float(SEED_COUNT), 1.0)
 
 	print("\n" + "-".repeat(68))
 	print("Visual metrics")
@@ -109,6 +119,9 @@ func _ready() -> void:
 	print("  avg unreachable cells:      %.2f" % avg_unreachable)
 	print("  avg main path turns:        %.2f" % avg_turns)
 	print("  avg main straight run:      %.2f" % avg_straight_run)
+	print("  total pseudo gaps:          %d (target <= %d)" % [total_pseudo_gaps, MAX_TOTAL_PSEUDO_GAPS])
+	print("  total north exit fails:     %d (target <= %d)" % [total_north_exit_fails, MAX_TOTAL_NORTH_EXIT_FAILS])
+	print("  avg outer longest run %%:    %.2f (target <= %.2f)" % [avg_outer_run_pct, MAX_AVG_OUTER_RUN_PCT])
 	print("-".repeat(68))
 
 	var is_pass := true
@@ -125,6 +138,12 @@ func _ready() -> void:
 	if linear_path_failures > MAX_LINEAR_PATH_FAILS:
 		is_pass = false
 	if walkability_failures > MAX_WALKABILITY_FAILS:
+		is_pass = false
+	if total_pseudo_gaps > MAX_TOTAL_PSEUDO_GAPS:
+		is_pass = false
+	if total_north_exit_fails > MAX_TOTAL_NORTH_EXIT_FAILS:
+		is_pass = false
+	if avg_outer_run_pct > MAX_AVG_OUTER_RUN_PCT:
 		is_pass = false
 
 	print("RESULT: %s" % ("PASS" if is_pass else "FAIL"))
