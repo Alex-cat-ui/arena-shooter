@@ -38,6 +38,8 @@ func _ready() -> void:
 	var total_dead_ends := 0
 	var total_notched_rooms := 0
 	var total_t_u_rooms := 0
+	var total_central_missing := 0
+	var total_non_uniform_door_layouts := 0
 
 	for s in range(1, SEED_COUNT + 1):
 		for child in walls_node.get_children():
@@ -60,6 +62,38 @@ func _ready() -> void:
 		var dead_end_count := 0
 		var notched_rooms_count := 0
 		var t_u_rooms_count := layout._t_u_room_ids.size()
+		var central_missing := 0
+		var door_size_variants: Dictionary = {}
+
+		for door_variant in layout.doors:
+			var door_rect := door_variant as Rect2
+			var opening_len := maxf(door_rect.size.x, door_rect.size.y)
+			var opening_key := str(int(roundf(opening_len)))
+			door_size_variants[opening_key] = true
+
+		var unique_hubs: Array = []
+		for hub_variant in layout._hub_ids:
+			var hub_id := int(hub_variant)
+			if hub_id not in unique_hubs:
+				unique_hubs.append(hub_id)
+		for hub_id in unique_hubs:
+			if hub_id in layout._void_ids:
+				continue
+			if not layout._leaf_adj.has(hub_id):
+				continue
+			for n_variant in (layout._leaf_adj[hub_id] as Array):
+				var ni := int(n_variant)
+				if ni in layout._void_ids or ni == hub_id:
+					continue
+				var seg := layout._find_shared_split_seg(hub_id, ni)
+				if seg.is_empty():
+					continue
+				if not layout._door_adj.has(hub_id):
+					continue
+				if ni in (layout._door_adj[hub_id] as Array):
+					continue
+				if layout._can_add_door_between(hub_id, ni) and layout._can_place_door_on_split(hub_id, ni, seg):
+					central_missing += 1
 
 		for i in range(layout.rooms.size()):
 			if i in layout._void_ids:
@@ -94,7 +128,7 @@ func _ready() -> void:
 				if deg != 1:
 					closet_bad_entries_found += 1
 
-		print("\n  seed=%d valid=%s mode=%s count_rooms=%d count_corridors=%d closets=%d closet_bad_entries=%d gut_rects=%d bad_edge_corridors=%d dead_end=%d notched=%d t_u=%d" % [
+		print("\n  seed=%d valid=%s mode=%s count_rooms=%d count_corridors=%d closets=%d closet_bad_entries=%d gut_rects=%d bad_edge_corridors=%d dead_end=%d notched=%d t_u=%d central_missing=%d door_variants=%d" % [
 			s,
 			str(layout.valid),
 			mode_name,
@@ -107,6 +141,8 @@ func _ready() -> void:
 			dead_end_count,
 			notched_rooms_count,
 			t_u_rooms_count,
+			central_missing,
+			door_size_variants.size(),
 		])
 
 		if layout.valid:
@@ -123,6 +159,9 @@ func _ready() -> void:
 		total_dead_ends += dead_end_count
 		total_notched_rooms += notched_rooms_count
 		total_t_u_rooms += t_u_rooms_count
+		total_central_missing += central_missing
+		if door_size_variants.size() > 1:
+			total_non_uniform_door_layouts += 1
 
 	print("\n")
 	print("=".repeat(60))
@@ -139,6 +178,8 @@ func _ready() -> void:
 	print("  Avg dead_end_count:       %.2f" % (float(total_dead_ends) / float(SEED_COUNT)))
 	print("  Avg notched_rooms_count:  %.2f" % (float(total_notched_rooms) / float(SEED_COUNT)))
 	print("  Avg t_u_rooms_count:      %.2f" % (float(total_t_u_rooms) / float(SEED_COUNT)))
+	print("  Total central_missing:    %d" % total_central_missing)
+	print("  Non-uniform door layouts: %d" % total_non_uniform_door_layouts)
 	print("")
 	print("  composition_mode_stats:")
 	var sorted_modes: Array = composition_mode_stats.keys()
@@ -157,5 +198,7 @@ func _ready() -> void:
 		or total_gut_rects > 0
 		or total_bad_edge_corridors > 0
 		or total_closet_bad_entries > 0
+		or total_central_missing > 0
+		or total_non_uniform_door_layouts > 0
 	)
 	get_tree().quit(1 if has_errors else 0)

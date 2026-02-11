@@ -1,5 +1,21 @@
 # Arena Shooter Changelog
 
+## 2026-02-11
+
+### Door uniformity + central adjacency + walkable grass
+- Changed: procedural doors now use a uniform opening size from config (`door_opening_uniform`), with no relaxed smaller-door fallback in composition/connectivity repair.
+- Added: hub-adjacency enforcement pass (`_enforce_hub_adjacent_doors`) so central rooms connect to feasible adjacent rooms under existing caps/checks.
+- Changed: tighter door overlap spacing to reduce narrow/stacked pseudo-entries near neighboring doors.
+- Changed: extra pseudo-closet validation for non-corridor geometry (`min<128 && aspect>2.5` invalid; multi-rect closet-like fragments invalid).
+- Added: floor rendering in `level_mvp` now paints grass only over walkable room rects; full-arena floor sprite is hidden when procedural layout is valid.
+- Updated tests:
+  - `tests/test_layout_stats.gd` now logs/fails on `central_missing` and non-uniform door variants.
+- Result:
+  - `test_layout_stats`: PASS (`central_missing=0`, `door_variants=1`, `gut=0`, `bad_edge=0`).
+  - `test_hotline_similarity`: PASS (`95.25/100`).
+  - `test_layout_visual_regression`: PASS.
+- Files: `src/systems/procedural_layout.gd`, `src/core/game_config.gd`, `src/levels/level_mvp.gd`, `tests/test_layout_stats.gd`
+
 ## 2026-02-10
 
 ### Closet access + anti-floating-wall fix

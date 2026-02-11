@@ -239,6 +239,9 @@ func _generate() -> void:
 		if not _enforce_composition():
 			_composition_ok = false
 			return
+		if not _enforce_hub_adjacent_doors():
+			_composition_ok = false
+			return
 
 	# 8) Optional extra loops (0..1)
 	var el_max: int = mini(GameConfig.extra_loops_max if GameConfig else 1, 1)
@@ -1013,6 +1016,31 @@ func _door_bend_bonus(a: int, b: int, split_type: String) -> float:
 	if split_type == "V":
 		return absf(ca.y - cb.y)
 	return absf(ca.x - cb.x)
+
+
+func _door_opening_len() -> float:
+	if GameConfig:
+		var uniform := float(GameConfig.door_opening_uniform)
+		if uniform > 0.0:
+			return clampf(uniform, 40.0, 320.0)
+		var avg := (float(GameConfig.door_opening_min) + float(GameConfig.door_opening_max)) * 0.5
+		return clampf(avg, 40.0, 320.0)
+	return 112.0
+
+
+func _door_corner_clearance() -> float:
+	return GameConfig.door_from_corner_min if GameConfig else 48.0
+
+
+func _door_wall_thickness() -> float:
+	return GameConfig.wall_thickness if GameConfig else 16.0
+
+
+func _is_closet_rect(r: Rect2) -> bool:
+	var min_side := minf(r.size.x, r.size.y)
+	if min_side < 96.0 or min_side > 127.0:
+		return false
+	return _rect_aspect(r) <= 2.5
 
 
 func _max_doors_for_room(room_id: int) -> int:
@@ -1803,10 +1831,7 @@ func _is_closet_room(room_id: int) -> bool:
 	if rects.size() != 1:
 		return false
 	var base := rects[0] as Rect2
-	var min_side := minf(base.size.x, base.size.y)
-	if min_side < 96.0 or min_side > 127.0:
-		return false
-	return _rect_aspect(base) <= 2.5
+	return _is_closet_rect(base)
 
 
 func _apply_interior_blockers() -> void:
@@ -1989,10 +2014,9 @@ func _create_doors_bsp(node: Dictionary) -> void:
 	var left_ids := _get_leaf_ids(node["left"])
 	var right_ids := _get_leaf_ids(node["right"])
 
-	var door_min: float = GameConfig.door_opening_min if GameConfig else 96.0
-	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
-	var corner_min: float = GameConfig.door_from_corner_min if GameConfig else 48.0
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
 
 	# Compute split info directly from node children
 	var split_type: String = ""
@@ -2061,7 +2085,7 @@ func _create_doors_bsp(node: Dictionary) -> void:
 			if b in (_door_adj[a] as Array):
 				continue
 
-		var door := _make_door_on_split_line(split_type, split_pos, a, b, door_min, door_max, corner_min, wall_t)
+		var door := _make_door_on_split_line(split_type, split_pos, a, b, door_len, door_len, corner_min, wall_t)
 		if _try_add_door(a, b, door):
 			doors_on_split += 1
 
@@ -2100,9 +2124,9 @@ func _make_door_on_split_line(split_type: String, split_pos: float, a: int, b: i
 		return Rect2(dx, split_pos - wall_t * 0.5, door_len, wall_t)
 
 
-## Check if a candidate door overlaps an existing door on same wall line within 48px
+## Check if a candidate door overlaps an existing door on same wall line.
 func _door_too_close(candidate: Rect2) -> bool:
-	var min_spacing := 48.0
+	var min_spacing := clampf(_door_opening_len() * 0.75, 64.0, 128.0)
 	for existing_dm in _door_map:
 		var er: Rect2 = existing_dm["rect"]
 		if absf(candidate.position.x - er.position.x) < 8.0:
@@ -2148,10 +2172,9 @@ func _add_extra_loops(max_extra: int) -> void:
 	if max_extra <= 0:
 		return
 
-	var door_min: float = GameConfig.door_opening_min if GameConfig else 96.0
-	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
-	var corner_min: float = GameConfig.door_from_corner_min if GameConfig else 48.0
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
 	var candidates: Array = []
 	for i in range(rooms.size()):
 		if i in _void_ids:
@@ -2173,7 +2196,7 @@ func _add_extra_loops(max_extra: int) -> void:
 				continue
 			var door := _make_door_on_split_line(
 				seg["type"] as String, float(seg["pos"]),
-				i, j, door_min, door_max, corner_min, wall_t)
+				i, j, door_len, door_len, corner_min, wall_t)
 			if door.size != Vector2.ZERO and not _door_too_close(door):
 				var r0_area := _room_total_area(i)
 				var r1_area := _room_total_area(j)
@@ -2200,6 +2223,91 @@ func _find_shared_split_seg(room_a: int, room_b: int) -> Dictionary:
 	return {}
 
 
+func _door_span_on_split(split_type: String, a: int, b: int, corner_min: float) -> Dictionary:
+	var ra := _room_bounding_box(a)
+	var rb := _room_bounding_box(b)
+	if split_type == "V":
+		var t0 := maxf(ra.position.y, rb.position.y) + corner_min
+		var t1 := minf(ra.end.y, rb.end.y) - corner_min
+		return {"ok": t1 - t0 > 0.0, "t0": t0, "t1": t1}
+	var h0 := maxf(ra.position.x, rb.position.x) + corner_min
+	var h1 := minf(ra.end.x, rb.end.x) - corner_min
+	return {"ok": h1 - h0 > 0.0, "t0": h0, "t1": h1}
+
+
+func _door_rect_for_span(split_type: String, split_pos: float, span_start: float, door_len: float, wall_t: float) -> Rect2:
+	if split_type == "V":
+		return Rect2(split_pos - wall_t * 0.5, span_start, wall_t, door_len)
+	return Rect2(span_start, split_pos - wall_t * 0.5, door_len, wall_t)
+
+
+func _door_candidates_on_split_line(split_type: String, split_pos: float, a: int, b: int, door_len: float, corner_min: float, wall_t: float) -> Array:
+	var span := _door_span_on_split(split_type, a, b, corner_min)
+	if not bool(span["ok"]):
+		return []
+	var t0 := float(span["t0"])
+	var t1 := float(span["t1"])
+	var available := t1 - t0
+	if available < door_len:
+		return []
+
+	var max_start := t1 - door_len
+	var center_start := clampf((t0 + t1) * 0.5 - door_len * 0.5, t0, max_start)
+	var starts: Array = [center_start, t0, max_start]
+	if available > door_len * 1.4:
+		starts.append(clampf(t0 + available * 0.25 - door_len * 0.5, t0, max_start))
+		starts.append(clampf(t0 + available * 0.75 - door_len * 0.5, t0, max_start))
+
+	var unique_starts: Array = []
+	for st_variant in starts:
+		var st := float(st_variant)
+		var duplicate := false
+		for us_variant in unique_starts:
+			if absf(float(us_variant) - st) < 1.0:
+				duplicate = true
+				break
+		if not duplicate:
+			unique_starts.append(st)
+
+	var candidates: Array = []
+	for us_variant in unique_starts:
+		candidates.append(_door_rect_for_span(split_type, split_pos, float(us_variant), door_len, wall_t))
+	return candidates
+
+
+func _can_place_door_on_split(a: int, b: int, seg: Dictionary) -> bool:
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
+	var split_type := seg["type"] as String
+	var split_pos := float(seg["pos"])
+	var candidates := _door_candidates_on_split_line(split_type, split_pos, a, b, door_len, corner_min, wall_t)
+	for c in candidates:
+		var rect := c as Rect2
+		if not _door_too_close(rect):
+			return true
+	return false
+
+
+func _try_add_door_on_split(a: int, b: int, seg: Dictionary) -> bool:
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
+	var split_type := seg["type"] as String
+	var split_pos := float(seg["pos"])
+
+	var candidates := _door_candidates_on_split_line(split_type, split_pos, a, b, door_len, corner_min, wall_t)
+	for c in candidates:
+		if _try_add_door(a, b, c as Rect2):
+			return true
+
+	for _attempt in range(5):
+		var random_candidate := _make_door_on_split_line(split_type, split_pos, a, b, door_len, door_len, corner_min, wall_t)
+		if _try_add_door(a, b, random_candidate):
+			return true
+	return false
+
+
 ## ============================================================================
 ## COMPOSITION ENFORCEMENT (Part 4)
 ## ============================================================================
@@ -2217,6 +2325,69 @@ func _enforce_composition() -> bool:
 	return true
 
 
+func _enforce_hub_adjacent_doors() -> bool:
+	if _hub_ids.is_empty():
+		return true
+
+	var hub_ids: Array = []
+	for hub_variant in _hub_ids:
+		var hub := int(hub_variant)
+		if hub in _void_ids:
+			continue
+		if hub not in hub_ids:
+			hub_ids.append(hub)
+
+	for hub in hub_ids:
+		if not _leaf_adj.has(hub):
+			continue
+
+		var candidates: Array = []
+		for n_variant in (_leaf_adj[hub] as Array):
+			var ni := int(n_variant)
+			if ni in _void_ids or ni == hub:
+				continue
+			var seg := _find_shared_split_seg(hub, ni)
+			if seg.is_empty():
+				continue
+			candidates.append({
+				"id": ni,
+				"seg": seg,
+				"priority": _door_pair_priority(hub, ni),
+				"area": _room_total_area(ni),
+			})
+
+		candidates.sort_custom(func(a, b):
+			var pa := float(a["priority"])
+			var pb := float(b["priority"])
+			if absf(pa - pb) > 0.1:
+				return pa > pb
+			return float(a["area"]) > float(b["area"]))
+
+		for candidate in candidates:
+			var ni := int(candidate["id"])
+			if ni in (_door_adj[hub] as Array):
+				continue
+			if not _can_add_door_between(hub, ni):
+				continue
+			if _try_add_door_on_split(hub, ni, candidate["seg"] as Dictionary):
+				var pa := mini(hub, ni)
+				var pb := maxi(hub, ni)
+				if not _is_protected_door(pa, pb):
+					_protected_doors.append({"a": pa, "b": pb})
+
+		for candidate in candidates:
+			var ni := int(candidate["id"])
+			if ni in (_door_adj[hub] as Array):
+				continue
+			if not _can_add_door_between(hub, ni):
+				continue
+			var seg := candidate["seg"] as Dictionary
+			if _can_place_door_on_split(hub, ni, seg):
+				return false
+
+	return true
+
+
 func _enforce_composition_hall() -> bool:
 	if _hub_ids.is_empty():
 		return false
@@ -2224,10 +2395,9 @@ func _enforce_composition_hall() -> bool:
 	if hub in _void_ids:
 		return false
 
-	var door_min: float = GameConfig.door_opening_min if GameConfig else 96.0
-	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
-	var corner_min: float = GameConfig.door_from_corner_min if GameConfig else 48.0
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
 
 	# Target degree 2..4, capped by door limits
 	var target_deg := mini(randi_range(2, 4), _max_doors_for_room(hub))
@@ -2256,7 +2426,7 @@ func _enforce_composition_hall() -> bool:
 		var seg := _find_shared_split_seg(hub, ni)
 		if seg.is_empty():
 			continue
-		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), hub, ni, door_min, door_max, corner_min, wall_t)
+		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), hub, ni, door_len, door_len, corner_min, wall_t)
 		if _try_add_door(hub, ni, door):
 			_protected_doors.append({"a": mini(hub, ni), "b": maxi(hub, ni)})
 			current_deg += 1
@@ -2280,10 +2450,9 @@ func _enforce_composition_spine() -> bool:
 	if spine in _void_ids:
 		return false
 
-	var door_min: float = GameConfig.door_opening_min if GameConfig else 96.0
-	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
-	var corner_min: float = GameConfig.door_from_corner_min if GameConfig else 48.0
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
 
 	# Mark spine doors as protected
 	for n in _door_adj[spine]:
@@ -2325,20 +2494,14 @@ func _enforce_composition_spine() -> bool:
 				var seg := _find_shared_split_seg(i, ni)
 				if seg.is_empty():
 					continue
-				var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), i, ni, door_min, door_max, corner_min, wall_t)
+				var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), i, ni, door_len, door_len, corner_min, wall_t)
 				if _try_add_door(i, ni, door):
 					_protected_doors.append({"a": mini(i, ni), "b": maxi(i, ni)})
 					connected = true
 					break
-				# Try relaxed
-				var door2 := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), i, ni, door_min * 0.6, door_max, corner_min * 0.5, wall_t)
-				if _try_add_door(i, ni, door2):
-					_protected_doors.append({"a": mini(i, ni), "b": maxi(i, ni)})
-					connected = true
-					break
 
-		if not connected:
-			return false
+			if not connected:
+				return false
 
 	return true
 
@@ -2347,10 +2510,9 @@ func _enforce_composition_ring() -> bool:
 	if _ring_ids.size() < 3:
 		return false
 
-	var door_min: float = GameConfig.door_opening_min if GameConfig else 96.0
-	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
-	var corner_min: float = GameConfig.door_from_corner_min if GameConfig else 48.0
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
 
 	# Ensure doors on each ring edge (i → i+1, wrapping)
 	for idx in range(_ring_ids.size()):
@@ -2370,16 +2532,11 @@ func _enforce_composition_ring() -> bool:
 		var seg := _find_shared_split_seg(a, b)
 		if seg.is_empty():
 			return false
-		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), a, b, door_min, door_max, corner_min, wall_t)
+		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), a, b, door_len, door_len, corner_min, wall_t)
 		if _try_add_door(a, b, door):
 			_protected_doors.append({"a": pa, "b": pb})
 		else:
-			# Try relaxed constraints
-			var door2 := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), a, b, door_min * 0.6, door_max, corner_min * 0.5, wall_t)
-			if _try_add_door(a, b, door2):
-				_protected_doors.append({"a": pa, "b": pb})
-			else:
-				return false
+			return false
 
 	return true
 
@@ -2392,10 +2549,9 @@ func _enforce_composition_dual_hub() -> bool:
 	if h1 in _void_ids or h2 in _void_ids:
 		return false
 
-	var door_min: float = GameConfig.door_opening_min if GameConfig else 96.0
-	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
-	var corner_min: float = GameConfig.door_from_corner_min if GameConfig else 48.0
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
 
 	var pa := mini(h1, h2)
 	var pb := maxi(h1, h2)
@@ -2405,7 +2561,7 @@ func _enforce_composition_dual_hub() -> bool:
 		var seg := _find_shared_split_seg(h1, h2)
 		if seg.is_empty():
 			return false
-		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), h1, h2, door_min, door_max, corner_min, wall_t)
+		var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), h1, h2, door_len, door_len, corner_min, wall_t)
 		if _try_add_door(h1, h2, door):
 			_protected_doors.append({"a": pa, "b": pb})
 		else:
@@ -2434,7 +2590,7 @@ func _enforce_composition_dual_hub() -> bool:
 			var seg := _find_shared_split_seg(hub, ni)
 			if seg.is_empty():
 				continue
-			var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), hub, ni, door_min, door_max, corner_min, wall_t)
+			var door := _make_door_on_split_line(seg["type"] as String, float(seg["pos"]), hub, ni, door_len, door_len, corner_min, wall_t)
 			if _try_add_door(hub, ni, door):
 				_protected_doors.append({"a": mini(hub, ni), "b": maxi(hub, ni)})
 				current_deg += 1
@@ -2553,10 +2709,9 @@ func _ensure_connectivity() -> bool:
 	if start_id < 0:
 		return false
 
-	var door_min: float = GameConfig.door_opening_min if GameConfig else 96.0
-	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
-	var corner_min: float = GameConfig.door_from_corner_min if GameConfig else 48.0
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var door_len := _door_opening_len()
+	var corner_min := _door_corner_clearance()
+	var wall_t := _door_wall_thickness()
 
 	# Part 7: recompute BFS after each door addition
 	for _pass in range(rooms.size()):
@@ -2571,19 +2726,21 @@ func _ensure_connectivity() -> bool:
 			all_connected = false
 			isolated_fixed += 1
 
-			# Try every visited room that shares a split segment, sorted by distance
+			# Try every visited room that shares a split segment, sorted by distance.
+			# Door size remains fixed to keep all openings uniform.
 			var cand_j: Array = []
 			for j in visited:
 				var seg := _find_shared_split_seg(i, int(j))
-				if not seg.is_empty():
-					var ci: Vector2 = rooms[i]["center"]
-					var cj: Vector2 = rooms[int(j)]["center"]
-					cand_j.append({
-						"j": int(j),
-						"dist": ci.distance_to(cj),
-						"bend": _door_bend_bonus(i, int(j), seg["type"] as String),
-						"seg": seg,
-					})
+				if seg.is_empty():
+					continue
+				var ci: Vector2 = rooms[i]["center"]
+				var cj_pos: Vector2 = rooms[int(j)]["center"]
+				cand_j.append({
+					"j": int(j),
+					"dist": ci.distance_to(cj_pos),
+					"bend": _door_bend_bonus(i, int(j), seg["type"] as String),
+					"seg": seg,
+				})
 			cand_j.sort_custom(func(a, b):
 				var sa := float(a["bend"]) * 0.35 - float(a["dist"])
 				var sb := float(b["bend"]) * 0.35 - float(b["dist"])
@@ -2595,18 +2752,12 @@ func _ensure_connectivity() -> bool:
 			for cj in cand_j:
 				var j_id: int = int(cj["j"])
 				var seg: Dictionary = cj["seg"]
-				# Try normal constraints
+				if not _can_add_door_between(i, j_id):
+					continue
 				var door := _make_door_on_split_line(
 					seg["type"] as String, float(seg["pos"]),
-					i, j_id, door_min, door_max, corner_min, wall_t)
+					i, j_id, door_len, door_len, corner_min, wall_t)
 				if _try_add_door(i, j_id, door):
-					repaired = true
-					break
-				# Try relaxed constraints
-				var door2 := _make_door_on_split_line(
-					seg["type"] as String, float(seg["pos"]),
-					i, j_id, door_min * 0.5, door_max, corner_min * 0.5, wall_t)
-				if _try_add_door(i, j_id, door2):
 					repaired = true
 					break
 
@@ -2645,9 +2796,7 @@ func _arena_is_too_tight() -> bool:
 	return false
 
 
-func _compute_cut_wall_segments_for_validation() -> Array:
-	# Mirrors wall topology assembly from _build_walls, but returns segments only.
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+func _collect_base_wall_segments() -> Array:
 	var base_segs: Array = []
 
 	var ax := _arena.position.x
@@ -2733,6 +2882,14 @@ func _compute_cut_wall_segments_for_validation() -> Array:
 		base_segs.append(seg)
 	for seg in _interior_blocker_segs:
 		base_segs.append(seg)
+
+	return base_segs
+
+
+func _compute_cut_wall_segments_for_validation() -> Array:
+	# Mirrors wall topology assembly from _build_walls, but returns segments only.
+	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
+	var base_segs: Array = _collect_base_wall_segments()
 
 	base_segs = _merge_collinear_segments(base_segs)
 	var all_door_rects: Array = doors.duplicate()
@@ -3027,6 +3184,16 @@ func _validate() -> bool:
 
 		if is_corridor:
 			continue
+
+		for rect in rects:
+			var r := rect as Rect2
+			var min_side := minf(r.size.x, r.size.y)
+			if min_side < 96.0:
+				return false
+			if min_side < 128.0 and _rect_aspect(r) > 2.5:
+				return false
+			if rects.size() > 1 and _is_closet_rect(r):
+				return false
 
 		if _is_closet_room(i):
 			closet_count += 1
@@ -3342,9 +3509,8 @@ func _spiral_search_safe(cb: CharacterBody2D, center: Vector2, max_radius: float
 
 func _compute_entry_gate() -> void:
 	_entry_gate = Rect2()
-	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
-	var door_max: float = GameConfig.door_opening_max if GameConfig else 128.0
-	var gate_width := clampf(door_max * 1.5, 140.0, 220.0)
+	var wall_t := _door_wall_thickness()
+	var gate_width := clampf(_door_opening_len() * 1.5, 140.0, 220.0)
 
 	# Find solid spans on top edge
 	var ay := _arena.position.y
@@ -3410,98 +3576,7 @@ func _build_walls(walls_node: Node2D) -> void:
 	var wall_t: float = GameConfig.wall_thickness if GameConfig else 16.0
 
 	# 1) Base wall segments: VOID-aware perimeter + filtered split lines
-	var base_segs: Array = []
-
-	var ax := _arena.position.x
-	var ay := _arena.position.y
-	var ax1 := _arena.end.x
-	var ay1 := _arena.end.y
-
-	# Perimeter walls only where SOLID room rects touch arena edge.
-	for i in range(rooms.size()):
-		if i in _void_ids:
-			continue
-		for rr in rooms[i]["rects"]:
-			var r := rr as Rect2
-			if absf(r.position.y - ay) < 1.0:
-				base_segs.append({"type": "H", "pos": ay, "t0": r.position.x, "t1": r.end.x})
-			if absf(r.end.y - ay1) < 1.0:
-				base_segs.append({"type": "H", "pos": ay1, "t0": r.position.x, "t1": r.end.x})
-			if absf(r.position.x - ax) < 1.0:
-				base_segs.append({"type": "V", "pos": ax, "t0": r.position.y, "t1": r.end.y})
-			if absf(r.end.x - ax1) < 1.0:
-				base_segs.append({"type": "V", "pos": ax1, "t0": r.position.y, "t1": r.end.y})
-
-	# Internal split walls: skip if ALL leaves on BOTH sides are VOID
-	for ss in _split_segs:
-		var left_ids: Array = ss["left_ids"]
-		var right_ids: Array = ss["right_ids"]
-		var all_left_void := true
-		for lid in left_ids:
-			if int(lid) not in _void_ids:
-				all_left_void = false
-				break
-		var all_right_void := true
-		for rid in right_ids:
-			if int(rid) not in _void_ids:
-				all_right_void = false
-				break
-		if all_left_void and all_right_void:
-			continue
-		base_segs.append({
-			"type": ss["type"],
-			"pos": float(ss["pos"]),
-			"t0": float(ss["t0"]),
-			"t1": float(ss["t1"]),
-		})
-
-	# L-room notch walls (internal walls for cut corners)
-	for notch_data in _l_room_notches:
-		var notch: Rect2 = notch_data["notch_rect"] as Rect2
-		var corner: String = notch_data["corner"] as String
-		match corner:
-			"NE":
-				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
-				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
-			"NW":
-				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
-				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
-			"SE":
-				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
-				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
-			"SW":
-				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
-				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
-
-	# Perimeter notches (3-segment inward walls).
-	for notch_data in _perimeter_notches:
-		var notch: Rect2 = notch_data["notch_rect"] as Rect2
-		var side: String = notch_data["side"] as String
-		match side:
-			"TOP":
-				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
-				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
-				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
-			"BOTTOM":
-				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
-				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
-				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
-			"LEFT":
-				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
-				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
-				base_segs.append({"type": "V", "pos": notch.end.x, "t0": notch.position.y, "t1": notch.end.y})
-			"RIGHT":
-				base_segs.append({"type": "H", "pos": notch.position.y, "t0": notch.position.x, "t1": notch.end.x})
-				base_segs.append({"type": "H", "pos": notch.end.y, "t0": notch.position.x, "t1": notch.end.x})
-				base_segs.append({"type": "V", "pos": notch.position.x, "t0": notch.position.y, "t1": notch.end.y})
-
-	# T/U complex shape cut walls.
-	for seg in _complex_shape_wall_segs:
-		base_segs.append(seg)
-
-	# Interior blocker walls (short cover lines in oversized rooms).
-	for seg in _interior_blocker_segs:
-		base_segs.append(seg)
+	var base_segs: Array = _collect_base_wall_segments()
 
 	# Part 5: Merge collinear perimeter segments (dedup)
 	base_segs = _merge_collinear_segments(base_segs)

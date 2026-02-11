@@ -295,6 +295,7 @@ var weapon_stats: Dictionary = {
 
 @export_range(4.0, 64.0) var wall_thickness: float = 16.0
 
+@export_range(40.0, 320.0) var door_opening_uniform: float = 112.0
 @export_range(40.0, 300.0) var door_opening_min: float = 96.0
 @export_range(40.0, 400.0) var door_opening_max: float = 128.0
 @export_range(0.0, 100.0) var door_from_corner_min: float = 48.0
@@ -482,6 +483,7 @@ func reset_to_defaults() -> void:
 	rooms_count_min = 9
 	rooms_count_max = 15
 	wall_thickness = 16.0
+	door_opening_uniform = 112.0
 	door_opening_min = 96.0
 	door_opening_max = 128.0
 	door_from_corner_min = 48.0

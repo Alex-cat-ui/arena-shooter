@@ -22,6 +22,8 @@ const BOSS_SCENE := preload("res://scenes/entities/boss.tscn")
 @onready var time_label: Label = $HUD/HUDContainer/TimeLabel
 @onready var boss_hp_label: Label = $HUD/HUDContainer/BossHPLabel
 @onready var weapon_label: Label = $HUD/HUDContainer/WeaponLabel
+@onready var floor_root: Node2D = $Floor
+@onready var floor_sprite: Sprite2D = $Floor/FloorSprite
 
 ## Container nodes
 @onready var entities_container: Node2D = $Entities
@@ -56,6 +58,7 @@ var atmosphere_system: AtmosphereSystem = null
 var layout_walls: Node2D = null
 var layout_debug: Node2D = null
 var _layout: ProceduralLayout = null
+var _walkable_floor: Node2D = null
 
 ## Start delay timer
 var _start_delay_timer: float = 0.0
@@ -218,6 +221,7 @@ func _init_systems() -> void:
 	layout_debug.name = "LayoutDebug"
 	layout_debug.z_index = 100
 	add_child(layout_debug)
+	_ensure_walkable_floor_node()
 
 	if GameConfig and GameConfig.procedural_layout_enabled:
 		var arena_rect := Rect2(_arena_min, _arena_max - _arena_min)
@@ -225,6 +229,7 @@ func _init_systems() -> void:
 		if s == 0:
 			s = int(Time.get_ticks_msec()) % 999999
 		_layout = ProceduralLayout.generate_and_build(arena_rect, s, layout_walls, layout_debug, player)
+	_rebuild_walkable_floor()
 
 	# Ensure player collision_mask includes bit 1 (walls)
 	if player and player is CharacterBody2D:
@@ -240,6 +245,70 @@ func _init_systems() -> void:
 		add_child(melee_system)
 
 	print("[LevelMVP] Systems initialized (Phase 4: Weapons + Arena Polish + Katana)")
+
+
+func _ensure_walkable_floor_node() -> void:
+	if not floor_root:
+		return
+	if _walkable_floor:
+		return
+	_walkable_floor = Node2D.new()
+	_walkable_floor.name = "WalkableFloor"
+	floor_root.add_child(_walkable_floor)
+
+
+func _clear_walkable_floor() -> void:
+	if not _walkable_floor:
+		return
+	for child in _walkable_floor.get_children():
+		child.queue_free()
+
+
+func _rebuild_walkable_floor() -> void:
+	if not floor_sprite:
+		return
+	_ensure_walkable_floor_node()
+	_clear_walkable_floor()
+
+	if not _layout or not _layout.valid:
+		floor_sprite.visible = true
+		return
+
+	if not floor_sprite.texture:
+		floor_sprite.visible = true
+		return
+
+	floor_sprite.visible = false
+	var sx := floor_sprite.scale.x
+	var sy := floor_sprite.scale.y
+	if absf(sx) < 0.0001:
+		sx = 1.0
+	if absf(sy) < 0.0001:
+		sy = 1.0
+
+	for i in range(_layout.rooms.size()):
+		if i in _layout._void_ids:
+			continue
+		var room: Dictionary = _layout.rooms[i]
+		for rect_variant in (room["rects"] as Array):
+			var r := rect_variant as Rect2
+			if r.size.x < 2.0 or r.size.y < 2.0:
+				continue
+			var patch := Sprite2D.new()
+			patch.texture = floor_sprite.texture
+			patch.texture_filter = floor_sprite.texture_filter
+			patch.texture_repeat = floor_sprite.texture_repeat
+			patch.scale = floor_sprite.scale
+			patch.centered = true
+			patch.region_enabled = true
+			patch.position = r.get_center()
+			patch.region_rect = Rect2(
+				r.position.x / sx,
+				r.position.y / sy,
+				r.size.x / sx,
+				r.size.y / sy
+			)
+			_walkable_floor.add_child(patch)
 
 
 func _init_visual_polish() -> void:
@@ -717,6 +786,7 @@ func regenerate_layout(new_seed: int = 0) -> void:
 	if s == 0:
 		s = int(Time.get_ticks_msec()) % 999999
 	_layout = ProceduralLayout.generate_and_build(arena_rect, s, layout_walls, layout_debug, player)
+	_rebuild_walkable_floor()
 
 
 ## ============================================================================
