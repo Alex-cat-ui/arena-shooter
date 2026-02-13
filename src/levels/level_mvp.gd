@@ -11,6 +11,7 @@ enum ArenaPreset { SQUARE, LANDSCAPE, PORTRAIT }
 ## Scene references
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
 const BOSS_SCENE := preload("res://scenes/entities/boss.tscn")
+const PROCEDURAL_LAYOUT_V2_SCRIPT := preload("res://src/systems/procedural_layout_v2.gd")
 
 ## Node references
 @onready var player: CharacterBody2D = $Entities/Player
@@ -57,9 +58,15 @@ var atmosphere_system: AtmosphereSystem = null
 ## Procedural layout
 var layout_walls: Node2D = null
 var layout_debug: Node2D = null
-var _layout: ProceduralLayout = null
+var _layout = null
 var _walkable_floor: Node2D = null
 var _non_walkable_floor_bg: Sprite2D = null
+var _layout_room_memory: Array = []
+var _north_transition_rect: Rect2 = Rect2()
+var _north_transition_enabled: bool = false
+var _north_transition_cooldown: float = 0.0
+var _mission_cycle: Array[int] = [3, 1, 2]
+var _mission_cycle_pos: int = 0
 
 ## Start delay timer
 var _start_delay_timer: float = 0.0
@@ -79,6 +86,8 @@ var _debug_container: VBoxContainer = null
 var _momentum_label: Label = null
 var _camera_follow_pos: Vector2 = Vector2.ZERO
 var _camera_follow_initialized: bool = false
+var _cached_white_pixel_tex: ImageTexture = null
+var _cached_black_pixel_tex: ImageTexture = null
 var _layout_room_stats: Dictionary = {
 	"corridors": 0,
 	"interior_rooms": 0,
@@ -89,6 +98,8 @@ var _layout_room_stats: Dictionary = {
 const CAMERA_FOLLOW_LERP_MOVING := 5.0
 const CAMERA_FOLLOW_LERP_STOPPING := 2.0
 const CAMERA_VELOCITY_EPSILON := 6.0
+const V2_FLOOR_FILL_COLOR := Color(0.62, 0.92, 0.58, 1.0)
+const PLAYER_NORTH_SPAWN_OFFSET := 100.0
 
 
 func _ready() -> void:
@@ -96,6 +107,8 @@ func _ready() -> void:
 
 	# CANON: Camera must not rotate
 	camera.rotation = 0
+	camera.enabled = true
+	camera.make_current()
 
 	# Initialize RuntimeState
 	_init_runtime_state()
@@ -133,23 +146,17 @@ func _init_runtime_state() -> void:
 		RuntimeState.kills = 0
 		RuntimeState.damage_dealt = 0
 		RuntimeState.damage_received = 0
+		RuntimeState.mission_index = _current_mission_index()
+		RuntimeState.layout_room_memory = []
 
 
 func _random_arena_rect() -> Rect2:
-	var preset := randi() % 3
+	# Stable runtime envelope (no random presets) to keep generation deterministic.
 	var cx := 0.0
 	var cy := 0.0
-	if preset == ArenaPreset.SQUARE:
-		var s := randf_range(1400.0, 1800.0)
-		return Rect2(cx - s * 0.5, cy - s * 0.5, s, s)
-	elif preset == ArenaPreset.LANDSCAPE:
-		var h := randf_range(1100.0, 1400.0)
-		var w := h * randf_range(1.3, 1.6)
-		return Rect2(cx - w * 0.5, cy - h * 0.5, w, h)
-	else:  # PORTRAIT
-		var w := randf_range(1100.0, 1400.0)
-		var h := w * randf_range(1.3, 1.6)
-		return Rect2(cx - w * 0.5, cy - h * 0.5, w, h)
+	var w := 2200.0
+	var h := 1500.0
+	return Rect2(cx - w * 0.5, cy - h * 0.5, w, h)
 
 
 func _init_systems() -> void:
@@ -243,10 +250,13 @@ func _init_systems() -> void:
 		var s: int = GameConfig.layout_seed
 		if s == 0:
 			s = int(Time.get_ticks_msec()) % 999999
-		_layout = ProceduralLayout.generate_and_build(arena_rect, s, layout_walls, layout_debug, player)
+		_layout = _generate_layout(arena_rect, s)
 	_rebuild_walkable_floor()
 	_update_layout_room_stats()
+	_sync_layout_runtime_memory()
+	_setup_north_transition_trigger()
 	_reset_camera_follow()
+	_ensure_player_runtime_ready()
 
 	# Ensure player collision_mask includes bit 1 (walls)
 	if player and player is CharacterBody2D:
@@ -278,8 +288,7 @@ func _clear_walkable_floor() -> void:
 	if not _walkable_floor:
 		return
 	_non_walkable_floor_bg = null
-	for child in _walkable_floor.get_children():
-		child.queue_free()
+	_clear_node_children_detached(_walkable_floor)
 
 
 func _ensure_non_walkable_background() -> void:
@@ -291,13 +300,9 @@ func _ensure_non_walkable_background() -> void:
 		_non_walkable_floor_bg.scale = bg_bounds.size
 		return
 
-	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
-	img.set_pixel(0, 0, Color.BLACK)
-	var tex := ImageTexture.create_from_image(img)
-
 	var bg := Sprite2D.new()
 	bg.name = "NonWalkableBlack"
-	bg.texture = tex
+	bg.texture = _solid_black_texture()
 	bg.centered = true
 	bg.position = bg_bounds.get_center()
 	bg.scale = bg_bounds.size
@@ -340,7 +345,8 @@ func _rebuild_walkable_floor() -> void:
 		floor_sprite.visible = true
 		return
 
-	if not floor_sprite.texture:
+	var v2_fill_mode := _is_layout_v2(_layout)
+	if not v2_fill_mode and not floor_sprite.texture:
 		floor_sprite.visible = true
 		return
 
@@ -362,21 +368,53 @@ func _rebuild_walkable_floor() -> void:
 			if r.size.x < 2.0 or r.size.y < 2.0:
 				continue
 			var patch := Sprite2D.new()
-			patch.texture = floor_sprite.texture
-			patch.texture_filter = floor_sprite.texture_filter
-			patch.texture_repeat = floor_sprite.texture_repeat
-			patch.scale = floor_sprite.scale
 			patch.centered = true
-			patch.region_enabled = true
 			patch.position = r.get_center()
-			patch.region_rect = Rect2(
-				r.position.x / sx,
-				r.position.y / sy,
-				r.size.x / sx,
-				r.size.y / sy
-			)
+			if v2_fill_mode:
+				patch.texture = _solid_white_texture()
+				patch.modulate = V2_FLOOR_FILL_COLOR
+				patch.scale = r.size
+			else:
+				patch.texture = floor_sprite.texture
+				patch.texture_filter = floor_sprite.texture_filter
+				patch.texture_repeat = floor_sprite.texture_repeat
+				patch.scale = floor_sprite.scale
+				patch.region_enabled = true
+				patch.region_rect = Rect2(
+					r.position.x / sx,
+					r.position.y / sy,
+					r.size.x / sx,
+					r.size.y / sy
+				)
 			patch.z_index = -40
 			_walkable_floor.add_child(patch)
+
+
+func _solid_white_texture() -> ImageTexture:
+	if _cached_white_pixel_tex and is_instance_valid(_cached_white_pixel_tex):
+		return _cached_white_pixel_tex
+	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	img.set_pixel(0, 0, Color.WHITE)
+	_cached_white_pixel_tex = ImageTexture.create_from_image(img)
+	return _cached_white_pixel_tex
+
+
+func _solid_black_texture() -> ImageTexture:
+	if _cached_black_pixel_tex and is_instance_valid(_cached_black_pixel_tex):
+		return _cached_black_pixel_tex
+	var img := Image.create(1, 1, false, Image.FORMAT_RGBA8)
+	img.set_pixel(0, 0, Color.BLACK)
+	_cached_black_pixel_tex = ImageTexture.create_from_image(img)
+	return _cached_black_pixel_tex
+
+
+func _clear_node_children_detached(parent: Node) -> void:
+	if not parent:
+		return
+	var children := parent.get_children()
+	for child in children:
+		parent.remove_child(child)
+		child.queue_free()
 
 
 func _init_visual_polish() -> void:
@@ -608,6 +646,10 @@ func _process(delta: float) -> void:
 	if _debug_overlay_visible and _debug_container:
 		_update_debug_overlay()
 
+	if _north_transition_cooldown > 0.0:
+		_north_transition_cooldown = maxf(0.0, _north_transition_cooldown - delta)
+	_check_north_transition()
+
 
 func _handle_input() -> void:
 	# ESC - toggle pause
@@ -832,10 +874,8 @@ func regenerate_layout(new_seed: int = 0) -> void:
 	if not layout_walls:
 		return
 	# Clear existing walls and debug
-	for child in layout_walls.get_children():
-		child.queue_free()
-	for child in layout_debug.get_children():
-		child.queue_free()
+	_clear_node_children_detached(layout_walls)
+	_clear_node_children_detached(layout_debug)
 	# Random arena shape on regeneration
 	var arena_rect := _random_arena_rect()
 	_arena_min = arena_rect.position
@@ -849,18 +889,187 @@ func regenerate_layout(new_seed: int = 0) -> void:
 	var s := new_seed
 	if s == 0:
 		s = int(Time.get_ticks_msec()) % 999999
-	_layout = ProceduralLayout.generate_and_build(arena_rect, s, layout_walls, layout_debug, player)
+	_layout = _generate_layout(arena_rect, s)
 	_rebuild_walkable_floor()
 	_update_layout_room_stats()
+	_sync_layout_runtime_memory()
+	_setup_north_transition_trigger()
 	_reset_camera_follow()
+	_ensure_player_runtime_ready()
+
+
+func _generate_layout(arena_rect: Rect2, seed_value: int):
+	return PROCEDURAL_LAYOUT_V2_SCRIPT.generate_and_build(arena_rect, seed_value, layout_walls, layout_debug, player, _current_mission_index())
+
+
+func _current_mission_index() -> int:
+	if _mission_cycle.is_empty():
+		return 3
+	return int(_mission_cycle[clampi(_mission_cycle_pos, 0, _mission_cycle.size() - 1)])
+
+
+func _sync_layout_runtime_memory() -> void:
+	_layout_room_memory.clear()
+	if _is_layout_v2(_layout):
+		var room_memory_variant = _layout.get("room_generation_memory")
+		if room_memory_variant is Array:
+			_layout_room_memory = (room_memory_variant as Array).duplicate(true)
+	if RuntimeState:
+		RuntimeState.layout_room_memory = _layout_room_memory.duplicate(true)
+		RuntimeState.mission_index = _current_mission_index()
+
+
+func _is_layout_v2(layout_obj) -> bool:
+	if not layout_obj:
+		return false
+	var script_obj: Script = layout_obj.get_script() as Script
+	if not script_obj:
+		return false
+	return script_obj.resource_path == "res://src/systems/procedural_layout_v2.gd"
+
+
+func _setup_north_transition_trigger() -> void:
+	_north_transition_enabled = false
+	_north_transition_rect = Rect2()
+	if not _layout or not _layout.valid:
+		return
+	var bbox := _compute_layout_rooms_bbox()
+	if bbox == Rect2():
+		return
+	var trigger_h := 100.0
+	var trigger_y := bbox.position.y - 200.0 - trigger_h
+	_north_transition_rect = Rect2(bbox.position.x, trigger_y, bbox.size.x, trigger_h)
+	_north_transition_enabled = true
+	print("[LevelMVP] Mission=%d transition trigger=%s" % [_current_mission_index(), str(_north_transition_rect)])
+
+
+func _compute_layout_rooms_bbox() -> Rect2:
+	if not _layout or not _layout.valid:
+		return Rect2()
+	var has_rect := false
+	var bbox := Rect2()
+	for i in range(_layout.rooms.size()):
+		if i in _layout._void_ids:
+			continue
+		for rect_variant in (_layout.rooms[i]["rects"] as Array):
+			var r := rect_variant as Rect2
+			if not has_rect:
+				bbox = r
+				has_rect = true
+			else:
+				bbox = bbox.merge(r)
+	return bbox if has_rect else Rect2()
+
+
+func _check_north_transition() -> void:
+	if not _north_transition_enabled:
+		return
+	if _north_transition_cooldown > 0.0:
+		return
+	if not player:
+		return
+	if not _is_north_transition_unlocked():
+		return
+	if _north_transition_rect.has_point(player.position):
+		_north_transition_cooldown = 0.4
+		_advance_mission_cycle()
+
+
+func _is_north_transition_unlocked() -> bool:
+	if not wave_manager:
+		return true
+
+	var waves_enabled := GameConfig.waves_enabled if GameConfig else true
+	if not waves_enabled:
+		return true
+
+	if wave_manager.alive_total > 0:
+		return false
+	if wave_manager.boss_spawned:
+		return false
+	if not wave_manager.wave_finished_spawning:
+		return false
+
+	var total_waves := GameConfig.waves_per_level if GameConfig else 3
+	if total_waves < 1:
+		total_waves = 1
+	return wave_manager.wave_index >= total_waves
+
+
+func _advance_mission_cycle() -> void:
+	if _mission_cycle.is_empty():
+		return
+	_mission_cycle_pos = (_mission_cycle_pos + 1) % _mission_cycle.size()
+	var next_mission := _current_mission_index()
+	print("[LevelMVP] Transition -> mission %d" % next_mission)
+	regenerate_layout(0)
 
 
 func _reset_camera_follow() -> void:
 	if not player or not camera:
 		return
+	camera.enabled = true
+	camera.make_current()
 	_camera_follow_pos = player.position
 	_camera_follow_initialized = true
 	camera.position = _camera_follow_pos
+
+
+func _ensure_player_runtime_ready() -> void:
+	if not player:
+		return
+
+	player.visible = true
+	var sprite := player.get_node_or_null("Sprite2D") as Sprite2D
+	if sprite:
+		sprite.visible = true
+		if sprite.modulate.a < 0.99:
+			sprite.modulate = Color.WHITE
+
+	var cb := player as CharacterBody2D
+	if not cb:
+		return
+
+	if (cb.collision_mask & 1) == 0:
+		cb.collision_mask |= 1
+
+	if _is_layout_v2(_layout):
+		var room_id: int = int(_layout._room_id_at_point(cb.global_position))
+		var near_north_spawn := _is_near_layout_north_spawn(cb.global_position)
+		var outside_bad := room_id < 0 and not near_north_spawn
+		var bad_spawn: bool = outside_bad or bool(_layout._is_closet_room(room_id)) or _is_player_stuck(cb)
+		if bad_spawn:
+			cb.global_position = _layout.player_spawn_pos
+			if cb.test_move(cb.global_transform, Vector2.ZERO) or _is_player_stuck(cb):
+				var spawn_room_id := int(_layout.player_room_id)
+				if spawn_room_id >= 0 and spawn_room_id < _layout.rooms.size():
+					var room := _layout.rooms[spawn_room_id] as Dictionary
+					var rects := room.get("rects", []) as Array
+					if not rects.is_empty():
+						rects.sort_custom(func(a, b): return (a as Rect2).get_area() > (b as Rect2).get_area())
+						cb.global_position = (rects[0] as Rect2).get_center()
+
+	if RuntimeState:
+		RuntimeState.player_pos = Vector3(cb.global_position.x, cb.global_position.y, 0)
+	_reset_camera_follow()
+
+
+func _is_player_stuck(cb: CharacterBody2D) -> bool:
+	var probes := [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]
+	for dir_variant in probes:
+		var dir := dir_variant as Vector2
+		if not cb.test_move(cb.global_transform, dir * 4.0):
+			return false
+	return true
+
+
+func _is_near_layout_north_spawn(pos: Vector2) -> bool:
+	if not _is_layout_v2(_layout):
+		return false
+	if _layout._entry_gate == Rect2():
+		return false
+	var north_target := (_layout._entry_gate as Rect2).get_center() + Vector2(0.0, -PLAYER_NORTH_SPAWN_OFFSET)
+	return pos.distance_to(north_target) <= 40.0
 
 
 func _update_layout_room_stats() -> void:

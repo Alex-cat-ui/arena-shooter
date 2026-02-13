@@ -47,6 +47,12 @@ var is_player_invulnerable: bool = false
 ## Invulnerability timer (auto-decrements)
 var invuln_timer: float = 0.0
 
+## Active mission index in cycle (3 -> 1 -> 2)
+var mission_index: int = 3
+
+## Generated room metadata (for future prop placement by room type)
+var layout_room_memory: Array = []
+
 ## ============================================================================
 ## METHODS
 ## ============================================================================
@@ -67,6 +73,8 @@ func reset() -> void:
 	katana_mode = false
 	is_player_invulnerable = false
 	invuln_timer = 0.0
+	mission_index = 3
+	layout_room_memory = []
 
 
 ## Convert Vector2 to Vector3 (z=0) - utility for physics

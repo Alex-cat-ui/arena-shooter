@@ -1,6 +1,135 @@
 # Arena Shooter Changelog
 
+## 2026-02-12
+
+### V2 Phase: Runtime spawn/camera failsafe (player visible + movable)
+- Changed: player spawn policy switched to north-entry anchor: spawn at `north_gate.center + (0, -100px)` (north of gate), with collision-safe fallback.
+- Changed: `ProceduralLayoutV2` player room selection now prefers non-closet, non-corridor rooms near layout center (fallback chain preserved).
+- Changed: player spawn point now comes from the largest safe rect in the chosen room with clamped padding (prevents degenerate spawn windows on small shapes).
+- Added: spawn safety fallback in generator:
+  - collision-safe spiral search in room space,
+  - stuck detection (`4-way blocked`) and fallback probing across room rects.
+- Changed: `LevelMVP` now enforces runtime readiness after generation/regeneration:
+  - `camera.make_current()` + `camera.enabled=true`,
+  - player/sprite forced visible, sprite alpha reset if needed,
+  - bad spawn correction (`outside room`, `closet`, or `stuck`) with re-anchor to layout spawn.
+- Added: `layout_stats` checks for runtime spawn health:
+  - `bad_spawn_rooms` (spawn outside room or in closet),
+  - `stuck_spawns` (blocked in all 4 probe directions).
+- Verification:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30 valid`, `bad_spawn_rooms=0`, `stuck_spawns=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_mission_transition_gate.tscn`: PASS (`6/6`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_perf.tscn`: PASS (`INVALID=0`).
+- Files: `src/systems/procedural_layout_v2.gd`, `src/levels/level_mvp.gd`, `tests/test_layout_stats.gd`
+
+### V2 Phase: Closet geometry + multi-entry topology stabilization
+- Changed: closets are now elongated (`short 60..70`, `long x2`) with random orientation in `ProceduralLayoutV2`.
+- Changed: closet placement is distributed across random room slots (not only earliest placements), while preserving required closet count `1..4`.
+- Added: hardened closet-door contract checks:
+  - each closet must keep exactly one linked door,
+  - closet door must separate two rooms (no one-sided/invalid closet entry).
+- Changed: doorable adjacency and placement contact constraints were synchronized (`CONTACT_MIN=122` for regular rooms + tolerance), reducing false non-doorable edges.
+- Changed: door tree carving now uses a feasible frontier pass (adds only edges that can actually spawn a door with current caps/spacing), improving stability.
+- Changed: non-closet door caps were raised by one tier to allow more multi-entry hubs without breaking wall/door contracts.
+- Changed: wall-door spacing floor for same-room door centers reduced to `120` to unlock additional valid multi-entry arrangements.
+- Added: `layout_stats` topology assertions and reporting:
+  - `closet_no_door`, `closet_multi_door`,
+  - `avg_extra_loops`,
+  - `non_closet_deg3plus_pct`,
+  - `avg_non_closet_dead_ends`.
+- Verification:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30 valid`, `closet_no_door=0`, `missing_adj_doors=0`, `half_doors=0`, `door_overlaps=0`, `extra_walls=0`, `room_wall_leaks=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_visual_regression.tscn`: PASS.
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_perf.tscn`: PASS (`AVG_MS≈96.0`, `P95_MS≈190.9`, `AVG_ATTEMPTS≈2.3`, `INVALID=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_hotline_similarity.tscn`: PASS (`V2SimilarityScore=95.17/100`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_mission_transition_gate.tscn`: PASS (`6/6`).
+- Files: `src/systems/procedural_layout_v2.gd`, `tests/test_layout_stats.gd`
+
+### V2 Phase: Mission transition gate hardening
+- Changed: north mission transition in `level_mvp` now requires combat-clear gate:
+  - `alive_total == 0`
+  - current wave finished spawning
+  - final wave reached
+  - boss not active
+- Added: dedicated headless gate test `tests/test_mission_transition_gate.gd` (`.tscn`).
+- Added: `layout_stats` silhouette budget assertions for boxiness control:
+  - `avg outer_run_pct <= 31.0`
+  - `max outer_run_pct <= 40.0`
+- Fixed: `generation_attempts_stat` in `ProceduralLayoutV2` no longer resets to `0` during `_reset_v2_state`, so perf/stats now report real retry counts.
+- Changed: legacy regression tests migrated to V2 generator:
+  - `tests/test_layout_visual_regression.gd` now validates V2-specific silhouette/topology metrics.
+  - `tests/test_hotline_similarity.gd` now computes a V2 profile score (doors/topology/silhouette/shape), no legacy mode-distribution dependency.
+- Cleanup: removed active calls to `ProceduralLayout.generate_and_build` from test suite; runtime and tests use `ProceduralLayoutV2`.
+- Cleanup: archived legacy generator source to `src/legacy/procedural_layout_legacy.gd`.
+- Cleanup: kept `src/systems/procedural_layout.gd` as disabled compatibility entrypoint that returns an explicit legacy-archived error.
+- Cleanup: removed legacy-only layout config toggles from `GameConfig` (`layout_generator_v2_enabled`, `layout_fast_runtime_validation`).
+- Cleanup: legacy `ProceduralLayout` no longer depends on removed fast-validation config path.
+- Files: `src/levels/level_mvp.gd`, `src/systems/procedural_layout.gd`, `src/systems/procedural_layout_v2.gd`, `src/legacy/procedural_layout_legacy.gd`, `tests/test_mission_transition_gate.gd`, `tests/test_layout_stats.gd`, `tests/test_layout_visual_regression.gd`, `tests/test_hotline_similarity.gd`
+
+### V2 Phase: F4 regen performance hygiene + cleanup
+- Changed: `level_mvp` floor rebuild now reuses cached 1x1 textures for walkable/non-walkable fill instead of creating `ImageTexture` per patch.
+- Changed: layout cleanup on regen now detaches children before `queue_free` (`LayoutWalls`, `LayoutDebug`, `WalkableFloor`) to reduce deferred-node buildup during repeated `F4`.
+- Changed: `ProceduralLayoutV2` caches white wall texture and uses detached cleanup for debug nodes.
+- Changed: wall collision build now uses one shared `StaticBody2D` with many `CollisionShape2D` children (instead of one body per segment), preserving geometry while reducing physics-node overhead.
+- Cleanup: removed temporary probe files from `tests/` (`tmp_*`).
+- Verification:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30 valid`, `gut=0`, `extra_walls=0`, `room_wall_leaks=0`, `missing_adj_doors=0`, `half_doors=0`, `door_overlaps=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_perf.tscn`: PASS (`AVG_MS≈694.4`, `P95_MS≈1591.0`, `AVG_ATTEMPTS=0`, `INVALID=0`).
+- Files: `src/levels/level_mvp.gd`, `src/systems/procedural_layout_v2.gd`
+
+### V2 Phase: Door topology contracts + iterative anti-box shaping
+- Changed: `ProceduralLayoutV2` door graph now enforces room-class contracts:
+  - closets (`60..70`) keep exactly one door,
+  - class-based door caps for `SMALL/MEDIUM/LARGE`,
+  - interior `MEDIUM/LARGE` rooms require doors to all geometrically feasible adjacent rooms.
+- Added: deterministic adjacency-door completion pass (no random extra-loop doors), with hard invalidation on missing required adjacency (`missing_adjacent_doors`).
+- Added: iterative anti-box outcrop pass:
+  - multiple passes against long outer runs,
+  - adaptive run threshold per pass,
+  - capped outcrop budget (`max 3`) to avoid wall artifacts.
+- Added tests/metrics in `test_layout_stats`:
+  - `missing_adj_doors`
+  - `half_doors`
+  - `door_overlaps`
+- Result:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30 valid`)
+  - `missing_adj_doors=0`, `half_doors=0`, `door_overlaps=0`
+  - `extra_walls=0`, `room_wall_leaks=0`, `closet_range_violations=0`, `gut_rects=0`
+  - `avg outcrop_count ≈ 2.37`, `avg outer_run_pct ≈ 29.68`
+- Files: `src/systems/procedural_layout_v2.gd`, `tests/test_layout_stats.gd`
+
+### V2 Phase: Mandatory closets + U-shape safety + anti-box outcrops
+- Changed: `ProceduralLayoutV2` now enforces mandatory closets in every layout (`1..4`, `60..70 px`) with strict one-door access preserved.
+- Fixed: U-shape generation now has a hard post-scale thickness guard (`>=128`) to prevent gut-like thin strips from slipping through.
+- Added: anti-box silhouette pass for `V2`:
+  - detects long outer wall runs,
+  - applies controlled outward outcrops (up to 3 per layout),
+  - skips closet rooms,
+  - blocks overlaps and keeps geometry inside generation bounds.
+- Added: real `outer_longest_run_pct` metric computation from merged outer edges.
+- Result:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30 valid`)
+  - `closet_range_violations=0`, `gut_rects_found=0`, `extra_walls=0`, `room_wall_leaks=0`
+  - `avg outcrop_count ≈ 1.20`, `avg outer_run_pct ≈ 29.35`
+- Files: `src/systems/procedural_layout_v2.gd`
+
 ## 2026-02-11
+
+### Phase 3.2: Pocket/Gap hardening + wall source cleanup
+- Changed: interior micro-void policy refined:
+  - non-exterior void is allowed only for sealed micro pockets (`50..60` square),
+  - if such pocket has feasible doorway span (>= door length + corner clearances), layout is invalid/retried (`micro_void_has_entry`).
+- Added: geometric opening-span helpers for neighbor checks (`_shared_boundary_span`, `_has_min_opening_to_solid_neighbor`).
+- Changed: micro-void candidate selection now skips rooms that can support a normal doorway (they should remain playable rooms instead of black pockets).
+- Changed: tiny non-door opening threshold is now tied to door length (`_tiny_opening_limit`), blocking sub-door “micro-passages”.
+- Changed: wall assembly cleanup:
+  - removed dependence on cached shape-specific wall segment lists in base assembly,
+  - final geometry-derived mandatory room boundaries are now the authoritative wall source.
+- Updated tests:
+  - `tests/test_layout_stats.gd` now reports/fails on `tiny_gaps` explicitly (in addition to pseudo gaps / leaks / walkability).
+- Result:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn` smoke PASS (`SEED_COUNT=3`, `tiny_gaps=0`, `pseudo_gaps=0`, `room_wall_leaks=0`, `walk_unreach=0`).
+- Files: `src/systems/procedural_layout.gd`, `tests/test_layout_stats.gd`
 
 ### Phase 3.1: Outcrop candidate expansion (anti-box silhouette follow-up)
 - Changed: perimeter outcrop pass now supports multi-rect edge rooms by selecting a per-side anchor rect (`_outcrop_base_rect_for_side`) instead of requiring single-rect rooms only.
@@ -629,3 +758,18 @@
   - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn` -> **PASS** (50/50 valid, no gut rects, no bad edge corridors, no pseudo gaps, no north-exit fails, uniform door sizes)
   - `xvfb-run -a godot-4 --headless res://tests/test_layout_visual_regression.tscn` -> **PASS**
 - **Files**: `src/systems/procedural_layout.gd`, `tests/test_layout_stats.gd`, `CHANGELOG.md`
+
+## 2026-02-12
+
+### 00:18 UTC - Procedural Layout Bugfix Pass (Void/Closet/Doors)
+- **Fixed**: `void` candidate filtering to reduce false non-walkable mini-rooms:
+  - exterior voids now require minimum area (`MIN_EXTERIOR_VOID_AREA`)
+  - high-connectivity rooms are no longer used as exterior void cutouts
+  - micro-void candidates with feasible full door opening to solid neighbors are rejected
+- **Fixed**: room identity gate now allows only intentional small non-corridor geometry (`closet` / `micro-void`) instead of rejecting all rooms below corridor width.
+- **Fixed**: exterior-void classification robustness with finer flood-fill grid and anti-leak solid growth (`_compute_void_exterior_flags`).
+- **Updated**: door spacing on same wall line increased to reduce clustered/overlapping nearby door placements.
+- **Result**:
+  - `xvfb-run -a godot-4 --headless res://tests/test_level_smoke.tscn` -> **3/4** (known existing wave-spawn test issue; no new parse/runtime regressions from layout patch)
+  - short targeted layout verifier -> **no invalid layouts / no pseudo gaps / no tiny non-door gaps / no interior void-like artifacts** on sampled seeds
+- **Files**: `src/systems/procedural_layout.gd`, `CHANGELOG.md`

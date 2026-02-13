@@ -284,6 +284,7 @@ var weapon_stats: Dictionary = {
 @export_group("Procedural Layout")
 
 @export var procedural_layout_enabled: bool = true
+## Runtime level generation always uses ProceduralLayoutV2.
 @export var waves_enabled: bool = false
 @export var spawn_enemies_enabled: bool = false
 @export var spawn_boss_enabled: bool = false
@@ -295,9 +296,9 @@ var weapon_stats: Dictionary = {
 
 @export_range(4.0, 64.0) var wall_thickness: float = 16.0
 
-@export_range(40.0, 320.0) var door_opening_uniform: float = 75.0
-@export_range(40.0, 300.0) var door_opening_min: float = 75.0
-@export_range(40.0, 400.0) var door_opening_max: float = 75.0
+@export_range(40.0, 320.0) var door_opening_uniform: float = 50.0
+@export_range(40.0, 300.0) var door_opening_min: float = 50.0
+@export_range(40.0, 400.0) var door_opening_max: float = 50.0
 @export_range(0.0, 100.0) var door_from_corner_min: float = 48.0
 @export_range(1, 5) var max_doors_per_room: int = 3
 @export_range(0, 3) var extra_loops_max: int = 1
@@ -483,9 +484,9 @@ func reset_to_defaults() -> void:
 	rooms_count_min = 9
 	rooms_count_max = 15
 	wall_thickness = 16.0
-	door_opening_uniform = 75.0
-	door_opening_min = 75.0
-	door_opening_max = 75.0
+	door_opening_uniform = 50.0
+	door_opening_min = 50.0
+	door_opening_max = 50.0
 	door_from_corner_min = 48.0
 	max_doors_per_room = 3
 	extra_loops_max = 1
