@@ -91,7 +91,7 @@ signal player_shot(weapon_type: String, position: Vector3, direction: Vector3)
 signal projectile_spawned(projectile_id: int, projectile_type: String, position: Vector3)
 
 ## Projectile hit enemy
-signal projectile_hit(projectile_id: int, enemy_id: int, damage: int)
+signal projectile_hit(projectile_id: int, enemy_id: int, damage: int, projectile_type: String, shot_id: int, shot_total_pellets: int, shot_total_damage: float)
 
 ## Projectile destroyed (TTL or collision)
 signal projectile_destroyed(projectile_id: int, reason: String)
@@ -231,8 +231,8 @@ func emit_player_shot(weapon_type: String, position: Vector3, direction: Vector3
 func emit_projectile_spawned(projectile_id: int, projectile_type: String, position: Vector3) -> void:
 	_queue_event("projectile_spawned", [projectile_id, projectile_type, position])
 
-func emit_projectile_hit(projectile_id: int, enemy_id: int, damage: int) -> void:
-	_queue_event("projectile_hit", [projectile_id, enemy_id, damage])
+func emit_projectile_hit(projectile_id: int, enemy_id: int, damage: int, projectile_type: String = "", shot_id: int = -1, shot_total_pellets: int = 0, shot_total_damage: float = 0.0) -> void:
+	_queue_event("projectile_hit", [projectile_id, enemy_id, damage, projectile_type, shot_id, shot_total_pellets, shot_total_damage])
 
 func emit_projectile_destroyed(projectile_id: int, reason: String) -> void:
 	_queue_event("projectile_destroyed", [projectile_id, reason])
@@ -370,7 +370,7 @@ func _dispatch_event(event: Dictionary) -> void:
 		"projectile_spawned":
 			projectile_spawned.emit(event.args[0], event.args[1], event.args[2])
 		"projectile_hit":
-			projectile_hit.emit(event.args[0], event.args[1], event.args[2])
+			projectile_hit.emit(event.args[0], event.args[1], event.args[2], event.args[3], event.args[4], event.args[5], event.args[6])
 		"projectile_destroyed":
 			projectile_destroyed.emit(event.args[0], event.args[1])
 		# Combat

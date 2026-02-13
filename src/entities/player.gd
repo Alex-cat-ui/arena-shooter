@@ -136,6 +136,8 @@ func _handle_weapon_switch() -> void:
 func _handle_shooting(delta: float) -> void:
 	# Use AbilitySystem if available (Phase 3), else fallback to legacy
 	if ability_system:
+		if ability_system.has_method("tick_cooldown"):
+			ability_system.tick_cooldown(delta)
 		if Input.is_action_pressed("shoot"):
 			var aim_dir := Vector2.ZERO
 			if RuntimeState:
@@ -143,7 +145,7 @@ func _handle_shooting(delta: float) -> void:
 			else:
 				aim_dir = (get_global_mouse_position() - position).normalized()
 			var spawn_pos := position + aim_dir * 20
-			ability_system.try_fire(spawn_pos, aim_dir, delta)
+			ability_system.try_fire(spawn_pos, aim_dir, 0.0)
 		return
 
 	# Legacy fallback (no ability system)

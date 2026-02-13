@@ -120,11 +120,13 @@ var weapon_stats: Dictionary = {
 	},
 	"shotgun": {
 		"damage": 6,
-		"rpm": 60,
-		"speed_tiles": 10.0,
+		"rpm": 50.0,
+		"cooldown_sec": 1.2,
+		"speed_tiles": 40.0,
 		"projectile_type": "pellet",
-		"pellets": 5,
-		"spread": 0.3,
+		"pellets": 16,
+		"cone_deg": 8.0,
+		"shot_damage_total": 25.0,
 	},
 	"plasma": {
 		"damage": 20,
@@ -221,7 +223,7 @@ var weapon_stats: Dictionary = {
 @export_range(0.0, 15.0) var footprint_rotation_jitter_deg: float = 1.0
 @export_range(1.0, 120.0) var footprint_lifetime_sec: float = 20.0
 @export_range(0.0, 200.0) var footprint_velocity_threshold: float = 35.0
-@export_range(10, 500) var footprint_max_count: int = 100
+@export_range(10, 4000) var footprint_max_count: int = 4000
 @export_range(1, 30) var footprint_bloody_steps: int = 8
 @export_range(1, 30) var footprint_black_steps: int = 4
 @export_range(5.0, 100.0) var footprint_blood_detect_radius: float = 25.0
@@ -378,7 +380,7 @@ func reset_to_defaults() -> void:
 	weapon_stats = {
 		"pistol": {"damage": 10, "rpm": 180, "speed_tiles": 12.0, "projectile_type": "bullet", "pellets": 1},
 		"auto": {"damage": 7, "rpm": 150, "speed_tiles": 14.0, "projectile_type": "bullet", "pellets": 1},
-		"shotgun": {"damage": 6, "rpm": 60, "speed_tiles": 10.0, "projectile_type": "pellet", "pellets": 5, "spread": 0.3},
+		"shotgun": {"damage": 6, "rpm": 50.0, "cooldown_sec": 1.2, "speed_tiles": 40.0, "projectile_type": "pellet", "pellets": 16, "cone_deg": 8.0, "shot_damage_total": 25.0},
 		"plasma": {"damage": 20, "rpm": 120, "speed_tiles": 9.0, "projectile_type": "plasma", "pellets": 1},
 		"rocket": {"damage": 40, "rpm": 30, "speed_tiles": 4.0, "projectile_type": "rocket", "pellets": 1, "aoe_damage": 20, "aoe_radius_tiles": 7.0},
 		"chain_lightning": {"damage": 8, "rpm": 120, "chain_count": 5, "chain_range_tiles": 6.0, "projectile_type": "hitscan"},
@@ -432,7 +434,7 @@ func reset_to_defaults() -> void:
 	footprint_rotation_jitter_deg = 1.0
 	footprint_lifetime_sec = 20.0
 	footprint_velocity_threshold = 35.0
-	footprint_max_count = 100
+	footprint_max_count = 4000
 	footprint_bloody_steps = 8
 	footprint_black_steps = 4
 	footprint_blood_detect_radius = 25.0

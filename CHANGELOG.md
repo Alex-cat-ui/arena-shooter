@@ -1,6 +1,87 @@
 # Arena Shooter Changelog
 
+## 2026-02-13
+
+### V2 Phase: Micro-gap bridge + robust north entry gate
+- Added: micro-gap bridge pass in `ProceduralLayoutV2` (`0..5px`) before adjacency build:
+  - detects near-touch room pairs with doorable overlap,
+  - expands one side to collapse the slit and restore proper room-to-room doorability.
+- Changed: north entry gate selection is now geometry-aware:
+  - ignores closets for entry candidate,
+  - picks real exposed top-wall spans (not raw bbox top),
+  - enforces wider gate target (`>= max(door_len, 88px)` where feasible),
+  - validates interior clearance in front of gate before accepting.
+- Added: `layout_stats` hard checks:
+  - `micro_gap_missing` (door links missing for doorable `0..5px` room gaps),
+  - `bad_north_gates` (narrow/non-walkable north entry gate).
+- Verification:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30`, `micro_gap_missing=0`, `bad_north_gates=0`, `missing_adj_doors=0`, `half_doors=0`, `door_overlaps=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_perf.tscn`: PASS (`AVG_MS=484.5`, `P95_MS=880.9`, `AVG_ATTEMPTS=3.6`, `INVALID=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_core_density.tscn`: PASS (`50/50`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_mission_transition_gate.tscn`: PASS (`6/6`).
+
+### V2 Phase: Static room-based enemy spawner (separate from waves)
+- Added: new module `RoomEnemySpawner` (`src/systems/room_enemy_spawner.gd`), independent from `WaveManager`.
+- Spawn rules by room size class:
+  - `LARGE` -> `3` enemies,
+  - `MEDIUM` -> `2` enemies,
+  - `SMALL` -> `1` enemy.
+- Placement rules:
+  - random positions inside room geometry (excluding closets/corridors),
+  - edge padding inside room bounds,
+  - minimum spacing between enemies in the same room: `>= 100px`.
+- Enemies are spawned in static mode (movement disabled), intended as current non-wave baseline.
+- Integrated into runtime:
+  - initial layout build in `LevelMVP`,
+  - `F4` layout regeneration rebuilds static room spawns.
+- Added: dedicated test `tests/test_room_enemy_spawner.gd` (`.tscn`) for:
+  - per-room quota by size class,
+  - in-room placement validation,
+  - same-room spacing `>=100px`.
+- Verification:
+  - `xvfb-run -a godot-4 --headless res://tests/test_mission_transition_gate.tscn`: PASS (`6/6`, module compiles/loads in level runtime).
+  - `xvfb-run -a godot-4 --headless res://tests/test_room_enemy_spawner.tscn`: PASS (`20 seeds`, `failures=0`).
+
+### Combat: Shotgun timing, spread and dedicated SFX
+- Changed shotgun fire profile:
+  - fixed fire interval `1.3s` (`cooldown_sec`) in `AbilitySystem`,
+  - projectile speed doubled for pellets (`speed_tiles: 20`),
+  - pellet count set to `6`,
+  - cone set to `10°` with stratified random jitter (roughly even, non-identical pattern per shot).
+- Changed shotgun audio:
+  - uses only new files from `res://assets/audio/sfx/shotgun/`,
+  - on shot: `shotgun_shot.wav`, then immediate `shotgun_reload.wav`.
+  - custom shotgun WAVs are loaded directly via `AudioStreamWAV.load_from_file` (independent of `.import` artifacts).
+- Verification:
+  - `xvfb-run -a godot-4 --headless --quit`: PASS (`SFXSystem` initializes, custom shotgun streams loaded).
+  - `xvfb-run -a godot-4 --headless res://tests/test_mission_transition_gate.tscn`: PASS (`6/6`).
+
 ## 2026-02-12
+
+### V2 Phase: Core topology compaction + center metrics
+- Added: `Core Quota` in `ProceduralLayoutV2`:
+  - dynamic core radius/target per mission room budget,
+  - enforcement pass that relocates outer non-closet rooms into the center cluster when quota is unmet.
+- Added: `Split Central Giant` compaction pass:
+  - detects oversized central-core rooms and pulls additional neighbors into the core to break single-hall dominance.
+- Changed: placement now prefers/forces multi-contact joins for mid/late non-closet rooms (especially in core), reducing strict chain growth.
+- Added: door post-processing refinements:
+  - core door-density pass (`deg3+` pressure in center),
+  - dead-end relief door pass for low-degree non-closet rooms.
+- Added: `layout_stats` center topology metrics:
+  - `center_room_count`,
+  - `center_deg3plus_pct`.
+- Added: dedicated center-shape regression test:
+  - `tests/test_layout_core_density.gd` (+ `tests/test_layout_core_density.tscn`),
+  - validates `center_room_count`, `center_deg3plus_pct`, `avg_center_degree`, `core_dominance`, and door-contract invariants on 50 seeds.
+- Updated: `layout_stats` thresholds for current V2 profile:
+  - `MIN_CENTER_DEG3PLUS_PCT = 30.0`,
+  - `MAX_AVG_NON_CLOSET_DEAD_ENDS = 3.60`.
+- Verification:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30`, `avg center_room_count=4.47`, `center deg3+ pct=33.58`, `missing_adj_doors=0`, `half_doors=0`, `door_overlaps=0`, `extra_walls=0`, `room_wall_leaks=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_perf.tscn`: PASS (`AVG_MS=418.9`, `P95_MS=944.8`, `AVG_ATTEMPTS=3.6`, `INVALID=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_mission_transition_gate.tscn`: PASS (`6/6`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_core_density.tscn`: PASS (`50/50`, `avg center_room_count=4.42`, `center deg3+ pct=37.10`, `avg center degree=2.24`, `avg core dominance=0.392`).
 
 ### V2 Phase: Runtime spawn/camera failsafe (player visible + movable)
 - Changed: player spawn policy switched to north-entry anchor: spawn at `north_gate.center + (0, -100px)` (north of gate), with collision-safe fallback.

@@ -152,26 +152,9 @@ func update(delta: float) -> void:
 
 
 func _age_footprints(delta: float) -> void:
-	var fade_start := 2.0  # Fade last 2 seconds
-	var i := 0
-	while i < _active.size():
-		var entry: Dictionary = _active[i]
-		entry["time_left"] -= delta
-		if entry["time_left"] <= 0:
-			# Return to pool
-			var spr: Sprite2D = entry["sprite"]
-			spr.visible = false
-			_active.remove_at(i)
-			continue
-		elif entry["time_left"] < fade_start:
-			# Fade out via shader tint_color.a
-			var fade_ratio: float = float(entry["time_left"]) / fade_start
-			var spr: Sprite2D = entry["sprite"]
-			var mat := spr.material as ShaderMaterial
-			var c: Color = mat.get_shader_parameter("tint_color")
-			c.a = float(entry["base_alpha"]) * fade_ratio
-			mat.set_shader_parameter("tint_color", c)
-		i += 1
+	# Time-based footprint decay disabled: prints stay until explicitly cleared
+	# or recycled by max-count clamp.
+	pass
 
 
 func _spawn_footprint(stamp_pos: Vector2, move_dir: Vector2, on_blood: bool, on_corpse: bool) -> void:

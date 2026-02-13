@@ -6,12 +6,18 @@
 class_name Enemy
 extends CharacterBody2D
 
+enum AIState {
+	IDLE_ROAM,
+	INVESTIGATE,
+	CHASE,
+}
+
 ## Enemy stats per type (from ТЗ v1.13)
 const ENEMY_STATS := {
-	"zombie": {"hp": 30, "damage": 10, "speed": 2.0},
-	"fast": {"hp": 15, "damage": 7, "speed": 4.0},
-	"tank": {"hp": 80, "damage": 15, "speed": 1.5},
-	"swarm": {"hp": 5, "damage": 5, "speed": 3.0},
+	"zombie": {"hp": 100, "damage": 10, "speed": 2.0},
+	"fast": {"hp": 100, "damage": 7, "speed": 4.0},
+	"tank": {"hp": 100, "damage": 15, "speed": 1.5},
+	"swarm": {"hp": 100, "damage": 5, "speed": 3.0},
 }
 
 ## Unique entity ID
@@ -53,6 +59,20 @@ var knockback_vel: Vector2 = Vector2.ZERO
 ## Reference to hitbox area (for player contact detection)
 @onready var hitbox: Area2D = $Hitbox
 
+## Room AI/nav
+var nav_system: Node = null
+var home_room_id: int = -1
+var ai_state: int = AIState.IDLE_ROAM
+var _roam_target: Vector2 = Vector2.ZERO
+var _roam_wait_timer: float = 0.0
+var _waypoints: Array[Vector2] = []
+var _repath_timer: float = 0.0
+var _heard_timer: float = 0.0
+
+## Contact damage throttling
+var _touching_player: bool = false
+var _contact_cooldown: float = 0.0
+
 
 func _ready() -> void:
 	# Add to enemies group for easy lookup
@@ -61,6 +81,7 @@ func _ready() -> void:
 	# Connect hitbox signals
 	if hitbox:
 		hitbox.body_entered.connect(_on_hitbox_body_entered)
+		hitbox.body_exited.connect(_on_hitbox_body_exited)
 
 	# Spawn animation (Phase 3: visual spawn cue)
 	_play_spawn_animation()
@@ -87,6 +108,13 @@ func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
 
+	if _contact_cooldown > 0.0:
+		_contact_cooldown = maxf(0.0, _contact_cooldown - delta)
+	if _touching_player and _contact_cooldown <= 0.0 and enemy_type != "zombie":
+		if EventBus:
+			EventBus.emit_enemy_contact(entity_id, enemy_type, _contact_damage_amount())
+		_contact_cooldown = 1.0
+
 	# Check if frozen
 	if RuntimeState and RuntimeState.is_frozen:
 		return
@@ -105,8 +133,42 @@ func _physics_process(delta: float) -> void:
 	if knockback_vel.length_squared() > 1.0:
 		knockback_vel = knockback_vel.lerp(Vector2.ZERO, minf(10.0 * delta, 1.0))
 
-	# Move toward player
-	_move_toward_player(delta)
+	# Room-aware AI movement if nav is available, otherwise fallback to direct chase.
+	if nav_system and home_room_id >= 0:
+		_update_room_ai(delta)
+	else:
+		_move_toward_player(delta)
+
+
+func set_room_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
+	nav_system = p_nav_system
+	home_room_id = p_home_room_id
+	set_meta("room_id", p_home_room_id)
+	ai_state = AIState.IDLE_ROAM
+	_waypoints.clear()
+	_roam_target = Vector2.ZERO
+	_roam_wait_timer = 0.0
+	_repath_timer = 0.0
+	_heard_timer = 0.0
+
+
+func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
+	if not nav_system:
+		return
+	var own_room := int(get_meta("room_id", home_room_id))
+	if own_room < 0 and nav_system.has_method("room_id_at_point"):
+		own_room = int(nav_system.room_id_at_point(global_position))
+		set_meta("room_id", own_room)
+	if own_room < 0:
+		return
+	var same_or_adjacent := own_room == shot_room_id
+	if not same_or_adjacent and nav_system.has_method("is_adjacent"):
+		same_or_adjacent = bool(nav_system.is_adjacent(own_room, shot_room_id))
+	if not same_or_adjacent:
+		return
+	ai_state = AIState.CHASE
+	_heard_timer = 10.0
+	_plan_path_to(shot_pos)
 
 
 func _move_toward_player(delta: float) -> void:
@@ -129,6 +191,83 @@ func _move_toward_player(delta: float) -> void:
 	# Rotate sprite to face movement direction
 	if sprite and direction.length_squared() > 0:
 		sprite.rotation = direction.angle()
+
+
+func _update_room_ai(delta: float) -> void:
+	if _heard_timer > 0.0:
+		_heard_timer = maxf(0.0, _heard_timer - delta)
+	elif ai_state != AIState.IDLE_ROAM:
+		ai_state = AIState.IDLE_ROAM
+		_waypoints.clear()
+
+	if ai_state == AIState.IDLE_ROAM:
+		_update_idle_roam(delta)
+		return
+
+	_repath_timer -= delta
+	if _repath_timer <= 0.0:
+		_repath_timer = 0.35
+		var player_pos := Vector2.ZERO
+		if RuntimeState:
+			player_pos = Vector2(RuntimeState.player_pos.x, RuntimeState.player_pos.y)
+		_plan_path_to(player_pos)
+
+	_follow_waypoints(delta)
+
+
+func _update_idle_roam(delta: float) -> void:
+	if _roam_wait_timer > 0.0:
+		_roam_wait_timer = maxf(0.0, _roam_wait_timer - delta)
+		velocity = Vector2.ZERO
+		return
+	if _roam_target == Vector2.ZERO or global_position.distance_to(_roam_target) < 10.0:
+		if nav_system and nav_system.has_method("random_point_in_room"):
+			_roam_target = nav_system.random_point_in_room(home_room_id, 28.0)
+		else:
+			_roam_target = global_position
+		_roam_wait_timer = randf_range(0.1, 0.35)
+		velocity = Vector2.ZERO
+		return
+
+	var dir := (_roam_target - global_position).normalized()
+	var tile_size: int = GameConfig.tile_size if GameConfig else 32
+	var speed_pixels := speed_tiles * tile_size * 0.85
+	velocity = dir * speed_pixels
+	move_and_slide()
+	if sprite and dir.length_squared() > 0:
+		sprite.rotation = dir.angle()
+
+
+func _plan_path_to(target_pos: Vector2) -> void:
+	if nav_system and nav_system.has_method("build_path_points"):
+		_waypoints = nav_system.build_path_points(global_position, target_pos)
+	else:
+		_waypoints = [target_pos]
+
+
+func _follow_waypoints(delta: float) -> void:
+	if _waypoints.is_empty():
+		velocity = Vector2.ZERO
+		return
+	var waypoint := _waypoints[0]
+	if global_position.distance_to(waypoint) <= 12.0:
+		_waypoints.remove_at(0)
+		if _waypoints.is_empty():
+			velocity = Vector2.ZERO
+			return
+		waypoint = _waypoints[0]
+	var dir := (waypoint - global_position).normalized()
+	var tile_size: int = GameConfig.tile_size if GameConfig else 32
+	var speed_pixels := speed_tiles * tile_size
+	velocity = dir * speed_pixels
+	move_and_slide()
+	if sprite and dir.length_squared() > 0:
+		sprite.rotation = dir.angle()
+
+
+func _contact_damage_amount() -> int:
+	var max_hp := GameConfig.player_max_hp if GameConfig else 100
+	return maxi(1, int(ceil(float(max_hp) * 0.25)))
 
 
 ## Apply damage from any source (melee, projectile, etc.)
@@ -263,6 +402,9 @@ func _on_hitbox_body_entered(body: Node2D) -> void:
 
 	# Check if it's the player
 	if body.is_in_group("player"):
-		# Emit contact event for CombatSystem to handle
-		if EventBus:
-			EventBus.emit_enemy_contact(entity_id, enemy_type, contact_damage)
+		_touching_player = true
+
+
+func _on_hitbox_body_exited(body: Node2D) -> void:
+	if body.is_in_group("player"):
+		_touching_player = false

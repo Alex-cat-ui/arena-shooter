@@ -11,7 +11,11 @@ const MAX_AVG_OUTER_RUN_PCT := 31.0
 const MAX_SINGLE_OUTER_RUN_PCT := 40.0
 const MIN_AVG_EXTRA_LOOPS := 0.05
 const MIN_NON_CLOSET_DEG3PLUS_PCT := 23.0
-const MAX_AVG_NON_CLOSET_DEAD_ENDS := 3.00
+const MIN_AVG_CENTER_ROOM_COUNT := 2.50
+const MIN_CENTER_DEG3PLUS_PCT := 30.0
+const MAX_AVG_NON_CLOSET_DEAD_ENDS := 3.60
+const MICRO_GAP_BRIDGE_MAX := 5.0
+const MIN_NORTH_GATE_WIDTH := 84.0
 const PLAYER_SPAWN_NORTH_OFFSET := 100.0
 const PLAYER_SPAWN_NORTH_TOLERANCE := 40.0
 const TEST_MISSION := 3
@@ -269,6 +273,65 @@ func _count_missing_adjacent_doors(layout) -> int:
 	return missing
 
 
+func _count_unbridged_micro_gaps(layout) -> int:
+	var door_edges: Dictionary = {}
+	for item_variant in layout._door_map:
+		var item := item_variant as Dictionary
+		var a := int(item["a"])
+		var b := int(item["b"])
+		door_edges[_door_key(a, b)] = true
+
+	var missing := 0
+	for a in range(layout.rooms.size()):
+		if a in layout._void_ids:
+			continue
+		for b in range(a + 1, layout.rooms.size()):
+			if b in layout._void_ids:
+				continue
+			var min_span := float(layout._min_adjacency_span_for_pair(a, b)) - 0.75
+			var gap_match := false
+			for ra_variant in (layout.rooms[a]["rects"] as Array):
+				var ra := ra_variant as Rect2
+				for rb_variant in (layout.rooms[b]["rects"] as Array):
+					var rb := rb_variant as Rect2
+					var y0 := maxf(ra.position.y, rb.position.y)
+					var y1 := minf(ra.end.y, rb.end.y)
+					var y_span := y1 - y0
+					var x0 := maxf(ra.position.x, rb.position.x)
+					var x1 := minf(ra.end.x, rb.end.x)
+					var x_span := x1 - x0
+					var gap_lr := rb.position.x - ra.end.x
+					var gap_rl := ra.position.x - rb.end.x
+					var gap_tb := rb.position.y - ra.end.y
+					var gap_bt := ra.position.y - rb.end.y
+					if (gap_lr > 0.75 and gap_lr <= MICRO_GAP_BRIDGE_MAX and y_span >= min_span) \
+						or (gap_rl > 0.75 and gap_rl <= MICRO_GAP_BRIDGE_MAX and y_span >= min_span) \
+						or (gap_tb > 0.75 and gap_tb <= MICRO_GAP_BRIDGE_MAX and x_span >= min_span) \
+						or (gap_bt > 0.75 and gap_bt <= MICRO_GAP_BRIDGE_MAX and x_span >= min_span):
+						gap_match = true
+						break
+				if gap_match:
+					break
+			if gap_match and not door_edges.has(_door_key(a, b)):
+				missing += 1
+	return missing
+
+
+func _north_gate_is_walkable(layout) -> bool:
+	if layout._entry_gate == Rect2():
+		return false
+	var gate := layout._entry_gate as Rect2
+	var gate_len := maxf(gate.size.x, gate.size.y)
+	if gate_len < MIN_NORTH_GATE_WIDTH:
+		return false
+	var center := gate.get_center()
+	for dx in PackedFloat32Array([-18.0, 0.0, 18.0]):
+		var inside_id := _room_id_at_point(layout, center + Vector2(dx, 18.0))
+		if inside_id < 0:
+			return false
+	return true
+
+
 func _is_spawn_stuck(player_node: CharacterBody2D) -> bool:
 	var probes := [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]
 	for dir_variant in probes:
@@ -335,11 +398,15 @@ func _ready() -> void:
 	var total_missing_adjacent_doors := 0
 	var total_half_doors := 0
 	var total_door_overlaps := 0
+	var total_unbridged_micro_gaps := 0
+	var total_bad_north_gates := 0
 	var total_closet_no_door := 0
 	var total_closet_multi_door := 0
 	var total_non_closet_rooms := 0
 	var total_non_closet_deg3plus := 0
 	var total_non_closet_dead_ends := 0
+	var total_center_rooms := 0
+	var total_center_deg3plus := 0
 	var total_bad_spawn_rooms := 0
 	var total_stuck_spawns := 0
 
@@ -382,16 +449,31 @@ func _ready() -> void:
 		var missing_adjacent_doors := _count_missing_adjacent_doors(layout)
 		var half_doors := _count_half_doors(layout)
 		var door_overlaps := _count_overlapping_doors(layout)
+		var unbridged_micro_gaps := _count_unbridged_micro_gaps(layout)
+		var bad_north_gate := 0 if _north_gate_is_walkable(layout) else 1
 		var closet_no_door_found := 0
 		var closet_multi_door_found := 0
 		var non_closet_rooms_count := 0
 		var non_closet_deg3plus_count := 0
 		var non_closet_dead_ends_count := 0
+		var center_room_count := 0
+		var center_deg3plus_count := 0
+		var center_deg3plus_pct := 0.0
 		var bad_spawn_room_found := 0
 		var stuck_spawn_found := 0
 		var walk_unreach := 0
 		var walkability_issue := not _is_door_graph_connected(layout)
 		var fail_reason: String = layout.validate_fail_reason if not layout.valid else ""
+		var core_non_closet_ids: Array = layout._core_non_closet_ids()
+		center_room_count = core_non_closet_ids.size()
+		for core_id_variant in core_non_closet_ids:
+			var core_id := int(core_id_variant)
+			if not layout._door_adj.has(core_id):
+				continue
+			var core_deg := (layout._door_adj[core_id] as Array).size()
+			if core_deg >= 3:
+				center_deg3plus_count += 1
+		center_deg3plus_pct = float(center_deg3plus_count) * 100.0 / maxf(float(center_room_count), 1.0)
 
 		var spawn_room_id := _room_id_at_point(layout, player_node.global_position)
 		var spawn_near_north := _is_spawn_near_north_entry(layout, player_node.global_position)
@@ -459,7 +541,7 @@ func _ready() -> void:
 
 		var closet_range_violation := closets_count < 1 or closets_count > 4
 
-		print("\n  seed=%d valid=%s mode=%s count_rooms=%d count_corridors=%d closets=%d closet_bad_entries=%d closet_no_door=%d closet_multi_door=%d closet_range_bad=%s spawn_bad_room=%d spawn_stuck=%d gut_rects=%d bad_edge_corridors=%d dead_end=%d non_closet_dead_end=%d non_closet_deg3plus=%d/%d notched=%d t_u=%d central_missing=%d pseudo_gaps=%d tiny_gaps=%d north_exit_fail=%d outcrops=%d outer_run%%=%.1f attempts=%d loops=%d extra_walls=%d room_wall_leaks=%d missing_adj_doors=%d half_doors=%d door_overlaps=%d walk_unreach=%d door_variants=%d fail_reason=%s" % [
+		print("\n  seed=%d valid=%s mode=%s count_rooms=%d count_corridors=%d closets=%d closet_bad_entries=%d closet_no_door=%d closet_multi_door=%d closet_range_bad=%s spawn_bad_room=%d spawn_stuck=%d gut_rects=%d bad_edge_corridors=%d dead_end=%d non_closet_dead_end=%d non_closet_deg3plus=%d/%d center_rooms=%d center_deg3plus_pct=%.1f notched=%d t_u=%d central_missing=%d pseudo_gaps=%d tiny_gaps=%d north_exit_fail=%d outcrops=%d outer_run%%=%.1f attempts=%d loops=%d extra_walls=%d room_wall_leaks=%d missing_adj_doors=%d half_doors=%d door_overlaps=%d micro_gaps=%d bad_north_gate=%d walk_unreach=%d door_variants=%d fail_reason=%s" % [
 			s,
 			str(layout.valid),
 			mode_name,
@@ -478,6 +560,8 @@ func _ready() -> void:
 			non_closet_dead_ends_count,
 			non_closet_deg3plus_count,
 			non_closet_rooms_count,
+			center_room_count,
+			center_deg3plus_pct,
 			notched_rooms_count,
 			t_u_rooms_count,
 			central_missing,
@@ -490,12 +574,14 @@ func _ready() -> void:
 			extra_loops_count,
 			extra_walls_found,
 			room_wall_leaks_found,
-			missing_adjacent_doors,
-			half_doors,
-			door_overlaps,
-			walk_unreach,
-			door_size_variants.size(),
-			fail_reason,
+				missing_adjacent_doors,
+				half_doors,
+				door_overlaps,
+				unbridged_micro_gaps,
+				bad_north_gate,
+				walk_unreach,
+				door_size_variants.size(),
+				fail_reason,
 		])
 
 		if layout.valid:
@@ -531,11 +617,15 @@ func _ready() -> void:
 		total_missing_adjacent_doors += missing_adjacent_doors
 		total_half_doors += half_doors
 		total_door_overlaps += door_overlaps
+		total_unbridged_micro_gaps += unbridged_micro_gaps
+		total_bad_north_gates += bad_north_gate
 		total_closet_no_door += closet_no_door_found
 		total_closet_multi_door += closet_multi_door_found
 		total_non_closet_rooms += non_closet_rooms_count
 		total_non_closet_deg3plus += non_closet_deg3plus_count
 		total_non_closet_dead_ends += non_closet_dead_ends_count
+		total_center_rooms += center_room_count
+		total_center_deg3plus += center_deg3plus_count
 		total_bad_spawn_rooms += bad_spawn_room_found
 		total_stuck_spawns += stuck_spawn_found
 		if walkability_issue:
@@ -573,12 +663,16 @@ func _ready() -> void:
 	print("  Total missing_adj_doors:  %d" % total_missing_adjacent_doors)
 	print("  Total half_doors:         %d" % total_half_doors)
 	print("  Total door_overlaps:      %d" % total_door_overlaps)
+	print("  Total micro_gap_missing:  %d" % total_unbridged_micro_gaps)
+	print("  Total bad_north_gates:    %d" % total_bad_north_gates)
 	print("  Total closet_no_door:     %d" % total_closet_no_door)
 	print("  Total closet_multi_door:  %d" % total_closet_multi_door)
 	print("  Total bad_spawn_rooms:    %d" % total_bad_spawn_rooms)
 	print("  Total stuck_spawns:       %d" % total_stuck_spawns)
 	print("  Avg non_closet_dead_end:  %.2f" % (float(total_non_closet_dead_ends) / float(SEED_COUNT)))
 	print("  Non-closet deg3+ pct:     %.2f" % (float(total_non_closet_deg3plus) * 100.0 / maxf(float(total_non_closet_rooms), 1.0)))
+	print("  Avg center_room_count:    %.2f" % (float(total_center_rooms) / float(SEED_COUNT)))
+	print("  Center deg3+ pct:         %.2f" % (float(total_center_deg3plus) * 100.0 / maxf(float(total_center_rooms), 1.0)))
 	print("  Walkability issue seeds:  %d" % total_walkability_issues)
 	print("  Non-uniform door layouts: %d" % total_non_uniform_door_layouts)
 	print("")
@@ -605,6 +699,8 @@ func _ready() -> void:
 	var avg_outer_run_pct := total_outer_longest_run_pct / float(SEED_COUNT)
 	var avg_extra_loops := float(total_extra_loops) / float(SEED_COUNT)
 	var non_closet_deg3plus_pct := float(total_non_closet_deg3plus) * 100.0 / maxf(float(total_non_closet_rooms), 1.0)
+	var avg_center_room_count := float(total_center_rooms) / float(SEED_COUNT)
+	var center_deg3plus_pct := float(total_center_deg3plus) * 100.0 / maxf(float(total_center_rooms), 1.0)
 	var avg_non_closet_dead_ends := float(total_non_closet_dead_ends) / float(SEED_COUNT)
 	var has_errors := (
 		invalid_count > 0
@@ -622,15 +718,19 @@ func _ready() -> void:
 		or total_north_core_exit_fails > 0
 		or total_extra_walls > 0
 		or total_room_wall_leaks > 0
-		or total_missing_adjacent_doors > 0
-		or total_half_doors > 0
-		or total_door_overlaps > 0
-		or total_walkability_issues > 0
+			or total_missing_adjacent_doors > 0
+			or total_half_doors > 0
+			or total_door_overlaps > 0
+			or total_unbridged_micro_gaps > 0
+			or total_bad_north_gates > 0
+			or total_walkability_issues > 0
 		or total_non_uniform_door_layouts > 0
 		or avg_outer_run_pct > MAX_AVG_OUTER_RUN_PCT
 		or max_outer_longest_run_pct > MAX_SINGLE_OUTER_RUN_PCT
 		or avg_extra_loops < MIN_AVG_EXTRA_LOOPS
 		or non_closet_deg3plus_pct < MIN_NON_CLOSET_DEG3PLUS_PCT
+		or avg_center_room_count < MIN_AVG_CENTER_ROOM_COUNT
+		or center_deg3plus_pct < MIN_CENTER_DEG3PLUS_PCT
 		or avg_non_closet_dead_ends > MAX_AVG_NON_CLOSET_DEAD_ENDS
 	)
 	get_tree().quit(1 if has_errors else 0)

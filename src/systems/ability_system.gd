@@ -29,6 +29,13 @@ var projectile_system: Node = null
 var combat_system: Node = null
 
 
+## Tick weapon cooldown independently from input state.
+func tick_cooldown(delta: float) -> void:
+	if delta <= 0.0:
+		return
+	_weapon_cooldown = maxf(_weapon_cooldown - delta, 0.0)
+
+
 ## Get current weapon name
 func get_current_weapon() -> String:
 	return WEAPON_LIST[current_weapon_index]
@@ -65,8 +72,8 @@ func set_weapon_by_name(weapon_name: String) -> void:
 
 ## Try to fire current weapon. Returns true if fired.
 func try_fire(pos: Vector2, direction: Vector2, delta: float) -> bool:
-	# Update cooldown
-	_weapon_cooldown -= delta
+	# Keep backward-compatible cooldown ticking for callers that still pass delta here.
+	tick_cooldown(delta)
 	if _weapon_cooldown > 0:
 		return false
 
@@ -83,8 +90,12 @@ func try_fire(pos: Vector2, direction: Vector2, delta: float) -> bool:
 			projectile_system.fire_weapon(weapon, pos, direction)
 
 	# Set cooldown from RPM
-	var rpm: float = stats.get("rpm", 60)
-	_weapon_cooldown = 60.0 / rpm
+	var cooldown_sec: float = float(stats.get("cooldown_sec", -1.0))
+	if cooldown_sec > 0.0:
+		_weapon_cooldown = cooldown_sec
+	else:
+		var rpm: float = maxf(float(stats.get("rpm", 60.0)), 1.0)
+		_weapon_cooldown = 60.0 / rpm
 
 	# Emit player_shot event
 	if EventBus:
@@ -96,7 +107,10 @@ func try_fire(pos: Vector2, direction: Vector2, delta: float) -> bool:
 ## Get weapon cooldown in seconds
 func get_weapon_cooldown(weapon: String) -> float:
 	var stats := _get_stats(weapon)
-	var rpm: float = stats.get("rpm", 60)
+	var cooldown_sec: float = float(stats.get("cooldown_sec", -1.0))
+	if cooldown_sec > 0.0:
+		return cooldown_sec
+	var rpm: float = maxf(float(stats.get("rpm", 60.0)), 1.0)
 	return 60.0 / rpm
 
 

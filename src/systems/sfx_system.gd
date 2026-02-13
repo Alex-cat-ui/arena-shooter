@@ -8,6 +8,8 @@ extends Node
 
 ## SFX path base
 const SFX_PATH := "res://assets/audio/sfx/"
+const SHOTGUN_CUSTOM_SHOT_KEY := "shotgun_custom_shot"
+const SHOTGUN_CUSTOM_RELOAD_KEY := "shotgun_custom_reload"
 
 ## Pool size (max simultaneous sounds)
 const POOL_SIZE := 12
@@ -82,6 +84,16 @@ func _preload_streams() -> void:
 			_streams[sfx_name] = stream
 		else:
 			push_warning("[SFXSystem] Failed to load: %s" % path)
+	_load_required_custom_wav_stream(SHOTGUN_CUSTOM_SHOT_KEY, "res://assets/audio/sfx/shotgun/shotgun_shot.wav")
+	_load_required_custom_wav_stream(SHOTGUN_CUSTOM_RELOAD_KEY, "res://assets/audio/sfx/shotgun/shotgun_reload.wav")
+
+
+func _load_required_custom_wav_stream(key: String, path: String) -> void:
+	var stream := AudioStreamWAV.load_from_file(path) as AudioStream
+	if stream:
+		_streams[key] = stream
+	else:
+		push_warning("[SFXSystem] Required shotgun SFX missing/unreadable: %s" % path)
 
 
 ## Play a named SFX
@@ -118,8 +130,16 @@ func _get_free_player() -> AudioStreamPlayer:
 ## ============================================================================
 
 func _on_player_shot(weapon_type: String, _position: Vector3, _direction: Vector3) -> void:
+	if weapon_type == "shotgun":
+		play(SHOTGUN_CUSTOM_SHOT_KEY)
+		call_deferred("_play_shotgun_reload")
+		return
 	var sfx_name: String = WEAPON_SFX.get(weapon_type, "pistol_shot")
 	play(sfx_name)
+
+
+func _play_shotgun_reload() -> void:
+	play(SHOTGUN_CUSTOM_RELOAD_KEY)
 
 
 func _on_enemy_killed(_enemy_id: int, _enemy_type: String, _wave_id: int) -> void:

@@ -14,6 +14,8 @@ var _contact_iframes_remaining: float = 0.0
 
 ## Pending contact damages this frame (to select max)
 var _pending_contact_damages: Array[Dictionary] = []
+## Aggregated shotgun pellet hits by "shot_id|enemy_id"
+var _shotgun_hits: Dictionary = {}
 
 
 func _ready() -> void:
@@ -117,10 +119,10 @@ func _process_contact_damage() -> void:
 			max_damage = contact.damage
 			max_source = "contact_%s" % contact.enemy_type
 
-	# Calculate damage tick: Damage(type) * 0.7
-	# Actually per ТЗ: DPS = Damage(type) HP/sec, tick = Damage * 0.7
-	var iframes_sec: float = GameConfig.contact_iframes_sec if GameConfig else 0.7
-	var damage_tick := int(ceil(max_damage * iframes_sec))
+	# Contact damage is already precomputed by enemy logic.
+	# Keep at most one contact tick per second globally to avoid burst stacking.
+	var iframes_sec: float = maxf(GameConfig.contact_iframes_sec if GameConfig else 0.7, 1.0)
+	var damage_tick := int(max_damage)
 
 	# Apply damage
 	damage_player(damage_tick, max_source)
@@ -133,12 +135,28 @@ func _process_contact_damage() -> void:
 ## PROJECTILE DAMAGE
 ## ============================================================================
 
-func _on_projectile_hit(projectile_id: int, enemy_id: int, damage: int) -> void:
+func _on_projectile_hit(projectile_id: int, enemy_id: int, damage: int, projectile_type: String = "", shot_id: int = -1, shot_total_pellets: int = 0, shot_total_damage: float = 0.0) -> void:
+	var applied_damage := damage
+	if projectile_type == "pellet" and shot_id >= 0 and shot_total_pellets > 0 and shot_total_damage > 0.0:
+		var key := "%d|%d" % [shot_id, enemy_id]
+		var prev_hits := int(_shotgun_hits.get(key, 0))
+		var next_hits := prev_hits + 1
+		_shotgun_hits[key] = next_hits
+		var prev_total := int(round(shot_total_damage * float(prev_hits) / float(shot_total_pellets)))
+		var next_total := int(round(shot_total_damage * float(next_hits) / float(shot_total_pellets)))
+		applied_damage = maxi(0, next_total - prev_total)
+		if next_hits >= shot_total_pellets:
+			_shotgun_hits.erase(key)
+		if _shotgun_hits.size() > 20000:
+			_shotgun_hits.clear()
+	if applied_damage <= 0:
+		return
+
 	# Find enemy by ID
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	for enemy in enemies:
 		if "entity_id" in enemy and enemy.entity_id == enemy_id:
-			damage_enemy(enemy, damage, "projectile_%d" % projectile_id)
+			damage_enemy(enemy, applied_damage, "projectile_%d" % projectile_id)
 			break
 
 

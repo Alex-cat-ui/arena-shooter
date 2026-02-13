@@ -13,6 +13,8 @@ var projectiles_container: Node2D = null
 
 ## Next projectile ID
 var _next_projectile_id: int = 1
+var _next_shotgun_shot_id: int = 1
+var _rng := RandomNumberGenerator.new()
 
 ## Weapon stats - populated from GameConfig on _ready
 ## Fallback values match ТЗ v1.13
@@ -33,11 +35,13 @@ var WEAPON_STATS: Dictionary = {
 	},
 	"shotgun": {
 		"damage": 6,
-		"rpm": 60,
-		"speed_tiles": 10.0,
+		"rpm": 50.0,
+		"cooldown_sec": 1.2,
+		"speed_tiles": 40.0,
 		"projectile_type": "pellet",
-		"pellets": 5,
-		"spread": 0.3,  # radians
+		"pellets": 16,
+		"cone_deg": 8.0,
+		"shot_damage_total": 25.0,
 	},
 	"plasma": {
 		"damage": 20,
@@ -68,6 +72,7 @@ var WEAPON_STATS: Dictionary = {
 func _ready() -> void:
 	# Load projectile scene
 	projectile_scene = load("res://scenes/entities/projectile.tscn")
+	_rng.randomize()
 
 	# Override stats from GameConfig (canonical source of truth)
 	if GameConfig and GameConfig.weapon_stats:
@@ -92,8 +97,12 @@ func fire_weapon(weapon_type: String, position: Vector2, direction: Vector2) -> 
 	var stats: Dictionary = WEAPON_STATS[weapon_type]
 	var tile_size: int = GameConfig.tile_size if GameConfig else 32
 	var speed_pixels: float = stats.speed_tiles * tile_size
-	var pellets: int = stats.get("pellets", 1)
-	var spread: float = stats.get("spread", 0.0)
+	if weapon_type == "shotgun":
+		_fire_shotgun(stats, position, direction, speed_pixels)
+		return
+
+	var pellets: int = int(stats.get("pellets", 1))
+	var spread: float = float(stats.get("spread", 0.0))
 
 	for i in range(pellets):
 		var dir := direction
@@ -108,13 +117,41 @@ func fire_weapon(weapon_type: String, position: Vector2, direction: Vector2) -> 
 			dir,
 			speed_pixels,
 			stats.damage
+			)
+
+
+func _fire_shotgun(stats: Dictionary, position: Vector2, direction: Vector2, speed_pixels: float) -> void:
+	var pellets := maxi(int(stats.get("pellets", 16)), 1)
+	var cone_deg := maxf(float(stats.get("cone_deg", 8.0)), 0.0)
+	var shot_total_damage := maxf(float(stats.get("shot_damage_total", 25.0)), 0.0)
+	var shot_id := _next_shotgun_shot_id
+	_next_shotgun_shot_id += 1
+	var cone_rad := deg_to_rad(cone_deg)
+	var half := cone_rad * 0.5
+
+	for i in range(pellets):
+		# Center-weighted random spread: denser at center, sparser at cone edges.
+		var triangular := (_rng.randf() + _rng.randf()) - 1.0
+		var uniform := _rng.randf_range(-1.0, 1.0)
+		var weighted := clampf(triangular * 0.8 + uniform * 0.2, -1.0, 1.0)
+		var angle_offset := weighted * half
+		var dir := direction.rotated(angle_offset)
+		_spawn_projectile(
+			str(stats.get("projectile_type", "pellet")),
+			position,
+			dir,
+			speed_pixels,
+			1, # actual pellet damage to enemies is aggregated in CombatSystem by shot metadata
+			shot_id,
+			pellets,
+			shot_total_damage
 		)
 
 
-func _spawn_projectile(type: String, pos: Vector2, dir: Vector2, speed: float, damage: int) -> void:
+func _spawn_projectile(type: String, pos: Vector2, dir: Vector2, speed: float, damage: int, shot_id: int = -1, shot_total_pellets: int = 0, shot_total_damage: float = 0.0) -> void:
 	var projectile := projectile_scene.instantiate() as Projectile
 
-	projectile.initialize(_next_projectile_id, type, pos, dir, speed, damage)
+	projectile.initialize(_next_projectile_id, type, pos, dir, speed, damage, shot_id, shot_total_pellets, shot_total_damage)
 	projectiles_container.add_child(projectile)
 
 	_next_projectile_id += 1
@@ -124,7 +161,11 @@ func _spawn_projectile(type: String, pos: Vector2, dir: Vector2, speed: float, d
 func get_weapon_cooldown(weapon_type: String) -> float:
 	if not WEAPON_STATS.has(weapon_type):
 		return 1.0
-	var rpm: float = WEAPON_STATS[weapon_type].rpm
+	var stats := WEAPON_STATS[weapon_type] as Dictionary
+	var cooldown_sec: float = float(stats.get("cooldown_sec", -1.0))
+	if cooldown_sec > 0.0:
+		return cooldown_sec
+	var rpm: float = maxf(float(stats.get("rpm", 60.0)), 1.0)
 	return 60.0 / rpm
 
 

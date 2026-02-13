@@ -32,6 +32,11 @@ var ttl: float = 2.0
 ## Is this a piercing projectile?
 var is_piercing: bool = false
 
+## Shot metadata for aggregated pellet damage
+var shot_id: int = -1
+var shot_total_pellets: int = 0
+var shot_total_damage: float = 0.0
+
 ## Set of enemy IDs already hit (for piercing)
 var _hit_enemies: Dictionary = {}
 
@@ -46,10 +51,13 @@ func _ready() -> void:
 
 
 ## Initialize projectile
-func initialize(id: int, type: String, pos: Vector2, dir: Vector2, speed: float, dmg: int) -> void:
+func initialize(id: int, type: String, pos: Vector2, dir: Vector2, speed: float, dmg: int, p_shot_id: int = -1, p_shot_total_pellets: int = 0, p_shot_total_damage: float = 0.0) -> void:
 	projectile_id = id
 	projectile_type = type
 	damage = dmg
+	shot_id = p_shot_id
+	shot_total_pellets = p_shot_total_pellets
+	shot_total_damage = p_shot_total_damage
 	position = pos
 	velocity = dir.normalized() * speed
 
@@ -116,7 +124,7 @@ func _hit_enemy(enemy: Node2D) -> void:
 
 	# Emit hit event
 	if EventBus:
-		EventBus.emit_projectile_hit(projectile_id, enemy_id, damage)
+		EventBus.emit_projectile_hit(projectile_id, enemy_id, damage, projectile_type, shot_id, shot_total_pellets, shot_total_damage)
 
 	# Destroy if not piercing
 	if not is_piercing:

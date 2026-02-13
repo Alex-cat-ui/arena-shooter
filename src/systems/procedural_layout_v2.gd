@@ -41,13 +41,22 @@ const ROOM_PLACEMENT_ATTEMPTS := 96
 const MULTI_CONTACT_TARGET_RATIO := 0.28
 const MULTI_CONTACT_TARGET_MAX := 3
 const TARGET_MIN_EXTRA_LOOPS := 1
+const CORE_ROOM_TARGET_RATIO := 0.42
+const CORE_RADIUS_MIN := 520.0
+const CORE_RADIUS_MAX := 700.0
+const CORE_RADIUS_PER_ROOM := 16.0
+const CORE_SPLIT_GIANT_AREA_MIN := 190000.0
+const CORE_SPLIT_GIANT_SIDE_MIN := 520.0
+const CORE_DOOR_DENSITY_TARGET_PCT := 58.0
+const MICRO_GAP_BRIDGE_MAX := 5.0
+const NORTH_GATE_MIN_WIDTH := 88.0
 static var _cached_wall_white_tex: ImageTexture = null
 
 var mission_index: int = 3
 var room_generation_memory: Array = []
 var room_type_preset_name: String = ""
 var uses_color_fill: bool = true
-var walkable_fill_color: Color = Color(0.62, 0.92, 0.58, 1.0)
+var walkable_fill_color: Color = Color(0.58, 0.58, 0.58, 1.0)
 var non_walkable_fill_color: Color = Color(0.0, 0.0, 0.0, 1.0)
 var north_exit_rect: Rect2 = Rect2()
 
@@ -107,6 +116,8 @@ var outer_longest_run_pct_stat: float = 0.0
 var validate_fail_reason: String = ""
 var composition_fail_reason: String = ""
 var generation_attempts_stat: int = 0
+var _core_radius: float = 0.0
+var _core_target_non_closet: int = 0
 
 
 static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2D, debug_node: Node2D, player_node: Node2D, p_mission: int = 3) -> ProceduralLayoutV2:
@@ -176,6 +187,7 @@ func _generate_v2_once() -> bool:
 	var preset := ROOM_TYPE_WEIGHTS
 	room_type_preset_name = "FIXED_40_20_20_20"
 	var closets_target := _pick_closet_target(target_count)
+	_configure_core_quota(target_count, closets_target)
 	var closet_slots: Dictionary = {}
 	var placeable_ids: Array = []
 	for rid in range(1, target_count):
@@ -212,7 +224,13 @@ func _generate_v2_once() -> bool:
 		composition_fail_reason = "closet_count_mismatch"
 		return false
 
+	if not _enforce_core_topology_compaction():
+		composition_fail_reason = "core_quota_unmet"
+		return false
+
 	_apply_outer_run_outcrops()
+	_collapse_micro_room_gaps()
+	_rebuild_core_room_ids()
 
 	var edges := _build_room_adjacency_edges()
 	if edges.size() < rooms.size() - 1:
@@ -288,6 +306,8 @@ func _reset_v2_state() -> void:
 	main_path_straight_run_stat = 0
 	walk_unreachable_cells_stat = 0
 	outer_longest_run_pct_stat = 0.0
+	_core_radius = 0.0
+	_core_target_non_closet = 0
 
 
 func _mission_room_range(mission_id: int) -> Vector2i:
@@ -327,6 +347,359 @@ func _pick_closet_target(total_rooms: int) -> int:
 	var max_allowed := mini(CLOSET_COUNT_MAX, maxi(1, total_rooms - 1))
 	var min_allowed := mini(CLOSET_COUNT_MIN, max_allowed)
 	return randi_range(min_allowed, max_allowed)
+
+
+func _configure_core_quota(total_rooms: int, closets_target: int) -> void:
+	var non_closet_target := maxi(total_rooms - closets_target, 1)
+	_core_radius = clampf(420.0 + float(total_rooms) * CORE_RADIUS_PER_ROOM, CORE_RADIUS_MIN, CORE_RADIUS_MAX)
+	if non_closet_target <= 2:
+		_core_target_non_closet = non_closet_target
+		return
+	var scaled := int(round(float(non_closet_target) * CORE_ROOM_TARGET_RATIO))
+	_core_target_non_closet = clampi(scaled, 2, mini(non_closet_target, 6))
+
+
+func _is_point_in_core_radius(point: Vector2) -> bool:
+	if _core_radius <= 1.0:
+		return false
+	return point.distance_to(_arena.get_center()) <= _core_radius
+
+
+func _is_room_in_core_radius(room_id: int) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	if room_id in _void_ids:
+		return false
+	var center := rooms[room_id]["center"] as Vector2
+	return _is_point_in_core_radius(center)
+
+
+func _rebuild_core_room_ids() -> void:
+	_core_ids.clear()
+	for room_id in range(rooms.size()):
+		if room_id in _void_ids:
+			continue
+		if _is_room_in_core_radius(room_id):
+			_core_ids.append(room_id)
+	if _core_ids.is_empty() and not rooms.is_empty():
+		_core_ids.append(0)
+
+
+func _core_non_closet_ids() -> Array:
+	var ids: Array = []
+	for rid_variant in _core_ids:
+		var rid := int(rid_variant)
+		if rid < 0 or rid >= rooms.size():
+			continue
+		if _is_closet_room(rid):
+			continue
+		ids.append(rid)
+	return ids
+
+
+func _count_core_non_closet_rooms() -> int:
+	var count := 0
+	for room_id in range(rooms.size()):
+		if room_id in _void_ids:
+			continue
+		if _is_closet_room(room_id):
+			continue
+		if _is_room_in_core_radius(room_id):
+			count += 1
+	return count
+
+
+func _needs_more_core_non_closet_rooms() -> bool:
+	return _count_core_non_closet_rooms() < _core_target_non_closet
+
+
+func _enforce_core_topology_compaction() -> bool:
+	_rebuild_core_room_ids()
+	_split_central_giant_once()
+	_rebuild_core_room_ids()
+	if not _needs_more_core_non_closet_rooms():
+		return true
+
+	var candidates := _outer_non_closet_room_ids_sorted()
+	for rid_variant in candidates:
+		if not _needs_more_core_non_closet_rooms():
+			break
+		var rid := int(rid_variant)
+		if _try_relocate_room_to_core(rid):
+			_rebuild_core_room_ids()
+	return not _needs_more_core_non_closet_rooms()
+
+
+func _pick_central_giant_room_id() -> int:
+	var best_id := -1
+	var best_score := -INF
+	for rid in range(rooms.size()):
+		if rid in _void_ids:
+			continue
+		if _is_closet_room(rid):
+			continue
+		if not _is_room_in_core_radius(rid):
+			continue
+		var bbox := _room_bounding_box(rid)
+		var area := bbox.get_area()
+		var max_side := maxf(bbox.size.x, bbox.size.y)
+		if area < CORE_SPLIT_GIANT_AREA_MIN or max_side < CORE_SPLIT_GIANT_SIDE_MIN:
+			continue
+		var dist := bbox.get_center().distance_to(_arena.get_center())
+		var score := area - dist * 220.0
+		if score > best_score:
+			best_score = score
+			best_id = rid
+	return best_id
+
+
+func _split_central_giant_once() -> void:
+	var giant_id := _pick_central_giant_room_id()
+	if giant_id < 0:
+		return
+
+	var edges := _build_room_adjacency_edges()
+	var giant_non_closet_contacts := 0
+	for edge_variant in edges:
+		var edge := edge_variant as Dictionary
+		var a := int(edge["a"])
+		var b := int(edge["b"])
+		if a != giant_id and b != giant_id:
+			continue
+		var other := b if a == giant_id else a
+		if _is_closet_room(other):
+			continue
+		giant_non_closet_contacts += 1
+	if giant_non_closet_contacts >= 3:
+		return
+
+	var candidates := _outer_non_closet_room_ids_sorted()
+	for rid_variant in candidates:
+		var rid := int(rid_variant)
+		if rid == giant_id:
+			continue
+		if _try_relocate_room_to_core(rid, giant_id):
+			return
+
+
+func _outer_non_closet_room_ids_sorted() -> Array:
+	var ids: Array = []
+	var center := _arena.get_center()
+	for rid in range(rooms.size()):
+		if rid in _void_ids:
+			continue
+		if _is_closet_room(rid):
+			continue
+		if _is_room_in_core_radius(rid):
+			continue
+		ids.append(rid)
+	ids.sort_custom(func(a, b):
+		var da := (rooms[int(a)]["center"] as Vector2).distance_to(center)
+		var db := (rooms[int(b)]["center"] as Vector2).distance_to(center)
+		return da > db
+	)
+	return ids
+
+
+func _try_relocate_room_to_core(room_id: int, preferred_anchor_id: int = -1) -> bool:
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	if room_id in _void_ids:
+		return false
+	if _is_closet_room(room_id):
+		return false
+	var original_rects := rooms[room_id]["rects"] as Array
+	var local_rects := _normalize_rects_to_origin(original_rects)
+	var local_bbox := _bbox_from_rects(local_rects)
+	if local_bbox == Rect2():
+		return false
+
+	var anchors: Array = []
+	if preferred_anchor_id >= 0 and preferred_anchor_id < rooms.size() and preferred_anchor_id != room_id:
+		if not _is_closet_room(preferred_anchor_id):
+			anchors.append(preferred_anchor_id)
+	for core_id_variant in _core_non_closet_ids():
+		var core_id := int(core_id_variant)
+		if core_id == room_id:
+			continue
+		if core_id in anchors:
+			continue
+		anchors.append(core_id)
+	if anchors.is_empty():
+		anchors = [0]
+
+	for anchor_variant in anchors:
+		var anchor_id := int(anchor_variant)
+		if anchor_id < 0 or anchor_id >= rooms.size() or anchor_id == room_id:
+			continue
+		var anchor_bbox := _room_bounding_box(anchor_id)
+		var sides: Array[String] = ["N", "S", "E", "W"]
+		sides.shuffle()
+		for side in sides:
+			var placed_rects := _dock_shape_to_side(local_rects, local_bbox, anchor_bbox, side, CONTACT_MIN)
+			if placed_rects.is_empty():
+				continue
+			if not _rects_within_generation_bounds(placed_rects):
+				continue
+			if _overlaps_existing_rooms_excluding(room_id, placed_rects):
+				continue
+			var candidate_center := _area_weighted_center(placed_rects)
+			if not _is_point_in_core_radius(candidate_center):
+				continue
+			var contact_ids := _contact_room_ids_for_rects_excluding(placed_rects, CONTACT_MIN, room_id)
+			if contact_ids.is_empty():
+				continue
+			rooms[room_id]["rects"] = placed_rects
+			rooms[room_id]["center"] = candidate_center
+			return true
+	return false
+
+
+func _normalize_rects_to_origin(rects: Array) -> Array:
+	var bbox := _bbox_from_rects(rects)
+	var out: Array = []
+	for rect_variant in rects:
+		var r := rect_variant as Rect2
+		out.append(Rect2(r.position - bbox.position, r.size))
+	return out
+
+
+func _overlaps_existing_rooms_excluding(skip_room_id: int, candidate_rects: Array) -> bool:
+	for rid in range(rooms.size()):
+		if rid == skip_room_id:
+			continue
+		for ex_variant in (rooms[rid]["rects"] as Array):
+			var ex := ex_variant as Rect2
+			for cand_variant in candidate_rects:
+				var c := cand_variant as Rect2
+				if c.grow(-2.0).intersects(ex.grow(-2.0)):
+					return true
+	return false
+
+
+func _contact_room_ids_for_rects_excluding(candidate_rects: Array, min_contact: float, skip_room_id: int) -> Array:
+	var ids: Array = []
+	for rid in range(rooms.size()):
+		if rid == skip_room_id:
+			continue
+		if _contact_span_with_room(rid, candidate_rects) >= min_contact - CONTACT_EPS:
+			ids.append(rid)
+	return ids
+
+
+func _collapse_micro_room_gaps() -> void:
+	var changed := true
+	var guard := 0
+	while changed and guard < 24:
+		changed = false
+		guard += 1
+		for a in range(rooms.size()):
+			if a in _void_ids:
+				continue
+			for b in range(a + 1, rooms.size()):
+				if b in _void_ids:
+					continue
+				if _try_bridge_micro_gap_pair(a, b):
+					changed = true
+					break
+			if changed:
+				break
+
+
+func _try_bridge_micro_gap_pair(a: int, b: int) -> bool:
+	if a < 0 or b < 0 or a >= rooms.size() or b >= rooms.size():
+		return false
+	var min_span := _min_adjacency_span_for_pair(a, b) - CONTACT_EPS
+	var rects_a := rooms[a]["rects"] as Array
+	var rects_b := rooms[b]["rects"] as Array
+	for ai in range(rects_a.size()):
+		var ra := rects_a[ai] as Rect2
+		for bi in range(rects_b.size()):
+			var rb := rects_b[bi] as Rect2
+			var y0 := maxf(ra.position.y, rb.position.y)
+			var y1 := minf(ra.end.y, rb.end.y)
+			var y_span := y1 - y0
+			var x0 := maxf(ra.position.x, rb.position.x)
+			var x1 := minf(ra.end.x, rb.end.x)
+			var x_span := x1 - x0
+
+			var gap_lr := rb.position.x - ra.end.x
+			if gap_lr > CONTACT_EPS and gap_lr <= MICRO_GAP_BRIDGE_MAX and y_span >= min_span:
+				if _try_expand_room_rect_to_gap(a, ai, "RIGHT", gap_lr, b):
+					return true
+				if _try_expand_room_rect_to_gap(b, bi, "LEFT", gap_lr, a):
+					return true
+
+			var gap_rl := ra.position.x - rb.end.x
+			if gap_rl > CONTACT_EPS and gap_rl <= MICRO_GAP_BRIDGE_MAX and y_span >= min_span:
+				if _try_expand_room_rect_to_gap(b, bi, "RIGHT", gap_rl, a):
+					return true
+				if _try_expand_room_rect_to_gap(a, ai, "LEFT", gap_rl, b):
+					return true
+
+			var gap_tb := rb.position.y - ra.end.y
+			if gap_tb > CONTACT_EPS and gap_tb <= MICRO_GAP_BRIDGE_MAX and x_span >= min_span:
+				if _try_expand_room_rect_to_gap(a, ai, "DOWN", gap_tb, b):
+					return true
+				if _try_expand_room_rect_to_gap(b, bi, "UP", gap_tb, a):
+					return true
+
+			var gap_bt := ra.position.y - rb.end.y
+			if gap_bt > CONTACT_EPS and gap_bt <= MICRO_GAP_BRIDGE_MAX and x_span >= min_span:
+				if _try_expand_room_rect_to_gap(b, bi, "DOWN", gap_bt, a):
+					return true
+				if _try_expand_room_rect_to_gap(a, ai, "UP", gap_bt, b):
+					return true
+	return false
+
+
+func _try_expand_room_rect_to_gap(room_id: int, rect_idx: int, dir: String, amount: float, other_room_id: int) -> bool:
+	if amount <= CONTACT_EPS:
+		return false
+	if room_id < 0 or room_id >= rooms.size():
+		return false
+	var rects := rooms[room_id]["rects"] as Array
+	if rect_idx < 0 or rect_idx >= rects.size():
+		return false
+	var old := rects[rect_idx] as Rect2
+	var expanded := old
+	match dir:
+		"RIGHT":
+			expanded = Rect2(old.position, Vector2(old.size.x + amount, old.size.y))
+		"LEFT":
+			expanded = Rect2(old.position - Vector2(amount, 0.0), Vector2(old.size.x + amount, old.size.y))
+		"DOWN":
+			expanded = Rect2(old.position, Vector2(old.size.x, old.size.y + amount))
+		"UP":
+			expanded = Rect2(old.position - Vector2(0.0, amount), Vector2(old.size.x, old.size.y + amount))
+		_:
+			return false
+	if not _arena.grow(ROOM_OVERHANG).encloses(expanded):
+		return false
+	if _expanded_rect_hits_other_rooms(room_id, rect_idx, expanded, other_room_id):
+		return false
+	rects[rect_idx] = expanded
+	rooms[room_id]["rects"] = rects
+	rooms[room_id]["center"] = _area_weighted_center(rects)
+	return true
+
+
+func _expanded_rect_hits_other_rooms(room_id: int, rect_idx: int, expanded: Rect2, other_room_id: int) -> bool:
+	for rid in range(rooms.size()):
+		if rid in _void_ids:
+			continue
+		for other_idx in range((rooms[rid]["rects"] as Array).size()):
+			if rid == room_id and other_idx == rect_idx:
+				continue
+			if rid == room_id:
+				continue
+			var ex := ((rooms[rid]["rects"] as Array)[other_idx]) as Rect2
+			if rid == other_room_id:
+				if expanded.grow(-1.5).intersects(ex.grow(-1.5)):
+					return true
+			elif expanded.grow(-1.5).intersects(ex.grow(-1.5)):
+				return true
+	return false
 
 
 func _build_room_shape(room_type: String, is_center: bool) -> Dictionary:
@@ -492,6 +865,7 @@ func _translate_shape_to_center(rects: Array, center: Vector2) -> Array:
 func _place_next_room(room_id: int, weights: Dictionary, forced_room_type: String = "") -> bool:
 	var best: Dictionary = {}
 	var best_score := -INF
+	var prefer_core_anchor := forced_room_type != "CLOSET" and _needs_more_core_non_closet_rooms()
 	for _attempt in range(ROOM_PLACEMENT_ATTEMPTS):
 		var room_type := forced_room_type if forced_room_type != "" else _pick_room_type_weighted(weights)
 		var shape := _build_room_shape(room_type, false)
@@ -503,11 +877,7 @@ func _place_next_room(room_id: int, weights: Dictionary, forced_room_type: Strin
 			continue
 		var required_contact := _contact_min_for_room_type(room_type)
 
-		var anchor_candidates: Array = []
-		for idx in range(rooms.size()):
-			if room_type != "CLOSET" and _is_closet_room(idx):
-				continue
-			anchor_candidates.append(idx)
+		var anchor_candidates := _anchor_candidates_for_room_type(room_type, prefer_core_anchor)
 		if anchor_candidates.is_empty():
 			continue
 
@@ -528,15 +898,19 @@ func _place_next_room(room_id: int, weights: Dictionary, forced_room_type: Strin
 			continue
 		var contact_ids := _contact_room_ids_for_rects(placed_rects, required_contact)
 		var contact_count := contact_ids.size()
+		var require_multi_contact := room_type != "CLOSET" and (prefer_core_anchor or room_id >= 5 or _should_force_multi_contact_for_room(room_id, room_type))
 		if room_type == "CLOSET":
 			if contact_count != 1:
 				continue
 		else:
 			if contact_count < 1:
 				continue
+			if require_multi_contact and _attempt < int(ROOM_PLACEMENT_ATTEMPTS * 0.85) and contact_count < 2:
+				continue
 
 		var candidate_bbox := _bbox_from_rects(placed_rects)
-		var score := _placement_score(anchor_bbox, candidate_bbox, side)
+		var in_core := _is_point_in_core_radius(candidate_bbox.get_center())
+		var score := _placement_score(anchor_bbox, candidate_bbox, side, room_type, in_core, prefer_core_anchor)
 		if room_type != "CLOSET":
 			score += float(maxi(contact_count - 1, 0)) * 1.15
 			if contact_count == 1 and room_id >= 8:
@@ -560,6 +934,21 @@ func _place_next_room(room_id: int, weights: Dictionary, forced_room_type: Strin
 		"is_void": false,
 	})
 	return true
+
+
+func _anchor_candidates_for_room_type(room_type: String, prefer_core: bool) -> Array:
+	var all_ids: Array = []
+	var core_ids: Array = []
+	for idx in range(rooms.size()):
+		if room_type != "CLOSET" and _is_closet_room(idx):
+			continue
+		all_ids.append(idx)
+		if prefer_core and _is_room_in_core_radius(idx):
+			core_ids.append(idx)
+	if prefer_core and not core_ids.is_empty():
+		core_ids.shuffle()
+		return core_ids
+	return all_ids
 
 
 func _contact_min_for_room_type(room_type: String) -> float:
@@ -655,7 +1044,7 @@ func _contact_span_with_room(room_id: int, rects: Array) -> float:
 	return best
 
 
-func _placement_score(anchor_bbox: Rect2, candidate_bbox: Rect2, side: String) -> float:
+func _placement_score(anchor_bbox: Rect2, candidate_bbox: Rect2, side: String, room_type: String, in_core: bool, prefer_core_anchor: bool) -> float:
 	var cdist := candidate_bbox.get_center().distance_to(_arena.get_center())
 	var score := cdist * 0.01 + randf() * 0.3
 	if side == "E" or side == "W":
@@ -668,6 +1057,11 @@ func _placement_score(anchor_bbox: Rect2, candidate_bbox: Rect2, side: String) -
 	var aspect := combined.size.x / maxf(combined.size.y, 1.0)
 	if aspect > 1.9 or aspect < 0.53:
 		score -= 0.5
+	if room_type != "CLOSET":
+		if prefer_core_anchor:
+			score += 5.5 if in_core else -5.5
+		elif in_core:
+			score += 0.35
 	return score
 
 
@@ -884,13 +1278,13 @@ func _carve_doors_from_edges(edges: Array) -> bool:
 			if not _edge_is_geometrically_doorable(edge):
 				continue
 			optional_edges.append(edge)
-		optional_edges.sort_custom(func(x, y):
-			var x_deg := _door_degree(int(x["a"])) + _door_degree(int(x["b"]))
-			var y_deg := _door_degree(int(y["a"])) + _door_degree(int(y["b"]))
-			if x_deg != y_deg:
-				return x_deg > y_deg
-			return (float(x["t1"]) - float(x["t0"])) > (float(y["t1"]) - float(y["t0"]))
-		)
+			optional_edges.sort_custom(func(x, y):
+				var x_deg := _door_degree(int(x["a"])) + _door_degree(int(x["b"]))
+				var y_deg := _door_degree(int(y["a"])) + _door_degree(int(y["b"]))
+				if x_deg != y_deg:
+					return x_deg < y_deg
+				return (float(x["t1"]) - float(x["t0"])) > (float(y["t1"]) - float(y["t0"]))
+			)
 		for edge_variant in optional_edges:
 			if extra_added >= target_loops:
 				break
@@ -906,6 +1300,9 @@ func _carve_doors_from_edges(edges: Array) -> bool:
 			_register_door_connection(a, b, door)
 			used_edge_keys[_edge_key(edge)] = true
 			extra_added += 1
+
+		extra_added += _apply_core_door_density(edges, used_edge_keys, door_centers)
+		extra_added += _apply_dead_end_relief_doors(edges, used_edge_keys, door_centers)
 
 	missing_adjacent_doors_stat = _count_missing_required_adjacency_edges(edge_by_key, used_edge_keys)
 	if missing_adjacent_doors_stat > 0:
@@ -965,7 +1362,168 @@ func _target_min_extra_loops() -> int:
 	var non_closet_count := maxi(rooms.size() - _count_closet_rooms(), 0)
 	if non_closet_count < 6:
 		return 0
+	if non_closet_count >= 10:
+		return 2
 	return TARGET_MIN_EXTRA_LOOPS
+
+
+func _count_deg3plus_for_room_ids(room_ids: Array) -> int:
+	var count := 0
+	for rid_variant in room_ids:
+		var rid := int(rid_variant)
+		if rid < 0 or rid >= rooms.size():
+			continue
+		if _is_closet_room(rid):
+			continue
+		if _door_degree(rid) >= 3:
+			count += 1
+	return count
+
+
+func _apply_core_door_density(edges: Array, used_edge_keys: Dictionary, door_centers: Dictionary) -> int:
+	var core_non_closet := _core_non_closet_ids()
+	if core_non_closet.size() < 3:
+		return 0
+	var target_deg3plus := int(ceil(float(core_non_closet.size()) * CORE_DOOR_DENSITY_TARGET_PCT * 0.01))
+	target_deg3plus = clampi(target_deg3plus, 1, core_non_closet.size())
+	if _count_deg3plus_for_room_ids(core_non_closet) >= target_deg3plus:
+		return 0
+
+	var core_set: Dictionary = {}
+	for rid_variant in core_non_closet:
+		core_set[int(rid_variant)] = true
+
+	var candidates: Array = []
+	for edge_variant in edges:
+		var edge := edge_variant as Dictionary
+		var a := int(edge["a"])
+		var b := int(edge["b"])
+		var key := _edge_key(edge)
+		if used_edge_keys.has(key):
+			continue
+		if _is_closet_room(a) or _is_closet_room(b):
+			continue
+		if not _edge_is_geometrically_doorable(edge):
+			continue
+		var core_touch := (1 if core_set.has(a) else 0) + (1 if core_set.has(b) else 0)
+		if core_touch <= 0:
+			continue
+		var pressure := maxi(0, 3 - _door_degree(a)) + maxi(0, 3 - _door_degree(b))
+		var span := float(edge["t1"]) - float(edge["t0"])
+		candidates.append({
+			"edge": edge,
+			"core_touch": core_touch,
+			"pressure": pressure,
+			"span": span,
+		})
+
+	candidates.sort_custom(func(x, y):
+		var cx := int(x["core_touch"])
+		var cy := int(y["core_touch"])
+		if cx != cy:
+			return cx > cy
+		var px := int(x["pressure"])
+		var py := int(y["pressure"])
+		if px != py:
+			return px > py
+		return float(x["span"]) > float(y["span"])
+	)
+
+	var added := 0
+	for item_variant in candidates:
+		if _count_deg3plus_for_room_ids(core_non_closet) >= target_deg3plus:
+			break
+		var item := item_variant as Dictionary
+		var edge := item["edge"] as Dictionary
+		var a := int(edge["a"])
+		var b := int(edge["b"])
+		if not _can_add_door_between(a, b):
+			continue
+		var door := _door_for_edge(edge, door_centers)
+		if door == Rect2():
+			continue
+		doors.append(door)
+		_register_door_connection(a, b, door)
+		used_edge_keys[_edge_key(edge)] = true
+		added += 1
+	return added
+
+
+func _count_non_closet_dead_ends_from_doors() -> int:
+	var count := 0
+	for rid in range(rooms.size()):
+		if rid in _void_ids:
+			continue
+		if _is_closet_room(rid):
+			continue
+		if _door_degree(rid) <= 1:
+			count += 1
+	return count
+
+
+func _target_non_closet_dead_ends() -> int:
+	var non_closet := maxi(rooms.size() - _count_closet_rooms(), 0)
+	if non_closet <= 4:
+		return 1
+	var scaled := int(floor(float(non_closet) * 0.30))
+	return clampi(scaled, 1, 4)
+
+
+func _apply_dead_end_relief_doors(edges: Array, used_edge_keys: Dictionary, door_centers: Dictionary) -> int:
+	if _count_non_closet_dead_ends_from_doors() <= _target_non_closet_dead_ends():
+		return 0
+	var candidates: Array = []
+	for edge_variant in edges:
+		var edge := edge_variant as Dictionary
+		var a := int(edge["a"])
+		var b := int(edge["b"])
+		var key := _edge_key(edge)
+		if used_edge_keys.has(key):
+			continue
+		if _is_closet_room(a) or _is_closet_room(b):
+			continue
+		if not _edge_is_geometrically_doorable(edge):
+			continue
+		var dead_touch := (1 if _door_degree(a) <= 1 else 0) + (1 if _door_degree(b) <= 1 else 0)
+		if dead_touch <= 0:
+			continue
+		candidates.append({
+			"edge": edge,
+			"dead_touch": dead_touch,
+			"deg_sum": _door_degree(a) + _door_degree(b),
+			"span": float(edge["t1"]) - float(edge["t0"]),
+		})
+
+	candidates.sort_custom(func(x, y):
+		var dx := int(x["dead_touch"])
+		var dy := int(y["dead_touch"])
+		if dx != dy:
+			return dx > dy
+		var gx := int(x["deg_sum"])
+		var gy := int(y["deg_sum"])
+		if gx != gy:
+			return gx < gy
+		return float(x["span"]) > float(y["span"])
+	)
+
+	var added := 0
+	for item_variant in candidates:
+		if _count_non_closet_dead_ends_from_doors() <= _target_non_closet_dead_ends():
+			break
+		var item := item_variant as Dictionary
+		var edge := item["edge"] as Dictionary
+		var a := int(edge["a"])
+		var b := int(edge["b"])
+		if not _can_add_door_between(a, b):
+			continue
+		var door := _door_for_edge(edge, door_centers)
+		if door == Rect2():
+			continue
+		doors.append(door)
+		_register_door_connection(a, b, door)
+		used_edge_keys[_edge_key(edge)] = true
+		added += 1
+	return added
 
 
 func _door_adjacent_room_ids(door: Rect2) -> Array:
@@ -1037,6 +1595,8 @@ func _room_requires_full_adjacency(room_id: int) -> bool:
 		return false
 	if _is_closet_room(room_id):
 		return false
+	if _is_room_in_core_radius(room_id):
+		return true
 	if _room_touch_perimeter(room_id):
 		return false
 	var size_class := _room_size_class(room_id)
@@ -1137,26 +1697,166 @@ func _door_center_is_valid(room_id: int, center: Vector2, door_centers: Dictiona
 
 
 func _compute_north_exit() -> void:
-	var best_id := -1
-	var best_y := INF
-	var center_x := _compute_solid_bbox().get_center().x
-	var best_dx := INF
-	for i in range(rooms.size()):
-		var bbox := _room_bounding_box(i)
-		var y := bbox.position.y
-		var dx := absf(bbox.get_center().x - center_x)
-		if y < best_y - 1.0 or (absf(y - best_y) < 1.0 and dx < best_dx):
-			best_y = y
-			best_dx = dx
-			best_id = i
-	if best_id < 0:
+	_entry_gate = Rect2()
+	north_exit_rect = Rect2()
+	var desired_gate_w := maxf(_door_opening_len(), NORTH_GATE_MIN_WIDTH)
+	var choice := _pick_north_exit_candidate(desired_gate_w)
+	if choice.is_empty():
+		choice = _pick_north_exit_candidate(_door_opening_len())
+	if choice.is_empty():
 		return
-	var room_bbox := _room_bounding_box(best_id)
-	var gate_w := DOOR_LEN
-	var gate_x := clampf(room_bbox.get_center().x - gate_w * 0.5, room_bbox.position.x + 24.0, room_bbox.end.x - gate_w - 24.0)
-	var wall_t := _door_wall_thickness()
-	_entry_gate = Rect2(gate_x, room_bbox.position.y - wall_t * 0.5, gate_w, wall_t)
+	_entry_gate = choice["gate"] as Rect2
 	north_exit_rect = _entry_gate
+
+
+func _pick_north_exit_candidate(min_gate_w: float) -> Dictionary:
+	var candidates: Array = []
+	var solid_bbox := _compute_solid_bbox()
+	var center_x := solid_bbox.get_center().x if solid_bbox != Rect2() else _arena.get_center().x
+	for rid in range(rooms.size()):
+		if rid in _void_ids:
+			continue
+		if _is_closet_room(rid):
+			continue
+		var top_spans := _room_exposed_top_spans(rid)
+		for span_variant in top_spans:
+			var span := span_variant as Dictionary
+			var x0 := float(span["x0"])
+			var x1 := float(span["x1"])
+			var y := float(span["y"])
+			var span_w := x1 - x0
+			if span_w < min_gate_w - CONTACT_EPS:
+				continue
+			candidates.append({
+				"room_id": rid,
+				"x0": x0,
+				"x1": x1,
+				"y": y,
+				"span_w": span_w,
+				"dx": absf((x0 + x1) * 0.5 - center_x),
+			})
+	candidates.sort_custom(func(a, b):
+		var ay := float(a["y"])
+		var by := float(b["y"])
+		if absf(ay - by) > 0.5:
+			return ay < by
+		var adx := float(a["dx"])
+		var bdx := float(b["dx"])
+		if absf(adx - bdx) > 0.5:
+			return adx < bdx
+		return float(a["span_w"]) > float(b["span_w"])
+	)
+	for item_variant in candidates:
+		var item := item_variant as Dictionary
+		var gate := _build_north_gate_for_span(item, min_gate_w, center_x)
+		if gate != Rect2():
+			return {
+				"room_id": int(item["room_id"]),
+				"gate": gate,
+			}
+	return {}
+
+
+func _build_north_gate_for_span(span: Dictionary, min_gate_w: float, layout_center_x: float) -> Rect2:
+	var room_id := int(span["room_id"])
+	var x0 := float(span["x0"])
+	var x1 := float(span["x1"])
+	var y := float(span["y"])
+	var wall_t := _door_wall_thickness()
+	var side_margin := maxf(24.0, wall_t * 1.2 + 10.0)
+	var usable_w := (x1 - x0) - side_margin * 2.0
+	var gate_w := maxf(min_gate_w, _door_opening_len())
+	if usable_w < gate_w - CONTACT_EPS:
+		return Rect2()
+	var min_center_x := x0 + side_margin + gate_w * 0.5
+	var max_center_x := x1 - side_margin - gate_w * 0.5
+	if max_center_x <= min_center_x:
+		return Rect2()
+	var span_center_x := (x0 + x1) * 0.5
+	var centers: Array = []
+	centers.append(clampf(layout_center_x, min_center_x, max_center_x))
+	centers.append(clampf(span_center_x, min_center_x, max_center_x))
+	centers.append(clampf(span_center_x - gate_w * 0.35, min_center_x, max_center_x))
+	centers.append(clampf(span_center_x + gate_w * 0.35, min_center_x, max_center_x))
+	for center_variant in centers:
+		var cx := float(center_variant)
+		var gate := Rect2(cx - gate_w * 0.5, y - wall_t * 0.5, gate_w, wall_t)
+		if _north_gate_has_clearance(room_id, gate):
+			return gate
+	return Rect2()
+
+
+func _north_gate_has_clearance(room_id: int, gate: Rect2) -> bool:
+	var center := gate.get_center()
+	if _room_id_at_point(center + Vector2(0.0, -6.0)) >= 0:
+		return false
+	var lateral := minf(gate.size.x * 0.32, 24.0)
+	var x_offsets := PackedFloat32Array([-lateral, 0.0, lateral])
+	var depth_samples := PackedFloat32Array([10.0, 22.0, 36.0, 52.0])
+	for dy in depth_samples:
+		for dx in x_offsets:
+			var sample := center + Vector2(dx, dy)
+			if _room_id_at_point(sample) != room_id:
+				return false
+	return true
+
+
+func _room_exposed_top_spans(room_id: int) -> Array:
+	var spans: Array = []
+	if room_id < 0 or room_id >= rooms.size():
+		return spans
+	var room_rects := rooms[room_id]["rects"] as Array
+	for rect_variant in room_rects:
+		var r := rect_variant as Rect2
+		var cuts := _collect_same_room_edge_cuts(room_rects, r, "TOP")
+		var open_spans := _subtract_1d_intervals(r.position.x, r.end.x, cuts)
+		for span_variant in open_spans:
+			var span := span_variant as Dictionary
+			var x0 := float(span["t0"])
+			var x1 := float(span["t1"])
+			if x1 <= x0 + 2.0:
+				continue
+			var mid_x := (x0 + x1) * 0.5
+			var inside := _room_id_at_point(Vector2(mid_x, r.position.y + 2.0))
+			var outside := _room_id_at_point(Vector2(mid_x, r.position.y - 2.0))
+			if inside != room_id:
+				continue
+			if outside >= 0:
+				continue
+			spans.append({"y": r.position.y, "x0": x0, "x1": x1})
+	if spans.is_empty():
+		return spans
+	return _merge_top_spans_by_y(spans)
+
+
+func _merge_top_spans_by_y(spans: Array) -> Array:
+	var by_y: Dictionary = {}
+	for span_variant in spans:
+		var span := span_variant as Dictionary
+		var y_key := _quantize_coord(float(span["y"]))
+		if not by_y.has(y_key):
+			by_y[y_key] = []
+		(by_y[y_key] as Array).append({
+			"t0": float(span["x0"]),
+			"t1": float(span["x1"]),
+		})
+	var merged: Array = []
+	for y_variant in by_y.keys():
+		var y := float(y_variant)
+		var intervals := by_y[y_variant] as Array
+		intervals.sort_custom(func(a, b): return float(a["t0"]) < float(b["t0"]))
+		if intervals.is_empty():
+			continue
+		var cursor := (intervals[0] as Dictionary).duplicate()
+		for i in range(1, intervals.size()):
+			var curr := intervals[i] as Dictionary
+			if float(curr["t0"]) <= float(cursor["t1"]) + 0.75:
+				cursor["t1"] = maxf(float(cursor["t1"]), float(curr["t1"]))
+			else:
+				merged.append({"y": y, "x0": float(cursor["t0"]), "x1": float(cursor["t1"])})
+				cursor = curr.duplicate()
+		merged.append({"y": y, "x0": float(cursor["t0"]), "x1": float(cursor["t1"])})
+	return merged
 
 
 func _compute_v2_stats() -> void:
@@ -1174,6 +1874,17 @@ func _compute_v2_stats() -> void:
 	avg_degree = total_deg / maxf(float(rooms.size()), 1.0)
 	big_rooms_count = big_count
 	outer_longest_run_pct_stat = _compute_outer_longest_run_pct()
+
+
+func center_non_closet_room_count() -> int:
+	return _count_core_non_closet_rooms()
+
+
+func center_deg3plus_pct() -> float:
+	var core_non_closet := _core_non_closet_ids()
+	if core_non_closet.is_empty():
+		return 0.0
+	return float(_count_deg3plus_for_room_ids(core_non_closet)) * 100.0 / float(core_non_closet.size())
 
 
 func _build_room_generation_memory(edges: Array) -> void:
@@ -1197,6 +1908,7 @@ func _build_room_generation_memory(edges: Array) -> void:
 			"bbox": bbox,
 			"area": bbox.get_area(),
 			"is_perimeter": _room_touch_perimeter(i),
+			"is_core": _is_room_in_core_radius(i),
 			"requires_full_adjacency": _room_requires_full_adjacency(i),
 			"door_degree": (_door_adj[i] as Array).size() if _door_adj.has(i) else 0,
 			"neighbors": (neighbors[i] as Array).duplicate(),

@@ -12,6 +12,8 @@ enum ArenaPreset { SQUARE, LANDSCAPE, PORTRAIT }
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
 const BOSS_SCENE := preload("res://scenes/entities/boss.tscn")
 const PROCEDURAL_LAYOUT_V2_SCRIPT := preload("res://src/systems/procedural_layout_v2.gd")
+const ROOM_ENEMY_SPAWNER_SCRIPT := preload("res://src/systems/room_enemy_spawner.gd")
+const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/room_nav_system.gd")
 
 ## Node references
 @onready var player: CharacterBody2D = $Entities/Player
@@ -39,6 +41,8 @@ var combat_system: CombatSystem = null
 var projectile_system: ProjectileSystem = null
 var vfx_system: VFXSystem = null
 var footprint_system: FootprintSystem = null
+var room_enemy_spawner = null
+var room_nav_system = null
 
 ## Systems (Phase 3: Arena Polish + Weapons)
 var ability_system: AbilitySystem = null
@@ -98,7 +102,7 @@ var _layout_room_stats: Dictionary = {
 const CAMERA_FOLLOW_LERP_MOVING := 5.0
 const CAMERA_FOLLOW_LERP_STOPPING := 2.0
 const CAMERA_VELOCITY_EPSILON := 6.0
-const V2_FLOOR_FILL_COLOR := Color(0.62, 0.92, 0.58, 1.0)
+const V2_FLOOR_FILL_COLOR := Color(0.58, 0.58, 0.58, 1.0)
 const PLAYER_NORTH_SPAWN_OFFSET := 100.0
 
 
@@ -238,6 +242,8 @@ func _init_systems() -> void:
 	# Procedural layout
 	layout_walls = Node2D.new()
 	layout_walls.name = "LayoutWalls"
+	layout_walls.z_as_relative = false
+	layout_walls.z_index = 20
 	add_child(layout_walls)
 	layout_debug = Node2D.new()
 	layout_debug.name = "LayoutDebug"
@@ -251,9 +257,21 @@ func _init_systems() -> void:
 		if s == 0:
 			s = int(Time.get_ticks_msec()) % 999999
 		_layout = _generate_layout(arena_rect, s)
+		_ensure_layout_recovered(arena_rect, s)
 	_rebuild_walkable_floor()
 	_update_layout_room_stats()
 	_sync_layout_runtime_memory()
+	room_enemy_spawner = ROOM_ENEMY_SPAWNER_SCRIPT.new()
+	room_enemy_spawner.name = "RoomEnemySpawner"
+	add_child(room_enemy_spawner)
+	room_enemy_spawner.initialize(ENEMY_SCENE, entities_container)
+	if room_enemy_spawner:
+		room_enemy_spawner.rebuild_for_layout(_layout)
+	room_nav_system = ROOM_NAV_SYSTEM_SCRIPT.new()
+	room_nav_system.name = "RoomNavSystem"
+	add_child(room_nav_system)
+	if room_nav_system and room_nav_system.has_method("initialize"):
+		room_nav_system.initialize(_layout, entities_container, player)
 	_setup_north_transition_trigger()
 	_reset_camera_follow()
 	_ensure_player_runtime_ready()
@@ -890,16 +908,61 @@ func regenerate_layout(new_seed: int = 0) -> void:
 	if s == 0:
 		s = int(Time.get_ticks_msec()) % 999999
 	_layout = _generate_layout(arena_rect, s)
+	_ensure_layout_recovered(arena_rect, s)
 	_rebuild_walkable_floor()
 	_update_layout_room_stats()
 	_sync_layout_runtime_memory()
+	if room_enemy_spawner:
+		room_enemy_spawner.rebuild_for_layout(_layout)
+	if room_nav_system and room_nav_system.has_method("rebuild_for_layout"):
+		room_nav_system.rebuild_for_layout(_layout)
 	_setup_north_transition_trigger()
 	_reset_camera_follow()
 	_ensure_player_runtime_ready()
 
 
 func _generate_layout(arena_rect: Rect2, seed_value: int):
-	return PROCEDURAL_LAYOUT_V2_SCRIPT.generate_and_build(arena_rect, seed_value, layout_walls, layout_debug, player, _current_mission_index())
+	var mission := _current_mission_index()
+	var attempts := 8
+	var base_seed := seed_value
+	var layout = null
+	for i in range(attempts):
+		var s := base_seed + i * 9973
+		layout = PROCEDURAL_LAYOUT_V2_SCRIPT.generate_and_build(arena_rect, s, layout_walls, layout_debug, player, mission)
+		if layout and layout.valid:
+			if i > 0:
+				print("[LevelMVP] Layout recovered on retry %d (seed=%d -> %d)" % [i + 1, seed_value, s])
+			return layout
+		# Cleanup failed attempt visuals before next retry.
+		_clear_node_children_detached(layout_walls)
+		_clear_node_children_detached(layout_debug)
+	print("[LevelMVP][WARN] Layout failed after %d retries (seed=%d, mission=%d)" % [attempts, seed_value, mission])
+	return layout
+
+
+func _layout_has_wall_visuals() -> bool:
+	if not layout_walls:
+		return false
+	var walls_visual := layout_walls.get_node_or_null("WallsVisual") as Node
+	return walls_visual != null and walls_visual.get_child_count() > 0
+
+
+func _ensure_layout_recovered(arena_rect: Rect2, seed_value: int) -> void:
+	if _layout and _layout.valid and _layout_has_wall_visuals():
+		return
+
+	var recovery_seeds := [1337, 7331, 424242, seed_value + 131071]
+	for recovery_seed_variant in recovery_seeds:
+		var recovery_seed := int(recovery_seed_variant)
+		_clear_node_children_detached(layout_walls)
+		_clear_node_children_detached(layout_debug)
+		var recovered: Variant = _generate_layout(arena_rect, recovery_seed)
+		if recovered and recovered.valid and _layout_has_wall_visuals():
+			_layout = recovered
+			print("[LevelMVP] Layout recovery OK (seed=%d)" % recovery_seed)
+			return
+
+	print("[LevelMVP][WARN] Layout visuals missing after recovery; fallback floor will be shown.")
 
 
 func _current_mission_index() -> int:
