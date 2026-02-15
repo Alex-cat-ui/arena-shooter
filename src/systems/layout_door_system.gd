@@ -4,18 +4,8 @@ class_name LayoutDoorSystem
 extends Node
 
 const DOOR_PHYSICS_V3_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
-const SHOTGUN_WEAPON := "shotgun"
 
 var doors_parent: Node2D = null
-
-
-func _ready() -> void:
-	if EventBus:
-		if not EventBus.player_shot.is_connected(_on_player_shot):
-			EventBus.player_shot.connect(_on_player_shot)
-		if not EventBus.enemy_shot.is_connected(_on_enemy_shot):
-			EventBus.enemy_shot.connect(_on_enemy_shot)
-
 
 func initialize(p_doors_parent: Node2D) -> void:
 	doors_parent = p_doors_parent
@@ -58,23 +48,3 @@ func _spawn_door(opening: Rect2, wall_thickness: float) -> void:
 	doors_parent.add_child(door)
 	door.configure_from_opening(opening, wall_thickness)
 	door.reset_to_closed()
-
-
-func _on_player_shot(weapon_type: String, position: Vector3, _direction: Vector3) -> void:
-	if weapon_type != SHOTGUN_WEAPON:
-		return
-	_apply_shot_reaction(Vector2(position.x, position.y))
-
-
-func _on_enemy_shot(_enemy_id: int, weapon_type: String, position: Vector3, _direction: Vector3) -> void:
-	if weapon_type != SHOTGUN_WEAPON:
-		return
-	_apply_shot_reaction(Vector2(position.x, position.y))
-
-
-func _apply_shot_reaction(shot_pos: Vector2) -> void:
-	if not doors_parent:
-		return
-	for child in doors_parent.get_children():
-		if child and child.has_method("apply_shot_impulse"):
-			child.apply_shot_impulse(shot_pos, 1.0)

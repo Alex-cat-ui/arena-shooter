@@ -46,14 +46,17 @@ func collect_base_wall_segments(rooms: Array, void_ids: Array) -> Array:
 ## Full finalize pipeline: merge → cut doors → seal gaps → merge → prune.
 ## Returns {wall_segs: Array, pseudo_gap_count: int}.
 func finalize_wall_segments(base_segs: Array, all_door_rects: Array, wall_t: float,
-		door_opening_len: float, rooms: Array, void_ids: Array, arena: Rect2) -> Dictionary:
+		door_opening_len: float, rooms: Array, void_ids: Array, arena: Rect2,
+		notch_config: Dictionary = {}) -> Dictionary:
 	var merged := merge_collinear_segments(base_segs)
-	var cut := cut_doors_from_segments(merged, all_door_rects, wall_t)
-	var sealed := seal_non_door_gaps(cut, all_door_rects, wall_t, door_opening_len)
+	var cutouts: Array = all_door_rects.duplicate()
+	cutouts.append_array(_collect_hinge_notch_rects(all_door_rects, wall_t, arena, notch_config))
+	var cut := cut_doors_from_segments(merged, cutouts, wall_t)
+	var sealed := seal_non_door_gaps(cut, cutouts, wall_t, door_opening_len)
 	var final := merge_collinear_segments(sealed)
 	var redundant_pruned := prune_redundant_wall_segments(final, wall_t, rooms, void_ids, arena)
 	var pruned := prune_redundant_parallel_duplicates(redundant_pruned, wall_t, rooms, void_ids, arena)
-	var gap_count := count_non_door_gaps(pruned, all_door_rects, wall_t, door_opening_len)
+	var gap_count := count_non_door_gaps(pruned, cutouts, wall_t, door_opening_len)
 	return {"wall_segs": pruned, "pseudo_gap_count": gap_count}
 
 
@@ -61,7 +64,7 @@ func finalize_wall_segments(base_segs: Array, all_door_rects: Array, wall_t: flo
 ## Returns {wall_segs: Array, pseudo_gap_count: int}.
 func build_walls(walls_node: Node2D, rooms: Array, void_ids: Array,
 		door_rects: Array, entry_gate: Rect2, arena: Rect2,
-		wall_t: float, door_opening_len: float) -> Dictionary:
+		wall_t: float, door_opening_len: float, notch_config: Dictionary = {}) -> Dictionary:
 	if not walls_node:
 		return {"wall_segs": [], "pseudo_gap_count": 0}
 
@@ -69,7 +72,7 @@ func build_walls(walls_node: Node2D, rooms: Array, void_ids: Array,
 	var all_door_rects: Array = door_rects.duplicate()
 	if entry_gate != Rect2():
 		all_door_rects.append(entry_gate)
-	var result := finalize_wall_segments(base_segs, all_door_rects, wall_t, door_opening_len, rooms, void_ids, arena)
+	var result := finalize_wall_segments(base_segs, all_door_rects, wall_t, door_opening_len, rooms, void_ids, arena, notch_config)
 	var wall_segs := result["wall_segs"] as Array
 
 	var white_tex := _wall_white_texture()
@@ -512,6 +515,70 @@ func _is_intentional_gap(seg_type: String, seg_pos: float, gap_t0: float, gap_t1
 			if ov1v - ov0v >= minf(gap_len * 0.6, door_opening_len * 0.5):
 				return true
 	return false
+
+
+func _collect_hinge_notch_rects(door_rects: Array, wall_t: float, arena: Rect2,
+		notch_config: Dictionary) -> Array:
+	if not bool(notch_config.get("enabled", false)):
+		return []
+
+	var ratio := clampf(float(notch_config.get("span_ratio", 0.7)), 0.2, 1.5)
+	var depth := clampf(float(notch_config.get("depth_px", wall_t)), 2.0, maxf(wall_t, 2.0))
+	var notches: Array = []
+	var perimeter_margin := maxf(wall_t, 2.0)
+
+	for door_variant in door_rects:
+		var door := door_variant as Rect2
+		if door == Rect2():
+			continue
+		if _door_touches_perimeter(door, arena, perimeter_margin):
+			continue
+		var is_vertical := door.size.y > door.size.x
+		var span := maxf(door.size.x, door.size.y)
+		if span <= 2.0:
+			continue
+		var notch_span := maxf(4.0, span * ratio)
+		if is_vertical:
+			var hinge_y := door.position.y
+			notches.append(Rect2(
+				door.position.x - notch_span,
+				hinge_y - depth * 0.5,
+				notch_span,
+				depth
+			))
+			notches.append(Rect2(
+				door.end.x,
+				hinge_y - depth * 0.5,
+				notch_span,
+				depth
+			))
+		else:
+			var hinge_x := door.position.x
+			notches.append(Rect2(
+				hinge_x - depth * 0.5,
+				door.position.y - notch_span,
+				depth,
+				notch_span
+			))
+			notches.append(Rect2(
+				hinge_x - depth * 0.5,
+				door.end.y,
+				depth,
+				notch_span
+			))
+
+	return notches
+
+
+func _door_touches_perimeter(door: Rect2, arena: Rect2, margin: float) -> bool:
+	if arena == Rect2():
+		return false
+	return (
+		absf(door.position.x - arena.position.x) <= margin
+		or absf(door.end.x - arena.end.x) <= margin
+		or absf(door.position.y - arena.position.y) <= margin
+		or absf(door.end.y - arena.end.y) <= margin
+	)
 
 
 func _is_redundant_wall_segment(seg: Dictionary, wall_t: float,

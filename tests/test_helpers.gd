@@ -288,7 +288,6 @@ static func spawn_mover(parent: Node2D, pos: Vector2, layer_or_velocity: Variant
 	mover.velocity = initial_velocity
 	mover.collision_layer = layer
 	mover.collision_mask = mask
-	mover.set_meta("door_push_velocity", initial_velocity)
 	if not group_name.is_empty():
 		mover.add_to_group(group_name)
 	var shape_node := CollisionShape2D.new()

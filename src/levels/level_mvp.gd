@@ -14,6 +14,7 @@ const BOSS_SCENE := preload("res://scenes/entities/boss.tscn")
 const PROCEDURAL_LAYOUT_V2_SCRIPT := preload("res://src/systems/procedural_layout_v2.gd")
 const ROOM_ENEMY_SPAWNER_SCRIPT := preload("res://src/systems/room_enemy_spawner.gd")
 const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/room_nav_system.gd")
+const ENEMY_AGGRO_COORDINATOR_SCRIPT := preload("res://src/systems/enemy_aggro_coordinator.gd")
 const LAYOUT_DOOR_SYSTEM_SCRIPT := preload("res://src/systems/layout_door_system.gd")
 
 ## Node references
@@ -45,6 +46,7 @@ var vfx_system: VFXSystem = null
 var footprint_system: FootprintSystem = null
 var room_enemy_spawner = null
 var room_nav_system = null
+var enemy_aggro_coordinator = null
 var layout_door_system = null
 
 ## Systems (Phase 3: Arena Polish + Weapons)
@@ -93,8 +95,6 @@ var _floor_overlay: ColorRect = null
 var _debug_container: VBoxContainer = null
 var _momentum_label: Label = null
 var _music_system_ref: MusicSystem = null
-var _review_seed_index: int = -1
-var _last_review_seed: int = 0
 var _camera_follow_pos: Vector2 = Vector2.ZERO
 var _camera_follow_initialized: bool = false
 var _cached_white_pixel_tex: ImageTexture = null
@@ -113,8 +113,7 @@ const CAMERA_VELOCITY_EPSILON := 6.0
 const V2_FLOOR_FILL_COLOR := Color(0.58, 0.58, 0.58, 1.0)
 const PLAYER_NORTH_SPAWN_OFFSET := 100.0
 const WAVES_RUNTIME_ENABLED := false
-const DOOR_REVIEW_SEEDS := [21, 9, 16, 3, 14]
-const RIGHT_DEBUG_HINT_BASE := "ESC - Pause | F1 - Game Over\nF2 - Level Complete | F3 - Debug\nF4 - Regenerate | F6 - Enemy Guns | F7 - Review Seed\nLMB - Shoot | 1-6 Weapons | Wheel\nQ - Katana | RMB - Heavy | Space - Dash"
+const RIGHT_DEBUG_HINT_BASE := "ESC - Pause | F1 - Game Over\nF2 - Level Complete | F3 - Debug\nF4 - Regenerate | F7 - Enemy Guns | F8 - God Mode\nLMB - Shoot | 1-6 Weapons | Wheel\nQ - Katana | RMB - Heavy | Space - Dash"
 
 
 func _ready() -> void:
@@ -302,6 +301,11 @@ func _init_systems() -> void:
 	add_child(room_nav_system)
 	if room_nav_system and room_nav_system.has_method("initialize"):
 		room_nav_system.initialize(_layout, entities_container, player)
+	enemy_aggro_coordinator = ENEMY_AGGRO_COORDINATOR_SCRIPT.new()
+	enemy_aggro_coordinator.name = "EnemyAggroCoordinator"
+	add_child(enemy_aggro_coordinator)
+	if enemy_aggro_coordinator and enemy_aggro_coordinator.has_method("initialize"):
+		enemy_aggro_coordinator.initialize(entities_container, room_nav_system, player)
 	_setup_north_transition_trigger()
 	_reset_camera_follow()
 	_ensure_player_runtime_ready()
@@ -748,20 +752,15 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.keycode == KEY_F4:
 			print("[LevelMVP] F4: Regenerating layout")
 			regenerate_layout(0)
-		elif event.keycode == KEY_F6:
+		elif event.keycode == KEY_F7:
 			_enemy_weapons_enabled = not _enemy_weapons_enabled
 			_apply_enemy_weapon_toggle_to_all()
 			_refresh_right_debug_hint()
 			print("[LevelMVP] Enemy weapons: %s" % ("ON" if _enemy_weapons_enabled else "OFF"))
-		elif event.keycode == KEY_F7:
-			if DOOR_REVIEW_SEEDS.is_empty():
-				return
-			_review_seed_index = (_review_seed_index + 1) % DOOR_REVIEW_SEEDS.size()
-			var review_seed := int(DOOR_REVIEW_SEEDS[_review_seed_index])
-			_last_review_seed = review_seed
-			print("[LevelMVP] F7: Review seed %d (%d/%d)" % [review_seed, _review_seed_index + 1, DOOR_REVIEW_SEEDS.size()])
-			regenerate_layout(review_seed)
+		elif event.keycode == KEY_F8 and GameConfig:
+			GameConfig.god_mode = not GameConfig.god_mode
 			_refresh_right_debug_hint()
+			print("[LevelMVP] God mode: %s" % ("ON" if GameConfig.god_mode else "OFF"))
 
 
 func _update_hud() -> void:
@@ -995,9 +994,20 @@ func regenerate_layout(new_seed: int = 0) -> void:
 		room_enemy_spawner.rebuild_for_layout(_layout)
 	if room_nav_system and room_nav_system.has_method("rebuild_for_layout"):
 		room_nav_system.rebuild_for_layout(_layout)
+	_rebind_enemy_aggro_context()
 	_setup_north_transition_trigger()
 	_reset_camera_follow()
 	_ensure_player_runtime_ready()
+
+
+func _rebind_enemy_aggro_context() -> void:
+	if not enemy_aggro_coordinator:
+		return
+	if enemy_aggro_coordinator.has_method("bind_context"):
+		enemy_aggro_coordinator.bind_context(entities_container, room_nav_system, player)
+		return
+	if enemy_aggro_coordinator.has_method("initialize"):
+		enemy_aggro_coordinator.initialize(entities_container, room_nav_system, player)
 
 
 func _generate_layout(arena_rect: Rect2, seed_value: int):
@@ -1244,13 +1254,10 @@ func _apply_enemy_weapon_toggle_to_node(node: Node) -> void:
 func _refresh_right_debug_hint() -> void:
 	if not debug_hint_label:
 		return
-	var review_text := "OFF"
-	if _last_review_seed > 0 and _review_seed_index >= 0:
-		review_text = "%d (%d/%d)" % [_last_review_seed, _review_seed_index + 1, DOOR_REVIEW_SEEDS.size()]
-	debug_hint_label.text = "%s\nEnemy Guns: %s\nReview Seed: %s" % [
+	debug_hint_label.text = "%s\nEnemy Guns: %s\nGod Mode: %s" % [
 		RIGHT_DEBUG_HINT_BASE,
 		("ON" if _enemy_weapons_enabled else "OFF"),
-		review_text,
+		("ON" if GameConfig and GameConfig.god_mode else "OFF"),
 	]
 
 

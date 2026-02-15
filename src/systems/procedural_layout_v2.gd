@@ -1792,6 +1792,21 @@ func _door_wall_thickness() -> float:
 	return 16.0
 
 
+func _door_hinge_notch_config() -> Dictionary:
+	var cfg := _get_game_config_singleton()
+	if cfg:
+		return {
+			"enabled": bool(cfg.get("door_hinge_notch_enabled")),
+			"depth_px": float(cfg.get("door_hinge_notch_depth_px")),
+			"span_ratio": float(cfg.get("door_hinge_notch_span_ratio")),
+		}
+	return {
+		"enabled": true,
+		"depth_px": 16.0,
+		"span_ratio": 0.7,
+	}
+
+
 func _rect_aspect(r: Rect2) -> float:
 	return LayoutGeometryUtils.rect_aspect(r)
 
@@ -1828,7 +1843,16 @@ func _compute_cut_wall_segments_for_validation() -> Array:
 	var all_door_rects: Array = doors.duplicate()
 	if _entry_gate != Rect2():
 		all_door_rects.append(_entry_gate)
-	var result := _wall_builder.finalize_wall_segments(base_segs, all_door_rects, wall_t, _door_opening_len(), rooms, _void_ids, _arena)
+	var result := _wall_builder.finalize_wall_segments(
+		base_segs,
+		all_door_rects,
+		wall_t,
+		_door_opening_len(),
+		rooms,
+		_void_ids,
+		_arena,
+		_door_hinge_notch_config()
+	)
 	pseudo_gap_count_stat = int(result["pseudo_gap_count"])
 	return result["wall_segs"] as Array
 
@@ -1842,7 +1866,17 @@ func _room_id_at_point(p: Vector2) -> int:
 
 
 func _build_walls(walls_node: Node2D) -> void:
-	var result := _wall_builder.build_walls(walls_node, rooms, _void_ids, doors, _entry_gate, _arena, _door_wall_thickness(), _door_opening_len())
+	var result := _wall_builder.build_walls(
+		walls_node,
+		rooms,
+		_void_ids,
+		doors,
+		_entry_gate,
+		_arena,
+		_door_wall_thickness(),
+		_door_opening_len(),
+		_door_hinge_notch_config()
+	)
 	_wall_segs = result["wall_segs"] as Array
 	pseudo_gap_count_stat = int(result["pseudo_gap_count"])
 

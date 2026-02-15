@@ -22,9 +22,12 @@ func _ready() -> void:
 	_test_cut_doors_horizontal()
 	_test_cut_doors_vertical()
 	_test_cut_doors_no_match()
+	_test_hinge_notch_generates_extra_cuts()
 	_test_seal_non_door_gaps_small_gap()
 	_test_seal_non_door_gaps_large_gap()
 	_test_seal_preserves_intentional_gap()
+	_test_seal_preserves_hinge_notch_gap()
+	_test_hinge_notch_disabled_is_noop()
 	_test_count_non_door_gaps()
 	_test_is_perimeter_segment()
 	_test_collect_base_single_room()
@@ -108,6 +111,27 @@ func _test_cut_doors_no_match() -> void:
 	_t.check("No match: 1 segment unchanged", result.size() == 1)
 
 
+func _test_hinge_notch_generates_extra_cuts() -> void:
+	print("\n--- hinge notch: extra cuts ---")
+	var segs: Array = [
+		{"type": "H", "pos": 100.0, "t0": 0.0, "t1": 200.0},
+		{"type": "V", "pos": 80.0, "t0": 0.0, "t1": 200.0},
+	]
+	var door := Rect2(80.0, 96.0, 40.0, 8.0)
+	var notch_cfg := {"enabled": true, "depth_px": 16.0, "span_ratio": 0.5}
+	var notch_rects := _wb._collect_hinge_notch_rects([door], 16.0, Rect2(), notch_cfg)
+	_t.check("Hinge notch generates 2 synthetic rects", notch_rects.size() == 2)
+	var cuts: Array = [door]
+	cuts.append_array(notch_rects)
+	var result := _wb.cut_doors_from_segments(segs, cuts, 16.0)
+	var v_segments := 0
+	for seg_variant in result:
+		var seg := seg_variant as Dictionary
+		if seg["type"] == "V" and absf(float(seg["pos"]) - 80.0) < 1.0:
+			v_segments += 1
+	_t.check("Hinge notch splits hinge-side V wall into >= 3 pieces", v_segments >= 3)
+
+
 # ---------------------------------------------------------------------------
 # seal_non_door_gaps
 # ---------------------------------------------------------------------------
@@ -148,6 +172,36 @@ func _test_seal_preserves_intentional_gap() -> void:
 	var door_rects: Array = [Rect2(75.0, 96.0, 50.0, 8.0)]
 	var result := _wb.seal_non_door_gaps(segs, door_rects, 16.0, 75.0)
 	_t.check("Intentional gap: stays 2", result.size() == 2)
+
+
+func _test_seal_preserves_hinge_notch_gap() -> void:
+	print("\n--- seal: hinge notch gap preserved ---")
+	var door := Rect2(80.0, 96.0, 40.0, 8.0)
+	var notch_cfg := {"enabled": true, "depth_px": 16.0, "span_ratio": 0.5}
+	var notch_rects := _wb._collect_hinge_notch_rects([door], 16.0, Rect2(), notch_cfg)
+	# Gap on V segment near hinge (top notch region y=76..96)
+	var segs: Array = [
+		{"type": "V", "pos": 80.0, "t0": 0.0, "t1": 76.0},
+		{"type": "V", "pos": 80.0, "t0": 96.0, "t1": 200.0},
+	]
+	var baseline := _wb.seal_non_door_gaps(segs, [door], 16.0, 75.0)
+	_t.check("Without notch metadata, gap seals to 1", baseline.size() == 1)
+	var cutouts: Array = [door]
+	cutouts.append_array(notch_rects)
+	var with_notch := _wb.seal_non_door_gaps(segs, cutouts, 16.0, 75.0)
+	_t.check("With notch metadata, gap stays open", with_notch.size() == 2)
+
+
+func _test_hinge_notch_disabled_is_noop() -> void:
+	print("\n--- hinge notch: disabled noop ---")
+	var door := Rect2(80.0, 96.0, 40.0, 8.0)
+	var disabled_cfg := {"enabled": false, "depth_px": 16.0, "span_ratio": 0.5}
+	var notch_rects := _wb._collect_hinge_notch_rects([door], 16.0, Rect2(), disabled_cfg)
+	_t.check("Disabled notch generates no synthetic rects", notch_rects.is_empty())
+	var segs: Array = [{"type": "H", "pos": 100.0, "t0": 0.0, "t1": 200.0}]
+	var baseline := _wb.cut_doors_from_segments(segs, [door], 16.0)
+	var with_disabled_notch := _wb.cut_doors_from_segments(segs, [door], 16.0)
+	_t.check("Disabled notch keeps baseline cut result", baseline == with_disabled_notch)
 
 
 # ---------------------------------------------------------------------------

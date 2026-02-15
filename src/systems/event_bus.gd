@@ -79,6 +79,12 @@ signal enemy_shot(enemy_id: int, weapon_type: String, position: Vector3, directi
 ## Enemy spotted player (first visual detection in a visibility episode)
 signal enemy_player_spotted(enemy_id: int, position: Vector3)
 
+## Enemy awareness state changed (CALM/ALERT/COMBAT)
+signal enemy_state_changed(enemy_id: int, from_state: String, to_state: String, room_id: int, reason: String)
+
+## Enemy called reinforcement for room group
+signal enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, target_room_ids: Array)
+
 ## ============================================================================
 ## SIGNALS - Player
 ## ============================================================================
@@ -228,6 +234,12 @@ func emit_enemy_shot(enemy_id: int, weapon_type: String, position: Vector3, dire
 
 func emit_enemy_player_spotted(enemy_id: int, position: Vector3) -> void:
 	_queue_event("enemy_player_spotted", [enemy_id, position], Priority.HIGH)
+
+func emit_enemy_state_changed(enemy_id: int, from_state: String, to_state: String, room_id: int, reason: String) -> void:
+	_queue_event("enemy_state_changed", [enemy_id, from_state, to_state, room_id, reason], Priority.HIGH)
+
+func emit_enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, target_room_ids: Array) -> void:
+	_queue_event("enemy_reinforcement_called", [source_enemy_id, source_room_id, target_room_ids.duplicate()], Priority.HIGH)
 
 ## ============================================================================
 ## PUBLIC API - Player
@@ -383,6 +395,10 @@ func _dispatch_event(event: Dictionary) -> void:
 			enemy_shot.emit(event.args[0], event.args[1], event.args[2], event.args[3])
 		"enemy_player_spotted":
 			enemy_player_spotted.emit(event.args[0], event.args[1])
+		"enemy_state_changed":
+			enemy_state_changed.emit(event.args[0], event.args[1], event.args[2], event.args[3], event.args[4])
+		"enemy_reinforcement_called":
+			enemy_reinforcement_called.emit(event.args[0], event.args[1], event.args[2])
 		# Player
 		"player_damaged":
 			player_damaged.emit(event.args[0], event.args[1], event.args[2])

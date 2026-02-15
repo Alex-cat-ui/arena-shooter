@@ -75,9 +75,6 @@ func _physics_process(delta: float) -> void:
 		if velocity.length_squared() <= 1.0:
 			velocity = Vector2.ZERO
 
-	# Preserve movement intent for door interaction even when slide collision clamps velocity.
-	set_meta("door_push_velocity", target_velocity)
-
 	# Move
 	move_and_slide()
 

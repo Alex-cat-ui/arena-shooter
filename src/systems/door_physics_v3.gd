@@ -1,25 +1,19 @@
 ## door_physics_v3.gd
-## Stable swing-door controller with anti-jitter sign lock, deterministic closer,
-## reverse impulse on bodies, and anti-pinch logic.
+## Stable swing-door controller with command-driven opening,
+## deterministic safer close, and anti-pinch logic.
 class_name DoorPhysicsV3
 extends Node2D
 
 const DOOR_COLOR := Color(0.92, 0.18, 0.18, 1.0)
 const DOOR_Z_INDEX := 25
 
-# --- Push response ---
-const PUSH_TORQUE_CLAMP := 48.0
-const MIN_PUSH_SPEED_PX := 30.0
-const MIN_PUSH_TORQUE_ABS := 0.25
-const FAST_PUSH_SPEED_PX := 220.0
-const FAST_PUSH_OPEN_KICK := 12.0
+# --- Command open impulses ---
+const TORQUE_CLAMP := 48.0
+const COMMAND_ACTION_IMPULSE := 9.0
+const COMMAND_KICK_IMPULSE := 13.0
 const OPEN_BREAK_ANGLE_RAD := deg_to_rad(6.0)
 const OPEN_BREAK_SPEED_RAD := 1.0
 const OPEN_BREAK_BOOST := 5.0
-const CONTACT_CLOSE_ASSIST_MULT := 1.28
-const CONTACT_OPEN_RESIST_MULT := 0.95
-const APPROACH_BOOST_MULT := 0.6
-const MAX_PERP_DISTANCE_PX := 28.0
 
 # --- Geometry ---
 const MAX_SWING_ANGLE_RAD := deg_to_rad(170.0)
@@ -32,16 +26,8 @@ const LEAF_END_CLEARANCE_PX := 4.0
 # --- Snap / hold ---
 const SNAP_TO_ZERO_RAD := deg_to_rad(1.2)
 const SNAP_VEL_RAD := 0.08
-const HOLD_AFTER_PUSH_SEC := 0.10
-
-# --- Anti-jitter ---
-const SIGN_LOCK_SEC := 0.08
-const SIGN_SWITCH_NEAR_CLOSED_RAD := deg_to_rad(42.0)
-
-# --- Shot reaction ---
-const SHOT_REACTION_RADIUS_PX := 240.0
-const SHOT_REACTION_MIN_IMPULSE := 0.18
-const SHOT_REACTION_MAX_IMPULSE := 1.2
+const HOLD_AFTER_ACTION_SEC := 0.10
+const HOLD_AFTER_KICK_SEC := 0.18
 
 # --- Sensor ---
 const SENSOR_PADDING := 20.0
@@ -50,10 +36,6 @@ const SENSOR_THICKNESS := 40.0
 # --- Anti-pinch ---
 const PINCH_REOPEN_TORQUE := 6.0
 const PINCH_CHECK_DISTANCE_PX := 6.0
-
-# --- Reverse impulse ---
-const REVERSE_IMPULSE_MIN_ANGULAR_SPEED := 2.0
-const REVERSE_IMPULSE_MAX_PUSH := 280.0
 
 # --- Debug ---
 const DEBUG_HINGE_RADIUS := 4.0
@@ -80,14 +62,14 @@ var _angle_offset: float = 0.0
 var _angular_velocity: float = 0.0
 var _max_open_positive: float = deg_to_rad(90.0)
 var _max_open_negative: float = deg_to_rad(90.0)
-var _preferred_open_sign: int = 0
-var _sign_lock_timer: float = 0.0
 var _hold_open_timer: float = 0.0
 var _state: DoorState = DoorState.CLOSED
 var _rng := RandomNumberGenerator.new()
 var _pinch_active: bool = false
+var close_intent: bool = false
+var _queued_open_impulse: float = 0.0
+var _queued_open_sign: float = 0.0
 
-var _debug_sign_flips: int = 0
 var _debug_limit_hits: int = 0
 
 var _pivot: Node2D = null
@@ -125,22 +107,6 @@ func _cfg_max_angular_speed() -> float:
 func _cfg_limit_bounce() -> float:
 	if GameConfig: return GameConfig.door_limit_bounce
 	return 0.25
-
-func _cfg_push_torque_min() -> float:
-	if GameConfig: return GameConfig.door_push_torque_min
-	return 2.5
-
-func _cfg_push_torque_max() -> float:
-	if GameConfig: return GameConfig.door_push_torque_max
-	return 22.0
-
-func _cfg_push_speed_ref() -> float:
-	if GameConfig: return GameConfig.door_push_speed_ref
-	return 380.0
-
-func _cfg_reverse_impulse_mult() -> float:
-	if GameConfig: return GameConfig.door_reverse_impulse_mult
-	return 0.8
 
 func _cfg_debug_draw() -> bool:
 	if GameConfig: return GameConfig.door_debug_draw
@@ -181,86 +147,90 @@ func _physics_process(delta: float) -> void:
 	if delta <= 0.0:
 		return
 
-	_sign_lock_timer = maxf(0.0, _sign_lock_timer - delta)
 	_hold_open_timer = maxf(0.0, _hold_open_timer - delta)
 
-	# --- Anti-pinch: detect body in doorway while closing ---
+	# --- Anti-pinch: detect body in doorway and resist motion toward body ---
 	var bodies_in_doorway := _get_bodies_in_leaf_path()
-	_pinch_active = not bodies_in_doorway.is_empty() and _state == DoorState.CLOSING
+	_pinch_active = false
 
-	var push := _collect_push_input()
-	var is_pushed := bool(push.get("active", false))
-	var push_torque := 0.0
-	var max_speed := 0.0
+	var command_torque := _consume_queued_open_torque()
+	var command_active := absf(command_torque) > 0.0001
 	var max_angular := _cfg_max_angular_speed()
 
-	if is_pushed:
-		_hold_open_timer = HOLD_AFTER_PUSH_SEC
-		max_speed = float(push.get("max_speed", 0.0))
-		var sign := _resolve_push_sign(int(push.get("sign", 0)))
-		var torque_abs := float(push.get("torque_abs", 0.0))
-		push_torque = sign * torque_abs
-		if max_speed >= FAST_PUSH_SPEED_PX and sign != 0:
-			_angular_velocity = sign * maxf(absf(_angular_velocity), FAST_PUSH_OPEN_KICK)
+	if command_active:
+		_hold_open_timer = maxf(_hold_open_timer, HOLD_AFTER_ACTION_SEC)
 		_state = DoorState.OPENING
 
-	var angle_sign := signf(_angle_offset)
-	var torque_sign := signf(push_torque)
-	if absf(_angle_offset) > deg_to_rad(2.0) and torque_sign != 0.0 and angle_sign != 0.0:
-		var is_closing_torque := torque_sign != angle_sign
-		if is_closing_torque:
-			push_torque *= CONTACT_CLOSE_ASSIST_MULT
-		else:
-			push_torque *= CONTACT_OPEN_RESIST_MULT
+	if not close_intent and not command_active and _hold_open_timer <= 0.0 and absf(_angle_offset) > SNAP_TO_ZERO_RAD:
+		close_intent = true
+
+	var should_close := close_intent and not command_active and _hold_open_timer <= 0.0
 
 	var stiffness := _cfg_stiffness_idle()
-	if is_pushed or _hold_open_timer > 0.0:
+	if command_active or _hold_open_timer > 0.0:
 		stiffness = _cfg_stiffness_pushed()
-		if not is_pushed:
+		if not command_active:
 			_state = DoorState.HOLD
-	else:
+	elif should_close:
 		_state = DoorState.CLOSING if absf(_angle_offset) > SNAP_TO_ZERO_RAD else DoorState.CLOSED
+	else:
+		stiffness = _cfg_stiffness_pushed()
+		_state = DoorState.CLOSED if absf(_angle_offset) <= SNAP_TO_ZERO_RAD else DoorState.HOLD
 
-	# Anti-pinch: suppress closing spring when body is in the way
-	if _pinch_active:
-		stiffness = 0.0
-		push_torque = signf(_angle_offset) * PINCH_REOPEN_TORQUE
+	var leaf_normal := _leaf_axis.rotated(_angle_offset).normalized().orthogonal()
+	var pinch_sweeping_toward := _is_sweeping_toward_bodies(bodies_in_doorway, leaf_normal)
+	var pinch_blocking := not bodies_in_doorway.is_empty() and (should_close or pinch_sweeping_toward)
+	_pinch_active = pinch_blocking
 
-	if is_pushed and absf(_angle_offset) < OPEN_BREAK_ANGLE_RAD and absf(_angular_velocity) < OPEN_BREAK_SPEED_RAD and absf(push_torque) > 0.0001:
-		_angular_velocity += signf(push_torque) * OPEN_BREAK_BOOST * delta
+	# Anti-pinch: heavily reduce closer + softly bleed speed if leaf is moving into body
+	if pinch_blocking:
+		stiffness *= 0.15
+		var reopen_sign := _pinch_reopen_sign(bodies_in_doorway, leaf_normal)
+		if reopen_sign != 0.0:
+			command_torque += reopen_sign * PINCH_REOPEN_TORQUE * 0.75
+		if pinch_sweeping_toward and absf(_angular_velocity) > 0.0001:
+			_angular_velocity *= 0.82
+
+	if command_active and absf(_angle_offset) < OPEN_BREAK_ANGLE_RAD and absf(_angular_velocity) < OPEN_BREAK_SPEED_RAD:
+		_angular_velocity += signf(command_torque) * OPEN_BREAK_BOOST * delta
 
 	var damping_val := _cfg_damping()
+	if absf(_angle_offset) < deg_to_rad(15.0) and not command_active:
+		damping_val *= 2.0
 	var friction_val := _cfg_dry_friction()
 	var spring := -_angle_offset * stiffness
 	var damping := -_angular_velocity * damping_val
 	var dry_friction := 0.0
 	if absf(_angular_velocity) > 0.0001:
 		dry_friction = -signf(_angular_velocity) * friction_val
-	elif not is_pushed and absf(_angle_offset) > 0.0001:
+	elif not command_active and absf(_angle_offset) > 0.0001:
 		dry_friction = -signf(_angle_offset) * friction_val * 0.45
 
-	var total_torque := spring + damping + dry_friction + push_torque
-	total_torque = clampf(total_torque, -PUSH_TORQUE_CLAMP, PUSH_TORQUE_CLAMP)
+	var total_torque := spring + damping + dry_friction + command_torque
+	total_torque = clampf(total_torque, -TORQUE_CLAMP, TORQUE_CLAMP)
 
-	var prev_angular_velocity := _angular_velocity
 	_angular_velocity += total_torque * delta
 	_angular_velocity = clampf(_angular_velocity, -max_angular, max_angular)
 
 	_angle_offset += _angular_velocity * delta
 	_enforce_open_limits()
 
-	if not is_pushed and _hold_open_timer <= 0.0 and absf(_angle_offset) <= SNAP_TO_ZERO_RAD and absf(_angular_velocity) <= SNAP_VEL_RAD:
+	if should_close and absf(_angle_offset) <= SNAP_TO_ZERO_RAD and absf(_angular_velocity) <= SNAP_VEL_RAD:
 		_angle_offset = 0.0
 		_angular_velocity = 0.0
-		_preferred_open_sign = 0
+		close_intent = false
+		_state = DoorState.CLOSED
+	elif should_close and not pinch_blocking and absf(_angle_offset) <= deg_to_rad(2.2) and absf(_angular_velocity) <= 0.15:
+		# Finalize close cleanly when the doorway is free and we are already near closed.
+		_angle_offset = 0.0
+		_angular_velocity = 0.0
+		close_intent = false
 		_state = DoorState.CLOSED
 
-	if not is_pushed and absf(_angular_velocity) < _cfg_dry_friction() * 0.05 and absf(_angle_offset) < deg_to_rad(1.8):
+	if not command_active and absf(_angular_velocity) < _cfg_dry_friction() * 0.05 and absf(_angle_offset) < deg_to_rad(1.8):
 		_angular_velocity = 0.0
 
 	_apply_pose()
-
-	# Reverse impulse disabled: only entities push doors, not vice versa.
 
 	# --- Debug draw ---
 	if _cfg_debug_draw():
@@ -270,84 +240,82 @@ func _physics_process(delta: float) -> void:
 func reset_to_closed() -> void:
 	_angle_offset = 0.0
 	_angular_velocity = 0.0
-	_preferred_open_sign = 0
-	_sign_lock_timer = 0.0
 	_hold_open_timer = 0.0
 	_state = DoorState.CLOSED
 	_pinch_active = false
-	_debug_sign_flips = 0
+	close_intent = false
+	_queued_open_impulse = 0.0
+	_queued_open_sign = 0.0
 	_debug_limit_hits = 0
 	_apply_pose()
 
 
-func apply_shot_impulse(shot_pos: Vector2, strength: float = 1.0) -> void:
-	var to_shot := shot_pos - global_position
-	var dist := to_shot.length()
-	if dist > SHOT_REACTION_RADIUS_PX:
-		return
-	var ratio := 1.0 - clampf(dist / SHOT_REACTION_RADIUS_PX, 0.0, 1.0)
-	var falloff := pow(ratio, 1.35)
-	var impulse := lerpf(SHOT_REACTION_MIN_IMPULSE, SHOT_REACTION_MAX_IMPULSE, falloff) * clampf(strength, 0.0, 2.0)
-	if impulse <= 0.0:
-		return
-	var normal := _leaf_axis.orthogonal().normalized()
-	var sign := signf(normal.dot(to_shot))
-	if sign == 0.0:
-		sign = float(_preferred_open_sign)
-	if sign == 0.0:
-		sign = 1.0
-	_angular_velocity += sign * impulse
-	_angular_velocity = clampf(_angular_velocity, -_cfg_max_angular_speed(), _cfg_max_angular_speed())
+func command_open_action(source_pos: Vector2 = Vector2.ZERO) -> void:
+	_queue_open_impulse(source_pos, COMMAND_ACTION_IMPULSE, HOLD_AFTER_ACTION_SEC)
+
+
+func command_open_kick(source_pos: Vector2 = Vector2.ZERO) -> void:
+	_queue_open_impulse(source_pos, COMMAND_KICK_IMPULSE, HOLD_AFTER_KICK_SEC)
+
+
+func apply_action_impulse(source_pos: Vector2 = Vector2.ZERO) -> void:
+	command_open_action(source_pos)
+
+
+func apply_kick_impulse(source_pos: Vector2 = Vector2.ZERO) -> void:
+	command_open_kick(source_pos)
+
+
+func command_close() -> void:
+	close_intent = true
+	_hold_open_timer = 0.0
+
+
+func _queue_open_impulse(source_pos: Vector2, impulse: float, hold_sec: float) -> void:
+	var open_sign := _resolve_open_sign(source_pos)
+	if open_sign == 0.0:
+		open_sign = 1.0
+	_queued_open_sign = open_sign
+	_queued_open_impulse = maxf(_queued_open_impulse, impulse)
+	_hold_open_timer = maxf(_hold_open_timer, hold_sec)
+	close_intent = false
+
+
+func _consume_queued_open_torque() -> float:
+	if _queued_open_impulse <= 0.0 or _queued_open_sign == 0.0:
+		return 0.0
+	var kick := _queued_open_sign * _queued_open_impulse
+	# Command input is an intentional action/kick, so apply an immediate angular kick.
+	_angular_velocity = clampf(_angular_velocity + kick, -_cfg_max_angular_speed(), _cfg_max_angular_speed())
+	_queued_open_impulse = 0.0
+	return kick * 0.45
+
+
+func _resolve_open_sign(source_pos: Vector2) -> float:
+	if source_pos == Vector2.ZERO:
+		if absf(_angle_offset) > SNAP_TO_ZERO_RAD:
+			return signf(_angle_offset)
+		return 1.0
+	var leaf_normal := _leaf_axis.rotated(_angle_offset).orthogonal().normalized()
+	var side := leaf_normal.dot(source_pos - global_position)
+	var sign := signf(side)
+	if sign != 0.0:
+		return sign
+	if absf(_angle_offset) > SNAP_TO_ZERO_RAD:
+		return signf(_angle_offset)
+	return 0.0
 
 
 func get_debug_metrics() -> Dictionary:
 	return {
 		"angle_deg": rad_to_deg(_angle_offset),
 		"angular_velocity": _angular_velocity,
-		"sign_flips": _debug_sign_flips,
 		"limit_hits": _debug_limit_hits,
 		"state": int(_state),
 		"hold_timer": _hold_open_timer,
 		"pinch_active": _pinch_active,
+		"close_intent": close_intent,
 	}
-
-
-# ==========================================================================
-# REVERSE IMPULSE — door pushes bodies on contact
-# ==========================================================================
-
-func _apply_reverse_impulse(_delta: float) -> void:
-	if not _trigger_area:
-		return
-	var mult := _cfg_reverse_impulse_mult()
-	if mult <= 0.0:
-		return
-
-	var tip_world := global_position + _leaf_axis.rotated(_angle_offset) * door_length
-	var hinge_world := global_position
-	var leaf_dir := (tip_world - hinge_world).normalized()
-	var push_normal := leaf_dir.orthogonal() * signf(_angular_velocity)
-
-	for body_variant in _trigger_area.get_overlapping_bodies():
-		var body := body_variant as CharacterBody2D
-		if not body:
-			continue
-		var rel := body.global_position - hinge_world
-		var along := leaf_dir.dot(rel)
-		if along < 0.0 or along > door_length + 8.0:
-			continue
-		var perp := absf(push_normal.dot(rel))
-		if perp > door_thickness + 12.0:
-			continue
-		# Lever arm: tip moves faster than hinge
-		var lever := clampf(along / maxf(door_length, 1.0), 0.1, 1.0)
-		var tip_speed := absf(_angular_velocity) * door_length * lever
-		var push_strength := clampf(tip_speed * mult, 0.0, REVERSE_IMPULSE_MAX_PUSH)
-		if push_strength < 1.0:
-			continue
-		var impulse_vec := push_normal * push_strength
-		# Apply as velocity delta (CharacterBody2D doesn't have apply_impulse)
-		body.velocity += impulse_vec * _delta
 
 
 # ==========================================================================
@@ -356,6 +324,8 @@ func _apply_reverse_impulse(_delta: float) -> void:
 
 func _get_bodies_in_leaf_path() -> Array:
 	if not _trigger_area:
+		return []
+	if not _trigger_area.monitoring:
 		return []
 	var result: Array = []
 	var tip_world := global_position + _leaf_axis.rotated(_angle_offset) * door_length
@@ -376,40 +346,54 @@ func _get_bodies_in_leaf_path() -> Array:
 	return result
 
 
-# ==========================================================================
-# PUSH INPUT
-# ==========================================================================
-
-func _resolve_push_sign(candidate_sign: int) -> int:
-	if candidate_sign == 0:
-		return _preferred_open_sign
-	if _preferred_open_sign == 0:
-		_preferred_open_sign = candidate_sign
-		_sign_lock_timer = SIGN_LOCK_SEC
-		return _preferred_open_sign
-	if candidate_sign == _preferred_open_sign:
-		_sign_lock_timer = SIGN_LOCK_SEC
-		return _preferred_open_sign
-	if _sign_lock_timer > 0.0 and absf(_angle_offset) > SIGN_SWITCH_NEAR_CLOSED_RAD and _state != DoorState.CLOSED:
-		return _preferred_open_sign
-	_preferred_open_sign = candidate_sign
-	_sign_lock_timer = SIGN_LOCK_SEC
-	_debug_sign_flips += 1
-	return _preferred_open_sign
-
-
 func _enforce_open_limits() -> void:
 	var bounce := _cfg_limit_bounce()
 	if _angle_offset > _max_open_positive:
 		_angle_offset = _max_open_positive
 		_debug_limit_hits += 1
 		if _angular_velocity > 0.0:
-			_angular_velocity = -maxf(_angular_velocity * bounce, 0.18)
+			var speed_ratio := clampf(_angular_velocity / maxf(_cfg_max_angular_speed(), 0.001), 0.0, 1.0)
+			var rebound_floor := lerpf(0.03, 0.12, speed_ratio)
+			_angular_velocity = -maxf(_angular_velocity * bounce, rebound_floor)
 	elif _angle_offset < -_max_open_negative:
 		_angle_offset = -_max_open_negative
 		_debug_limit_hits += 1
 		if _angular_velocity < 0.0:
-			_angular_velocity = maxf(absf(_angular_velocity) * bounce, 0.18)
+			var speed_ratio_neg := clampf(absf(_angular_velocity) / maxf(_cfg_max_angular_speed(), 0.001), 0.0, 1.0)
+			var rebound_floor_neg := lerpf(0.03, 0.12, speed_ratio_neg)
+			_angular_velocity = maxf(absf(_angular_velocity) * bounce, rebound_floor_neg)
+
+
+func _is_sweeping_toward_bodies(bodies: Array, leaf_normal: Vector2) -> bool:
+	if absf(_angular_velocity) <= 0.01:
+		return false
+	var motion_sign := signf(_angular_velocity)
+	for body_variant in bodies:
+		var body := body_variant as Node2D
+		if not body:
+			continue
+		var side := leaf_normal.dot(body.global_position - global_position)
+		if absf(side) <= PINCH_CHECK_DISTANCE_PX:
+			return true
+		if side * motion_sign > 0.0:
+			return true
+	return false
+
+
+func _pinch_reopen_sign(bodies: Array, leaf_normal: Vector2) -> float:
+	var side_sum := 0.0
+	for body_variant in bodies:
+		var body := body_variant as Node2D
+		if not body:
+			continue
+		side_sum += leaf_normal.dot(body.global_position - global_position)
+	if absf(side_sum) > 0.01:
+		return -signf(side_sum)
+	if absf(_angular_velocity) > 0.01:
+		return -signf(_angular_velocity)
+	if absf(_angle_offset) > 0.01:
+		return signf(_angle_offset)
+	return 0.0
 
 
 func _ensure_nodes() -> void:
@@ -480,106 +464,6 @@ func _configure_trigger_geometry() -> void:
 		size = Vector2(SENSOR_THICKNESS, door_length + SENSOR_PADDING)
 	_trigger_shape.size = size
 	_trigger_collision.position = _leaf_axis.normalized() * (door_length * 0.5)
-
-
-func _collect_push_input() -> Dictionary:
-	if not _trigger_area:
-		return {"active": false}
-	var bodies := _trigger_area.get_overlapping_bodies()
-	if bodies.is_empty():
-		return {"active": false}
-
-	var positive := 0.0
-	var negative := 0.0
-	var max_speed := 0.0
-	var leaf := Vector2.RIGHT.rotated(_closed_rotation + _angle_offset).normalized()
-	var normal := leaf.orthogonal().normalized()
-	var door_len := maxf(door_length, 1.0)
-	var speed_ref := _cfg_push_speed_ref()
-	var torque_min := _cfg_push_torque_min()
-	var torque_max := _cfg_push_torque_max()
-
-	for body_variant in bodies:
-		var body := body_variant as Node2D
-		if not body:
-			continue
-		var velocity := _extract_body_velocity(body)
-		var speed := velocity.length()
-		if speed <= MIN_PUSH_SPEED_PX:
-			continue
-
-		var rel := body.global_position - global_position
-		# Perpendicular distance to door leaf — skip bodies too far from the actual leaf
-		var perp_dist := absf(normal.dot(rel))
-		if perp_dist > MAX_PERP_DISTANCE_PX:
-			continue
-		max_speed = maxf(max_speed, speed)
-
-		var lever_ratio := clampf(absf(leaf.dot(rel)) / door_len, 0.08, 1.0)
-		var sign := _push_sign_for_body(body, velocity, normal)
-
-		var cross := rel.x * velocity.y - rel.y * velocity.x
-		if absf(cross) > 0.001:
-			sign = signf(cross)
-
-		var speed_ratio := clampf(speed / speed_ref, 0.0, 1.0)
-		speed_ratio *= speed_ratio
-		var base_torque := lerpf(torque_min, torque_max, speed_ratio)
-		var cross_drive := base_torque * lever_ratio
-		var approach_speed := absf(velocity.dot(normal))
-		var approach_ratio := clampf((approach_speed - MIN_PUSH_SPEED_PX) / maxf(FAST_PUSH_SPEED_PX - MIN_PUSH_SPEED_PX, 1.0), 0.0, 1.0)
-		var approach_boost := torque_max * APPROACH_BOOST_MULT * approach_ratio * approach_ratio
-		var contribution := cross_drive + approach_boost
-		if sign >= 0.0:
-			positive += contribution
-		else:
-			negative += contribution
-
-	if max_speed <= MIN_PUSH_SPEED_PX:
-		return {"active": false}
-
-	var sign_out := 0
-	if positive > negative:
-		sign_out = 1
-	elif negative > positive:
-		sign_out = -1
-	elif positive > 0.0:
-		sign_out = _preferred_open_sign
-
-	var torque_abs := absf(positive - negative)
-	if torque_abs < MIN_PUSH_TORQUE_ABS:
-		return {"active": false}
-
-	return {
-		"active": sign_out != 0,
-		"sign": sign_out,
-		"torque_abs": clampf(torque_abs, 0.0, PUSH_TORQUE_CLAMP),
-		"max_speed": max_speed,
-	}
-
-
-func _extract_body_velocity(body: Node2D) -> Vector2:
-	if body.has_meta("door_push_velocity"):
-		var push_v: Variant = body.get_meta("door_push_velocity")
-		if push_v is Vector2:
-			return push_v
-	if "velocity" in body:
-		return body.velocity
-	var rb := body as RigidBody2D
-	if rb:
-		return rb.linear_velocity
-	return Vector2.ZERO
-
-
-func _push_sign_for_body(body: Node2D, velocity: Vector2, normal: Vector2) -> float:
-	var to_body := body.global_position - global_position
-	var side := normal.dot(to_body)
-	var sign := signf(side)
-	if sign == 0.0 and velocity.length_squared() > 0.001:
-		sign = signf(normal.dot(velocity.normalized()))
-	if sign == 0.0 and _preferred_open_sign != 0:
-		sign = float(_preferred_open_sign)
-	return sign
 
 
 func _apply_pose() -> void:

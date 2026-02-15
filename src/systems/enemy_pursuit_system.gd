@@ -93,13 +93,17 @@ func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 	if not nav_system:
 		return
 	var own_room := int(owner.get_meta("room_id", home_room_id))
-	if own_room < 0 and nav_system.has_method("room_id_at_point"):
+	if nav_system.has_method("get_enemy_room_id"):
+		own_room = int(nav_system.get_enemy_room_id(owner))
+	elif own_room < 0 and nav_system.has_method("room_id_at_point"):
 		own_room = int(nav_system.room_id_at_point(owner.global_position))
 		owner.set_meta("room_id", own_room)
 	if own_room < 0:
 		return
 	var same_or_adjacent := own_room == shot_room_id
-	if not same_or_adjacent and nav_system.has_method("is_adjacent"):
+	if not same_or_adjacent and nav_system.has_method("get_neighbors"):
+		same_or_adjacent = (nav_system.get_neighbors(own_room) as Array).has(shot_room_id)
+	elif not same_or_adjacent and nav_system.has_method("is_adjacent"):
 		same_or_adjacent = bool(nav_system.is_adjacent(own_room, shot_room_id))
 	if not same_or_adjacent:
 		return
@@ -111,43 +115,41 @@ func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 		_patrol.notify_alert()
 
 
-func update(delta: float, use_room_nav: bool, player_valid: bool, player_pos: Vector2, player_visible: bool) -> Dictionary:
-	var decision: Dictionary = {}
+func update(delta: float, use_room_nav: bool, player_valid: bool, player_pos: Vector2, player_visible: bool) -> void:
 	if use_room_nav:
-		decision = _update_room_ai(delta, player_valid, player_pos, player_visible)
+		_update_room_ai(delta, player_valid, player_pos, player_visible)
 	else:
-		decision = _update_simple_ai(delta, player_valid, player_pos)
+		_update_simple_ai(delta, player_valid, player_pos)
 	_update_facing(delta)
-	return decision
 
 
-func _update_simple_ai(delta: float, player_valid: bool, player_pos: Vector2) -> Dictionary:
+func _update_simple_ai(delta: float, player_valid: bool, player_pos: Vector2) -> void:
 	if not player_valid:
 		_stop_motion(delta)
-		return {}
+		return
 
 	var to_player := player_pos - owner.global_position
 	var dist := to_player.length()
 	if dist <= 0.001:
 		_stop_motion(delta)
-		return {}
+		return
 
 	var dir := to_player / dist
 	face_towards(player_pos)
 	if dist > ATTACK_RANGE_MAX_PX:
 		_move_in_direction(dir, 1.0, delta)
-		return {}
+		return
 
 	_stop_motion(delta)
-	return {"request_fire": true, "fire_target": player_pos}
 
 
-func _update_room_ai(delta: float, player_valid: bool, player_pos: Vector2, player_visible: bool) -> Dictionary:
+func _update_room_ai(delta: float, player_valid: bool, player_pos: Vector2, player_visible: bool) -> void:
 	if player_valid and player_visible:
 		_set_last_seen(player_pos)
 		if _patrol:
 			_patrol.notify_alert()
-		return _update_engage_player(delta, player_pos)
+		_update_engage_player(delta, player_pos)
+		return
 
 	if _has_last_seen:
 		if ai_state == AIState.IDLE_ROAM or ai_state == AIState.APPROACH_ATTACK_RANGE:
@@ -162,13 +164,12 @@ func _update_room_ai(delta: float, player_valid: bool, player_pos: Vector2, play
 				_update_return_to_home(delta)
 			_:
 				_update_idle_roam(delta)
-		return {}
+		return
 
 	_update_idle_roam(delta)
-	return {}
 
 
-func _update_engage_player(delta: float, player_pos: Vector2) -> Dictionary:
+func _update_engage_player(delta: float, player_pos: Vector2) -> void:
 	var dist := owner.global_position.distance_to(player_pos)
 	face_towards(player_pos)
 
@@ -179,7 +180,7 @@ func _update_engage_player(delta: float, player_pos: Vector2) -> Dictionary:
 			_repath_timer = PATH_REPATH_INTERVAL_SEC
 			_plan_path_to(player_pos)
 		_follow_waypoints(1.0, delta)
-		return {}
+		return
 
 	if dist < ATTACK_RANGE_PREF_MIN_PX:
 		ai_state = AIState.APPROACH_ATTACK_RANGE
@@ -196,11 +197,10 @@ func _update_engage_player(delta: float, player_pos: Vector2) -> Dictionary:
 					retreat_target = owner.global_position
 			_plan_path_to(retreat_target)
 		_follow_waypoints(0.9, delta)
+		return
 	else:
 		_waypoints.clear()
 		_stop_motion(delta)
-
-	return {"request_fire": true, "fire_target": player_pos}
 
 
 func _update_investigate_last_seen(delta: float) -> void:
@@ -314,7 +314,6 @@ func _move_in_direction(dir: Vector2, speed_scale: float, delta: float) -> void:
 	var tile_size: int = GameConfig.tile_size if GameConfig else 32
 	var speed_pixels := speed_tiles * tile_size * speed_scale
 	var target_velocity := dir * speed_pixels
-	owner.set_meta("door_push_velocity", target_velocity)
 	var accel_per_sec := speed_pixels / maxf(ENEMY_ACCEL_TIME_SEC, 0.001)
 	owner.velocity = owner.velocity.move_toward(target_velocity, accel_per_sec * delta)
 	owner.move_and_slide()
@@ -324,7 +323,6 @@ func _move_in_direction(dir: Vector2, speed_scale: float, delta: float) -> void:
 func _stop_motion(delta: float) -> void:
 	if delta <= 0.0:
 		owner.velocity = Vector2.ZERO
-		owner.set_meta("door_push_velocity", Vector2.ZERO)
 		return
 	var tile_size: int = GameConfig.tile_size if GameConfig else 32
 	var base_speed_pixels := speed_tiles * tile_size
@@ -332,7 +330,6 @@ func _stop_motion(delta: float) -> void:
 	owner.velocity = owner.velocity.move_toward(Vector2.ZERO, decel_per_sec * delta)
 	if owner.velocity.length_squared() <= 1.0:
 		owner.velocity = Vector2.ZERO
-	owner.set_meta("door_push_velocity", owner.velocity)
 	owner.move_and_slide()
 
 

@@ -8,21 +8,21 @@ const SHOTGUN_SPREAD_SCRIPT := preload("res://src/systems/shotgun_spread.gd")
 const SHOTGUN_DAMAGE_MODEL_SCRIPT := preload("res://src/systems/shotgun_damage_model.gd")
 const ENEMY_PERCEPTION_SYSTEM_SCRIPT := preload("res://src/systems/enemy_perception_system.gd")
 const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
+const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
 const WEAPON_SHOTGUN := "shotgun"
 
 const SIGHT_FOV_DEG := 180.0
 const SIGHT_MAX_DISTANCE_PX := 1500.0
+const FIRE_ATTACK_RANGE_MAX_PX := 600.0
 const FIRE_SPAWN_OFFSET_PX := 20.0
 const FIRE_RAY_RANGE_PX := 2000.0
-const DETECT_FIRE_DELAY_SEC := 0.5
-const STOP_FIRE_DELAY_SEC := 0.2
-const FIRE_SETTLE_SPEED_EPS := 6.0
 const VISION_DEBUG_COLOR := Color(1.0, 0.96, 0.62, 0.9)
 const VISION_DEBUG_COLOR_DIM := Color(1.0, 0.96, 0.62, 0.55)
 const VISION_DEBUG_WIDTH := 2.0
 const VISION_DEBUG_FILL_COLOR := Color(1.0, 0.96, 0.62, 0.20)
 const VISION_DEBUG_FILL_COLOR_DIM := Color(1.0, 0.96, 0.62, 0.11)
 const VISION_DEBUG_FILL_RAY_COUNT := 24
+const AWARENESS_COMBAT := "COMBAT"
 
 ## Enemy stats per type
 const ENEMY_STATS := {
@@ -50,7 +50,7 @@ var max_hp: int = 30
 ## Contact damage (kept for compatibility)
 var contact_damage: int = 10
 
-## Runtime toggle from LevelMVP (F6).
+## Runtime toggle from LevelMVP (F7).
 var weapons_enabled: bool = false
 
 ## Movement speed in tiles/sec
@@ -77,15 +77,13 @@ var home_room_id: int = -1
 
 ## Weapon timing
 var _shot_cooldown: float = 0.0
-var _detection_fire_delay_timer: float = 0.0
-var _stop_fire_delay_timer: float = 0.0
 var _player_visible_prev: bool = false
-var _was_moving_for_fire: bool = false
 var _shot_rng := RandomNumberGenerator.new()
 
 ## Modular AI systems
 var _perception = null
 var _pursuit = null
+var _awareness = null
 var _vision_fill_poly: Polygon2D = null
 var _vision_center_line: Line2D = null
 var _vision_left_line: Line2D = null
@@ -97,6 +95,10 @@ func _ready() -> void:
 	_shot_rng.randomize()
 	_perception = ENEMY_PERCEPTION_SYSTEM_SCRIPT.new(self)
 	_pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(self, sprite, speed_tiles)
+	_awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+	_awareness.reset()
+	set_meta("awareness_state", _awareness.get_state_name())
+	_connect_event_bus_signals()
 	_setup_vision_debug_lines()
 	_play_spawn_animation()
 
@@ -118,6 +120,9 @@ func initialize(id: int, type: String, wave: int) -> void:
 
 	if _pursuit:
 		_pursuit.set_speed_tiles(speed_tiles)
+	if _awareness:
+		_awareness.reset()
+		set_meta("awareness_state", _awareness.get_state_name())
 
 
 func _physics_process(delta: float) -> void:
@@ -129,10 +134,6 @@ func _physics_process(delta: float) -> void:
 
 	if _shot_cooldown > 0.0:
 		_shot_cooldown = maxf(0.0, _shot_cooldown - delta)
-	if _detection_fire_delay_timer > 0.0:
-		_detection_fire_delay_timer = maxf(0.0, _detection_fire_delay_timer - delta)
-	if _stop_fire_delay_timer > 0.0:
-		_stop_fire_delay_timer = maxf(0.0, _stop_fire_delay_timer - delta)
 
 	# Handle stagger (blocks normal movement)
 	if stagger_timer > 0:
@@ -159,28 +160,17 @@ func _physics_process(delta: float) -> void:
 		SIGHT_MAX_DISTANCE_PX,
 		_ray_excludes()
 	))
+	if _awareness:
+		_apply_awareness_transitions(_awareness.process(delta, player_visible))
 	if player_visible and not _player_visible_prev:
-		_detection_fire_delay_timer = DETECT_FIRE_DELAY_SEC + STOP_FIRE_DELAY_SEC
-		_stop_fire_delay_timer = 0.0
-		_was_moving_for_fire = false
 		if EventBus:
 			EventBus.emit_enemy_player_spotted(entity_id, Vector3(player_pos.x, player_pos.y, 0.0))
 	_player_visible_prev = player_visible if player_valid else false
 
 	var use_room_nav: bool = nav_system != null and home_room_id >= 0
-	var decision: Dictionary = _pursuit.update(delta, use_room_nav, player_valid, player_pos, player_visible)
-	var request_fire := bool(decision.get("request_fire", false))
-	if request_fire:
-		var moving_now := velocity.length() > FIRE_SETTLE_SPEED_EPS
-		if moving_now:
-			_was_moving_for_fire = true
-		elif _was_moving_for_fire:
-			_stop_fire_delay_timer = STOP_FIRE_DELAY_SEC
-			_was_moving_for_fire = false
-		if weapons_enabled:
-			_try_fire_at_player(decision.get("fire_target", player_pos) as Vector2)
-	else:
-		_was_moving_for_fire = false
+	_pursuit.update(delta, use_room_nav, player_valid, player_pos, player_visible)
+	if weapons_enabled and _should_fire_player_target(player_visible, player_pos):
+		_try_fire_at_player(player_pos)
 	_update_vision_debug_lines(player_valid, player_pos, player_visible)
 
 
@@ -192,16 +182,76 @@ func set_room_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 
 
 func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
+	if _awareness:
+		_apply_awareness_transitions(_awareness.register_noise())
 	if _pursuit:
 		_pursuit.on_heard_shot(shot_room_id, shot_pos)
+
+
+func apply_room_alert_propagation(_source_enemy_id: int, _source_room_id: int) -> void:
+	if _awareness:
+		_apply_awareness_transitions(_awareness.register_room_alert_propagation())
+
+
+func _connect_event_bus_signals() -> void:
+	if not EventBus:
+		return
+	if EventBus.has_signal("enemy_reinforcement_called") and not EventBus.enemy_reinforcement_called.is_connected(_on_enemy_reinforcement_called):
+		EventBus.enemy_reinforcement_called.connect(_on_enemy_reinforcement_called)
+
+
+func _on_enemy_reinforcement_called(source_enemy_id: int, _source_room_id: int, target_room_ids: Array) -> void:
+	if is_dead:
+		return
+	if source_enemy_id == entity_id:
+		return
+	var own_room_id := _resolve_room_id_for_events()
+	if own_room_id < 0:
+		return
+	if not target_room_ids.has(own_room_id):
+		return
+	if _awareness:
+		_apply_awareness_transitions(_awareness.register_reinforcement())
+
+
+func _apply_awareness_transitions(transitions: Array[Dictionary]) -> void:
+	for transition_variant in transitions:
+		var transition := transition_variant as Dictionary
+		if transition.is_empty():
+			continue
+		_emit_awareness_transition(transition)
+		if transition.has("to_state"):
+			set_meta("awareness_state", String(transition.get("to_state", "")))
+
+
+func _emit_awareness_transition(transition: Dictionary) -> void:
+	if not EventBus or not EventBus.has_method("emit_enemy_state_changed"):
+		return
+	var from_state := String(transition.get("from_state", ""))
+	var to_state := String(transition.get("to_state", ""))
+	if from_state == "" or to_state == "":
+		return
+	EventBus.emit_enemy_state_changed(
+		entity_id,
+		from_state,
+		to_state,
+		_resolve_room_id_for_events(),
+		String(transition.get("reason", "timer"))
+	)
+
+
+func _resolve_room_id_for_events() -> int:
+	var room_id := int(get_meta("room_id", home_room_id))
+	if room_id < 0 and nav_system and nav_system.has_method("room_id_at_point"):
+		room_id = int(nav_system.room_id_at_point(global_position))
+		set_meta("room_id", room_id)
+	return room_id
 
 
 func _try_fire_at_player(player_pos: Vector2) -> void:
 	if _shot_cooldown > 0.0:
 		return
-	if _detection_fire_delay_timer > 0.0:
-		return
-	if _stop_fire_delay_timer > 0.0:
+	if not _is_combat_awareness_active():
 		return
 
 	var aim_dir := (player_pos - global_position).normalized()
@@ -221,6 +271,20 @@ func _try_fire_at_player(player_pos: Vector2) -> void:
 			Vector3(muzzle.x, muzzle.y, 0),
 			Vector3(aim_dir.x, aim_dir.y, 0)
 		)
+
+
+func _should_fire_player_target(player_visible: bool, player_pos: Vector2) -> bool:
+	if not player_visible:
+		return false
+	if not _is_combat_awareness_active():
+		return false
+	return global_position.distance_to(player_pos) <= FIRE_ATTACK_RANGE_MAX_PX
+
+
+func _is_combat_awareness_active() -> bool:
+	if not _awareness:
+		return false
+	return _awareness.get_state_name() == AWARENESS_COMBAT
 
 
 func _fire_enemy_shotgun(origin: Vector2, aim_dir: Vector2) -> void:

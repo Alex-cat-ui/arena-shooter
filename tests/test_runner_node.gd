@@ -6,14 +6,17 @@ extends Node
 var _tests_run := 0
 var _tests_passed := 0
 
+const AWARENESS_TEST_SCENE := "res://tests/test_enemy_awareness_system.tscn"
+const AGGRO_TEST_SCENE := "res://tests/test_enemy_aggro_coordinator.tscn"
+const NOISE_FLOW_TEST_SCENE := "res://tests/test_enemy_noise_alert_flow.tscn"
+const DOOR_TEST_SCENE := "res://tests/test_door_physics_full.tscn"
 
 func _ready() -> void:
 	print("=" .repeat(60))
-	print("INTEGRATION TEST: Phase 1 + Phase 2")
-	print("Core Gameplay + Boss + VFX + Footprints")
+	print("INTEGRATION TEST: Core + AI + Doors")
 	print("=" .repeat(60))
 
-	_run_tests()
+	await _run_tests()
 
 	print("")
 	print("=" .repeat(60))
@@ -443,7 +446,27 @@ func _run_tests() -> void:
 		return is_equal_approx(GameConfig.footprint_step_distance_px, 40.0)
 	)
 
-	print("\nAll tests completed (Phase 1 + Phase 2 + Visual Polish).")
+	print("\n--- SECTION 20: AI/Door suites ---")
+
+	_test("Awareness test scene exists", func():
+		return load(AWARENESS_TEST_SCENE) is PackedScene
+	)
+	_test("Aggro coordinator test scene exists", func():
+		return load(AGGRO_TEST_SCENE) is PackedScene
+	)
+	_test("Noise alert flow test scene exists", func():
+		return load(NOISE_FLOW_TEST_SCENE) is PackedScene
+	)
+	_test("Door physics test scene exists", func():
+		return load(DOOR_TEST_SCENE) is PackedScene
+	)
+
+	await _run_embedded_scene_suite("Enemy awareness suite", AWARENESS_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy aggro coordinator suite", AGGRO_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy noise alert flow suite", NOISE_FLOW_TEST_SCENE)
+	await _run_embedded_scene_suite("Door physics full suite", DOOR_TEST_SCENE)
+
+	print("\nAll tests completed (Core + AI + Door suites).")
 
 
 func _test(name: String, test_func: Callable) -> void:
@@ -457,3 +480,46 @@ func _test(name: String, test_func: Callable) -> void:
 		print("[PASS] %s" % name)
 	else:
 		print("[FAIL] %s" % name)
+
+
+func _run_embedded_scene_suite(name: String, scene_path: String) -> void:
+	_tests_run += 1
+	var scene := load(scene_path) as PackedScene
+	if scene == null:
+		print("[FAIL] %s (scene load failed: %s)" % [name, scene_path])
+		return
+
+	var node := scene.instantiate()
+	if node == null:
+		print("[FAIL] %s (instantiate failed)" % name)
+		return
+
+	if _has_property(node, "embedded_mode"):
+		node.set("embedded_mode", true)
+	add_child(node)
+
+	if not node.has_method("run_suite"):
+		print("[FAIL] %s (run_suite missing)" % name)
+		node.queue_free()
+		await get_tree().process_frame
+		return
+
+	var result_variant: Variant = await node.run_suite()
+	var result := result_variant as Dictionary
+	var ok := bool(result.get("ok", false))
+	if ok:
+		_tests_passed += 1
+		print("[PASS] %s (%d/%d)" % [name, int(result.get("passed", 0)), int(result.get("run", 0))])
+	else:
+		print("[FAIL] %s (%d/%d)" % [name, int(result.get("passed", 0)), int(result.get("run", 0))])
+
+	node.queue_free()
+	await get_tree().process_frame
+
+
+func _has_property(obj: Object, property_name: String) -> bool:
+	for p_variant in obj.get_property_list():
+		var p := p_variant as Dictionary
+		if String(p.get("name", "")) == property_name:
+			return true
+	return false
