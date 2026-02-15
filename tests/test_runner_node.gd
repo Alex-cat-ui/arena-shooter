@@ -180,24 +180,24 @@ func _run_tests() -> void:
 
 	print("\n--- SECTION 7: Enemy stats (ТЗ v1.13) ---")
 
-	_test("Zombie HP=30, DMG=10", func():
+	_test("Zombie HP=100, DMG=10", func():
 		var stats: Dictionary = Enemy.ENEMY_STATS.get("zombie", {})
-		return stats.hp == 30 and stats.damage == 10
+		return stats.hp == 100 and stats.damage == 10
 	)
 
-	_test("Fast HP=15, DMG=7", func():
+	_test("Fast HP=100, DMG=7", func():
 		var stats: Dictionary = Enemy.ENEMY_STATS.get("fast", {})
-		return stats.hp == 15 and stats.damage == 7
+		return stats.hp == 100 and stats.damage == 7
 	)
 
-	_test("Tank HP=80, DMG=15", func():
+	_test("Tank HP=100, DMG=15", func():
 		var stats: Dictionary = Enemy.ENEMY_STATS.get("tank", {})
-		return stats.hp == 80 and stats.damage == 15
+		return stats.hp == 100 and stats.damage == 15
 	)
 
-	_test("Swarm HP=5, DMG=5", func():
+	_test("Swarm HP=100, DMG=5", func():
 		var stats: Dictionary = Enemy.ENEMY_STATS.get("swarm", {})
-		return stats.hp == 5 and stats.damage == 5
+		return stats.hp == 100 and stats.damage == 5
 	)
 
 	print("\n--- SECTION 8: Projectile TTL (ТЗ v1.13) ---")
@@ -226,9 +226,9 @@ func _run_tests() -> void:
 		return stats.damage == 7 and stats.rpm == 150
 	)
 
-	_test("Shotgun pellets=5, dmg=6", func():
+	_test("Shotgun pellets=16, dmg=6", func():
 		var stats: Dictionary = GameConfig.weapon_stats.get("shotgun", {})
-		return stats.pellets == 5 and stats.damage == 6
+		return stats.pellets == 16 and stats.damage == 6
 	)
 
 	print("\n--- SECTION 10: RuntimeState reset ---")
@@ -361,16 +361,16 @@ func _run_tests() -> void:
 		return GameConfig.footprints_enabled == true
 	)
 
-	_test("footprint_step_distance_px = 22.0", func():
-		return is_equal_approx(GameConfig.footprint_step_distance_px, 22.0)
+	_test("footprint_step_distance_px = 40.0", func():
+		return is_equal_approx(GameConfig.footprint_step_distance_px, 40.0)
 	)
 
 	_test("footprint_lifetime_sec = 20.0", func():
 		return is_equal_approx(GameConfig.footprint_lifetime_sec, 20.0)
 	)
 
-	_test("footprint_max_count = 100", func():
-		return GameConfig.footprint_max_count == 100
+	_test("footprint_max_count = 4000", func():
+		return GameConfig.footprint_max_count == 4000
 	)
 
 	_test("melee_arc_light_radius = 26.0", func():
@@ -440,7 +440,7 @@ func _run_tests() -> void:
 	_test("Visual polish values survive reset_to_defaults", func():
 		GameConfig.footprint_step_distance_px = 999.0
 		GameConfig.reset_to_defaults()
-		return is_equal_approx(GameConfig.footprint_step_distance_px, 22.0)
+		return is_equal_approx(GameConfig.footprint_step_distance_px, 40.0)
 	)
 
 	print("\nAll tests completed (Phase 1 + Phase 2 + Visual Polish).")

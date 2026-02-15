@@ -22,6 +22,9 @@ signal state_changed(old_state: GameState.State, new_state: GameState.State)
 ## Level started event (after bootstrap complete)
 signal level_started()
 
+## Mission changed in the same level scene (north transition)
+signal mission_transitioned(mission_index: int)
+
 ## Level ended event (game over or complete)
 signal level_ended(is_victory: bool)
 
@@ -69,6 +72,12 @@ signal enemy_killed(enemy_id: int, enemy_type: String, wave_id: int)
 
 ## Enemy reached player (for contact damage)
 signal enemy_contact(enemy_id: int, enemy_type: String, damage: int)
+
+## Enemy fired weapon (for SFX/AI reactions)
+signal enemy_shot(enemy_id: int, weapon_type: String, position: Vector3, direction: Vector3)
+
+## Enemy spotted player (first visual detection in a visibility episode)
+signal enemy_player_spotted(enemy_id: int, position: Vector3)
 
 ## ============================================================================
 ## SIGNALS - Player
@@ -163,6 +172,9 @@ func emit_state_changed(old_state: GameState.State, new_state: GameState.State) 
 func emit_level_started() -> void:
 	_queue_event("level_started", [])
 
+func emit_mission_transitioned(mission_index: int) -> void:
+	_queue_event("mission_transitioned", [mission_index])
+
 func emit_level_ended(is_victory: bool) -> void:
 	_queue_event("level_ended", [is_victory])
 
@@ -210,6 +222,12 @@ func emit_enemy_killed(enemy_id: int, enemy_type: String, wave_id: int) -> void:
 
 func emit_enemy_contact(enemy_id: int, enemy_type: String, damage: int) -> void:
 	_queue_event("enemy_contact", [enemy_id, enemy_type, damage])
+
+func emit_enemy_shot(enemy_id: int, weapon_type: String, position: Vector3, direction: Vector3) -> void:
+	_queue_event("enemy_shot", [enemy_id, weapon_type, position, direction])
+
+func emit_enemy_player_spotted(enemy_id: int, position: Vector3) -> void:
+	_queue_event("enemy_player_spotted", [enemy_id, position], Priority.HIGH)
 
 ## ============================================================================
 ## PUBLIC API - Player
@@ -332,6 +350,8 @@ func _dispatch_event(event: Dictionary) -> void:
 			state_changed.emit(event.args[0], event.args[1])
 		"level_started":
 			level_started.emit()
+		"mission_transitioned":
+			mission_transitioned.emit(event.args[0])
 		"level_ended":
 			level_ended.emit(event.args[0])
 		"start_delay_finished":
@@ -359,6 +379,10 @@ func _dispatch_event(event: Dictionary) -> void:
 			enemy_killed.emit(event.args[0], event.args[1], event.args[2])
 		"enemy_contact":
 			enemy_contact.emit(event.args[0], event.args[1], event.args[2])
+		"enemy_shot":
+			enemy_shot.emit(event.args[0], event.args[1], event.args[2], event.args[3])
+		"enemy_player_spotted":
+			enemy_player_spotted.emit(event.args[0], event.args[1])
 		# Player
 		"player_damaged":
 			player_damaged.emit(event.args[0], event.args[1], event.args[2])

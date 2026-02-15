@@ -5,6 +5,8 @@
 class_name Projectile
 extends Area2D
 
+const WORLD_SOLID_LAYER := 1
+
 ## Projectile types and their TTL
 const PROJECTILE_TTL := {
 	"bullet": 2.0,
@@ -66,6 +68,8 @@ func initialize(id: int, type: String, pos: Vector2, dir: Vector2, speed: float,
 
 	# Check if piercing
 	is_piercing = (type == "piercing_bullet")
+	# Pellets must be blocked by walls/doors (world layer 1) while still hitting enemies (layer 2).
+	collision_mask = 3 if projectile_type == "pellet" else 2
 
 	# Rotate sprite to face direction
 	if sprite:
@@ -98,6 +102,8 @@ func _on_body_entered(body: Node2D) -> void:
 	# Phase 2: Check if it's a boss
 	elif body.is_in_group("boss"):
 		_hit_boss(body)
+	elif projectile_type == "pellet" and _is_pellet_blocker(body):
+		_destroy("blocked")
 
 
 func _on_area_entered(area: Area2D) -> void:
@@ -108,6 +114,19 @@ func _on_area_entered(area: Area2D) -> void:
 	# Phase 2: Check if it's a boss hitbox
 	elif parent and parent.is_in_group("boss"):
 		_hit_boss(parent)
+
+
+func _is_pellet_blocker(body: Node2D) -> bool:
+	if body == null:
+		return false
+	if body.is_in_group("player") or body.is_in_group("enemies") or body.is_in_group("boss"):
+		return false
+	var collision_body := body as CollisionObject2D
+	if not collision_body:
+		return false
+	if (collision_body.collision_layer & WORLD_SOLID_LAYER) == 0:
+		return false
+	return body is StaticBody2D or body is AnimatableBody2D or body is RigidBody2D
 
 
 func _hit_enemy(enemy: Node2D) -> void:

@@ -64,6 +64,7 @@ func _ready() -> void:
 	# Subscribe to EventBus
 	if EventBus:
 		EventBus.player_shot.connect(_on_player_shot)
+		EventBus.enemy_shot.connect(_on_enemy_shot)
 		EventBus.enemy_killed.connect(_on_enemy_killed)
 		EventBus.player_damaged.connect(_on_player_damaged)
 		EventBus.player_died.connect(_on_player_died)
@@ -136,6 +137,10 @@ func _on_player_shot(weapon_type: String, _position: Vector3, _direction: Vector
 		return
 	var sfx_name: String = WEAPON_SFX.get(weapon_type, "pistol_shot")
 	play(sfx_name)
+
+
+func _on_enemy_shot(_enemy_id: int, weapon_type: String, _position: Vector3, _direction: Vector3) -> void:
+	_on_player_shot(weapon_type, _position, _direction)
 
 
 func _play_shotgun_reload() -> void:

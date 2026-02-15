@@ -2,12 +2,14 @@
 ## Verifies static room enemy spawn quotas and spacing constraints.
 extends Node
 
+const TestHelpers = preload("res://tests/test_helpers.gd")
+
 const SEED_COUNT := 20
 const ARENA := Rect2(-1100, -1100, 2200, 2200)
 const TEST_MISSION := 3
+# MIN_SPACING_PX=100 ~= half of practical enemy collision diameter budget.
 const MIN_SPACING_PX := 100.0
 
-const LAYOUT_SCRIPT := preload("res://src/systems/procedural_layout_v2.gd")
 const SPAWNER_SCRIPT := preload("res://src/systems/room_enemy_spawner.gd")
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
 
@@ -23,14 +25,16 @@ func _room_expected_count(layout, room_id: int) -> int:
 			return 1
 
 
-func _point_in_room(layout, room_id: int, p: Vector2) -> bool:
-	if room_id < 0 or room_id >= layout.rooms.size():
-		return false
-	for rect_variant in (layout.rooms[room_id]["rects"] as Array):
-		var r := rect_variant as Rect2
-		if r.grow(0.1).has_point(p):
-			return true
-	return false
+func _street_entry_room_id(layout) -> int:
+	if not ("north_exit_rect" in layout):
+		return -1
+	var gate := layout.north_exit_rect as Rect2
+	if gate == Rect2():
+		return -1
+	if not layout.has_method("_room_id_at_point"):
+		return -1
+	var probe := gate.get_center() + Vector2(0.0, 24.0)
+	return int(layout._room_id_at_point(probe))
 
 
 func _ready() -> void:
@@ -41,20 +45,18 @@ func _ready() -> void:
 	var failures := 0
 	var total_spawned := 0
 	for seed_id in range(1, SEED_COUNT + 1):
-		var walls := Node2D.new()
-		add_child(walls)
-		var debug := Node2D.new()
-		add_child(debug)
-		var player := CharacterBody2D.new()
-		add_child(player)
-
-		var layout = LAYOUT_SCRIPT.generate_and_build(ARENA, seed_id, walls, debug, player, TEST_MISSION)
+		var built := TestHelpers.create_layout(self, seed_id, ARENA, TEST_MISSION)
+		var layout = built["layout"]
+		var walls := built["walls"] as Node2D
+		var debug := built["debug"] as Node2D
+		var player := built["player"] as CharacterBody2D
 		if not layout.valid:
 			print("[FAIL] seed=%d layout invalid" % seed_id)
 			failures += 1
 			walls.queue_free()
 			debug.queue_free()
 			player.queue_free()
+			await get_tree().process_frame
 			continue
 
 		var entities := Node2D.new()
@@ -63,6 +65,7 @@ func _ready() -> void:
 		add_child(spawner)
 		spawner.initialize(ENEMY_SCENE, entities)
 		spawner.rebuild_for_layout(layout)
+		var street_room_id := _street_entry_room_id(layout)
 
 		var room_points: Dictionary = {}
 		for i in range(layout.rooms.size()):
@@ -83,6 +86,8 @@ func _ready() -> void:
 				continue
 			if room_id == int(layout.player_room_id):
 				continue
+			if room_id == street_room_id:
+				continue
 			if layout._is_closet_room(room_id):
 				continue
 			if bool((layout.rooms[room_id] as Dictionary).get("is_corridor", false)):
@@ -97,7 +102,7 @@ func _ready() -> void:
 
 			for p_variant in points:
 				var p := p_variant as Vector2
-				if not _point_in_room(layout, room_id, p):
+				if TestHelpers.room_id_at_point(layout, p) != room_id:
 					print("[FAIL] seed=%d room=%d point outside room: %s" % [seed_id, room_id, str(p)])
 					failures += 1
 

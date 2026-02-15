@@ -298,11 +298,24 @@ var weapon_stats: Dictionary = {
 
 @export_range(4.0, 64.0) var wall_thickness: float = 16.0
 
-@export_range(40.0, 320.0) var door_opening_uniform: float = 50.0
-@export_range(40.0, 300.0) var door_opening_min: float = 50.0
-@export_range(40.0, 400.0) var door_opening_max: float = 50.0
-@export_range(0.0, 100.0) var door_from_corner_min: float = 48.0
+@export_range(40.0, 320.0) var door_opening_uniform: float = 75.0
+@export_range(40.0, 300.0) var door_opening_min: float = 75.0
+@export_range(40.0, 400.0) var door_opening_max: float = 75.0
+@export_range(0.0, 100.0) var door_from_corner_min: float = 56.0
 @export_range(1, 5) var max_doors_per_room: int = 3
+
+## ---------- Door Physics ----------
+@export_range(0.5, 10.0) var door_close_stiffness_idle: float = 2.8
+@export_range(0.1, 5.0) var door_close_stiffness_pushed: float = 0.3
+@export_range(0.5, 8.0) var door_angular_damping: float = 1.6
+@export_range(0.0, 5.0) var door_dry_friction: float = 0.8
+@export_range(5.0, 40.0) var door_max_angular_speed: float = 24.0
+@export_range(0.1, 1.0) var door_limit_bounce: float = 0.35
+@export_range(0.5, 40.0) var door_push_torque_min: float = 4.0
+@export_range(1.0, 60.0) var door_push_torque_max: float = 32.0
+@export_range(50.0, 800.0) var door_push_speed_ref: float = 280.0
+@export_range(0.0, 2.0) var door_reverse_impulse_mult: float = 0.0
+@export var door_debug_draw: bool = false
 @export_range(0, 3) var extra_loops_max: int = 1
 
 @export_range(0, 5) var corridor_count_min: int = 1
@@ -486,10 +499,10 @@ func reset_to_defaults() -> void:
 	rooms_count_min = 9
 	rooms_count_max = 15
 	wall_thickness = 16.0
-	door_opening_uniform = 50.0
-	door_opening_min = 50.0
-	door_opening_max = 50.0
-	door_from_corner_min = 48.0
+	door_opening_uniform = 75.0
+	door_opening_min = 75.0
+	door_opening_max = 75.0
+	door_from_corner_min = 56.0
 	max_doors_per_room = 3
 	extra_loops_max = 1
 	corridor_count_min = 1

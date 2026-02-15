@@ -3,102 +3,22 @@
 ## Run via: godot --headless res://tests/test_layout_core_density.tscn
 extends Node
 
+const TestHelpers = preload("res://tests/test_helpers.gd")
+
 const SEED_COUNT := 50
 const TEST_MISSION := 3
 const ARENA := Rect2(-1100, -1100, 2200, 2200)
 
+# Baseline from stable mission-3 runs: center cluster should not collapse below ~4 rooms on average.
 const MIN_AVG_CENTER_ROOMS := 4.0
+# Target design: at least 30% of center rooms have 3+ connections.
 const MIN_CENTER_DEG3PLUS_PCT := 30.0
+# Core should stay well connected (average degree above sparse-tree baseline).
 const MIN_AVG_CENTER_DEGREE := 2.20
+# Prevent one giant room from dominating the whole core.
 const MAX_AVG_CORE_DOMINANCE := 0.62
+# Dead-end relief should keep non-closet dead ends near 3 or lower.
 const MAX_AVG_NON_CLOSET_DEAD_ENDS := 3.60
-
-const PROCEDURAL_LAYOUT_V2_SCRIPT := preload("res://src/systems/procedural_layout_v2.gd")
-
-
-func _door_key(a: int, b: int) -> String:
-	return "%d:%d" % [mini(a, b), maxi(a, b)]
-
-
-func _room_id_at_point(layout, p: Vector2) -> int:
-	for i in range(layout.rooms.size()):
-		if i in layout._void_ids:
-			continue
-		var room := layout.rooms[i] as Dictionary
-		for rect_variant in (room["rects"] as Array):
-			var r := rect_variant as Rect2
-			if r.grow(0.25).has_point(p):
-				return i
-	return -1
-
-
-func _door_adjacent_room_ids(layout, door: Rect2) -> Array:
-	var ids: Dictionary = {}
-	var center := door.get_center()
-	var probe := maxf(layout._door_wall_thickness() * 0.8, 8.0)
-	if door.size.y > door.size.x:
-		var left_id := _room_id_at_point(layout, Vector2(center.x - probe, center.y))
-		var right_id := _room_id_at_point(layout, Vector2(center.x + probe, center.y))
-		if left_id >= 0:
-			ids[left_id] = true
-		if right_id >= 0:
-			ids[right_id] = true
-	else:
-		var top_id := _room_id_at_point(layout, Vector2(center.x, center.y - probe))
-		var bottom_id := _room_id_at_point(layout, Vector2(center.x, center.y + probe))
-		if top_id >= 0:
-			ids[top_id] = true
-		if bottom_id >= 0:
-			ids[bottom_id] = true
-	return ids.keys()
-
-
-func _count_half_doors(layout) -> int:
-	var bad := 0
-	for door_variant in layout.doors:
-		var door := door_variant as Rect2
-		var ids := _door_adjacent_room_ids(layout, door)
-		if ids.size() != 2:
-			bad += 1
-	return bad
-
-
-func _count_overlapping_doors(layout) -> int:
-	var overlaps := 0
-	for i in range(layout.doors.size()):
-		var a := layout.doors[i] as Rect2
-		for j in range(i + 1, layout.doors.size()):
-			var b := layout.doors[j] as Rect2
-			if a.grow(2.0).intersects(b.grow(2.0)):
-				overlaps += 1
-	return overlaps
-
-
-func _count_missing_adjacent_doors(layout) -> int:
-	var edge_keys_with_doors: Dictionary = {}
-	for item_variant in layout._door_map:
-		var item := item_variant as Dictionary
-		var a := int(item["a"])
-		var b := int(item["b"])
-		edge_keys_with_doors[_door_key(a, b)] = true
-
-	var missing := 0
-	var edges: Array = layout._build_room_adjacency_edges()
-	for edge_variant in edges:
-		var edge := edge_variant as Dictionary
-		var a := int(edge["a"])
-		var b := int(edge["b"])
-		if layout._is_closet_room(a) or layout._is_closet_room(b):
-			continue
-		if not layout._edge_is_geometrically_doorable(edge):
-			continue
-		if not (layout._room_requires_full_adjacency(a) or layout._room_requires_full_adjacency(b)):
-			continue
-		var key := _door_key(a, b)
-		if not edge_keys_with_doors.has(key):
-			missing += 1
-	return missing
-
 
 func _count_non_closet_dead_ends(layout) -> int:
 	var count := 0
@@ -152,18 +72,6 @@ func _ready() -> void:
 	print("CORE DENSITY TEST (V2): %d seeds, arena %s" % [SEED_COUNT, str(ARENA)])
 	print("=".repeat(68))
 
-	var walls_node := Node2D.new()
-	add_child(walls_node)
-	var debug_node := Node2D.new()
-	add_child(debug_node)
-	var player_node := CharacterBody2D.new()
-	var col_shape := CollisionShape2D.new()
-	var shape := CircleShape2D.new()
-	shape.radius = 12.0
-	col_shape.shape = shape
-	player_node.add_child(col_shape)
-	add_child(player_node)
-
 	var valid_count := 0
 	var invalid_count := 0
 	var total_center_rooms := 0
@@ -176,14 +84,18 @@ func _ready() -> void:
 	var total_door_overlaps := 0
 
 	for s in range(1, SEED_COUNT + 1):
-		for child in walls_node.get_children():
-			child.queue_free()
-		await get_tree().process_frame
-
-		var layout := PROCEDURAL_LAYOUT_V2_SCRIPT.generate_and_build(ARENA, s, walls_node, debug_node, player_node, TEST_MISSION)
+		var built := TestHelpers.create_layout(self, s, ARENA, TEST_MISSION)
+		var layout = built["layout"]
+		var player_node := built["player"] as CharacterBody2D
+		var walls_node := built["walls"] as Node2D
+		var debug_node := built["debug"] as Node2D
 		if not layout.valid:
 			invalid_count += 1
 			print("  seed=%d valid=false fail_reason=%s" % [s, layout.validate_fail_reason])
+			player_node.queue_free()
+			walls_node.queue_free()
+			debug_node.queue_free()
+			await get_tree().process_frame
 			continue
 
 		valid_count += 1
@@ -195,9 +107,9 @@ func _ready() -> void:
 		var core_dominance := _core_dominance(layout, core_ids)
 		var non_closet_dead_ends := _count_non_closet_dead_ends(layout)
 
-		var missing_adj := _count_missing_adjacent_doors(layout)
-		var half_doors := _count_half_doors(layout)
-		var overlaps := _count_overlapping_doors(layout)
+		var missing_adj := TestHelpers.count_missing_adjacent_doors(layout)
+		var half_doors := TestHelpers.count_half_doors(layout)
+		var overlaps := TestHelpers.count_overlapping_doors(layout)
 
 		total_center_rooms += core_count
 		total_center_deg3plus += core_deg3plus
@@ -221,6 +133,11 @@ func _ready() -> void:
 			half_doors,
 			overlaps,
 		])
+
+		player_node.queue_free()
+		walls_node.queue_free()
+		debug_node.queue_free()
+		await get_tree().process_frame
 
 	var valid_denom := maxf(float(valid_count), 1.0)
 	var avg_center_rooms := float(total_center_rooms) / valid_denom

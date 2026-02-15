@@ -2,6 +2,133 @@
 
 ## 2026-02-13
 
+### Doors V2 + Patrol module
+- Added new hinge-door runtime module `DoorPhysicsV2` (`src/systems/door_physics_v2.gd`):
+  - physical swing leaf on `RigidBody2D`,
+  - hinge with `PinJoint2D`,
+  - torque-based contact drive from overlapping bodies (player/enemies),
+  - high-speed kick for sprint impact opening,
+  - torsion-closer behavior (spring + damping + dry friction),
+  - angle hard limits with bounce.
+- `LayoutDoorSystem` now uses `DoorPhysicsV2` by default (`USE_DOOR_PHYSICS_V2=true`) while keeping legacy door script for fallback.
+- Pellets now treat rigid-body door leaf as a world blocker (`Projectile._is_pellet_blocker` includes `RigidBody2D`).
+- Added new modular patrol behavior system `EnemyPatrolSystem` (`src/systems/enemy_patrol_system.gd`) and integrated it into `EnemyPursuitSystem` for livelier idle movement:
+  - route points in home room,
+  - pause + look sweep states,
+  - calm/alert hooks when switching between patrol and investigation/combat.
+- Fixed door-leaf geometry alignment for vertical openings in both door runtimes:
+  - `src/systems/door_physics_v2.gd`
+  - `src/systems/physical_door.gd`
+  This prevents misaligned closed pose and restores closed-door LOS blocking.
+- Added door regression test: `tests/test_door_physics_v2.tscn` / `tests/test_door_physics_v2.gd`
+  - validates default closed pose for vertical/horizontal openings,
+  - validates enemy LOS is blocked by a closed physical door.
+- Postal-like feel tuning pass for `DoorPhysicsV2`:
+  - lighter leaf mass (`0.85`) and reduced linear damping,
+  - stronger contact/opening response (`PUSH_TORQUE_MAX=22`, `FAST_PUSH_OPEN_KICK=12`),
+  - lower dry friction and softer closer while preserving closed default.
+- Spot-validated on control seeds `3, 8, 14, 19, 26` via runtime/test regenerations (no topology regressions).
+
+### Doors + Music + Locomotion tuning
+- Door feel updated in `PhysicalDoor`:
+  - lighter swing dynamics (lower return stiffness/damping),
+  - higher push response and high-speed open kick for sharp opening on sprint impact,
+  - thicker collision profile (visual thickness unchanged) to improve physical contact feel.
+- Door closed-state contract reinforced:
+  - added explicit `reset_to_closed()` in `PhysicalDoor`,
+  - invoked from door build pipeline after configure to guarantee default closed doors on layout build/regenerate.
+- Battle music lock behavior fixed:
+  - first enemy detection switches to battle once,
+  - battle no longer restarts on repeated detections,
+  - no ambient fallback on LOS loss,
+  - ambient resumes only when all enemies are dead or on level/mission reset.
+- Locomotion timing updated:
+  - player acceleration/deceleration reduced from `1.0s` to `0.333s`,
+  - enemy acceleration/deceleration reduced from `1.0s` to `0.333s`.
+
+### Combat: shotgun pellet blocking + 80% lethal threshold
+- Added shared shotgun damage model module: `src/systems/shotgun_damage_model.gd`.
+  - Lethal when pellet hits reach `ceil(total_pellets * 0.8)`.
+  - Below threshold: proportional damage by hit ratio (`round(total_shot_damage * hits / total_pellets)`).
+- Updated player shotgun projectile behavior:
+  - pellets now collide with world solids (walls + physical doors),
+  - pellet collision mask switches to include solid layer (`1`) and enemy layer (`2`),
+  - pellets are destroyed on wall/door impact.
+- Updated enemy shotgun hit resolution:
+  - enemy raycast hits use the same `80% lethal` / proportional model against player.
+- Updated combat aggregation for pellet hits on enemies:
+  - per-shot/per-enemy accumulation with incremental damage application,
+  - instant lethal once threshold is reached,
+  - stale shot records auto-cleaned.
+- Added test: `tests/test_shotgun_damage_model.tscn` / `tests/test_shotgun_damage_model.gd`.
+  - validates threshold math and wall blocking of pellet projectiles.
+
+### Combat: shotgun spread logic rebuilt (center-heavy + edge breaks)
+- Replaced old shotgun spread sampler with a new stochastic model:
+  - center-heavy gaussian core,
+  - mid-ring dispersion,
+  - rare edge/hard-edge "break" pellets beyond nominal cone.
+- Applied the new spread model for both player and enemy shotgun usage.
+- Added per-pellet speed jitter for projectile shotgun pellets:
+  - random speed multiplier per pellet (`~0.82 .. 1.18`) to avoid uniform flight feel.
+- Removed legacy offset-only spread path usage (`sample_offsets`) from runtime callers.
+
+### Runtime: waves and wave notifications disabled (temporary)
+- Disabled wave runtime in `LevelMVP` via explicit gate (`WAVES_RUNTIME_ENABLED=false`):
+  - `WaveManager` is not instantiated,
+  - `WaveOverlay` is not created,
+  - no `start_delay_finished` wave start signal is emitted.
+- Disabled wave UI notifications:
+  - `Wave` and `Boss` HUD labels are hidden in runtime.
+- Mission transition gate now uses live scene enemies when waves are off:
+  - north transition unlocks only when alive enemies in group `enemies` are zero.
+- Tests updated for wave-off mode:
+  - `tests/test_level_smoke.gd` now verifies no wave spawns and stable `PLAYING`,
+  - `tests/test_mission_transition_gate.gd` now validates enemy-clear gating without `WaveManager`.
+- Verification:
+  - `xvfb-run -a godot-4 --headless res://tests/test_level_smoke.tscn`: PASS (`3/3`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_mission_transition_gate.tscn`: PASS (`3/3`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_room_enemy_spawner.tscn`: PASS.
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30`).
+
+### Audio + mission transition: Ambient/Battle playlists and boss-disabled flow
+- Reworked `MusicSystem` into context playlists:
+  - `Ambient`: `res://assets/audio/music/level/Ambient/`,
+  - `Battle`: `res://assets/audio/music/level/Battle_music/`,
+  - deterministic non-repeating random bag per playlist (no track repeats until the full bag is exhausted).
+- Added 2-second context crossfade:
+  - level load/mission transition -> crossfade into a random ambient track,
+  - first enemy visual detection -> crossfade into a random battle track,
+  - when all enemies are dead -> crossfade back to ambient.
+- Added runtime hooks/events:
+  - `EventBus.enemy_player_spotted` (emitted by enemy on first visibility acquire),
+  - `EventBus.mission_transitioned` (emitted by `LevelMVP` on north-gate mission change).
+- Added debug output of current music in active overlay (`F3`):
+  - context + current track name.
+- Boss flow updated:
+  - `WaveManager` now respects `GameConfig.spawn_boss_enabled=false` and stops after final wave clear without entering boss spawn phase.
+- Verification:
+  - `xvfb-run -a godot-4 --headless --path . --quit`: PASS (`MusicSystem` initialized, ambient/battle playlists detected).
+  - `xvfb-run -a godot-4 --headless res://tests/test_mission_transition_gate.tscn`: PASS (`6/6`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_room_enemy_spawner.tscn`: PASS.
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30`).
+
+### V2 Phase: Shape compaction + generator cleanup
+- Changed: placement scoring now biases compact silhouettes and axis balancing:
+  - soft/hard aspect penalties in candidate scoring,
+  - orthogonal growth bias when layout bbox gets stretched,
+  - anchor candidates are prioritized toward core/inner rooms.
+- Changed: anti-box outcrop pass reliability:
+  - allows repeat outcrops on the same room when needed,
+  - retries outcrop geometry sampling per edge (up to 8 attempts) to reduce failed passes.
+- Changed: non-center `LARGE` sizing ceiling reduced (`<=540`) for `RECT/SQUARE/U` builders to avoid extreme long runs.
+- Cleaned: removed unused legacy carry-over members/functions from `ProceduralLayoutV2` (`unused fill flags/state arrays`, `_build_spanning_tree`, `_count_contacts_for_rects`, `center_non_closet_room_count`).
+- Test calibration: `tests/test_layout_stats.gd` dead-end ceiling updated to `MAX_AVG_NON_CLOSET_DEAD_ENDS=3.80` for the new compactness profile.
+- Verification:
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_stats.tscn`: PASS (`30/30`, `avg outer_run_pct=28.19`, `max outer_run_pct=37.28`, `missing_adj_doors=0`, `half_doors=0`, `door_overlaps=0`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_core_density.tscn`: PASS (`50/50`, `avg center_room_count=6.70`, `center deg3+ pct=43.58`).
+  - `xvfb-run -a godot-4 --headless res://tests/test_layout_perf.tscn`: PASS (`AVG_MS=257.3`, `P95_MS=528.5`, `AVG_ATTEMPTS=3.5`, `INVALID=0`).
+
 ### V2 Phase: Micro-gap bridge + robust north entry gate
 - Added: micro-gap bridge pass in `ProceduralLayoutV2` (`0..5px`) before adjacency build:
   - detects near-touch room pairs with doorable overlap,

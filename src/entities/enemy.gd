@@ -1,18 +1,30 @@
 ## enemy.gd
 ## Base enemy entity.
-## CANON: Simple AI - move directly toward player.
-## CANON: Hitbox size 0.4 tiles for standard enemies.
-## CANON: Contact damage with global i-frames.
+## CANON: Uses modular perception + pursuit systems.
 class_name Enemy
 extends CharacterBody2D
 
-enum AIState {
-	IDLE_ROAM,
-	INVESTIGATE,
-	CHASE,
-}
+const SHOTGUN_SPREAD_SCRIPT := preload("res://src/systems/shotgun_spread.gd")
+const SHOTGUN_DAMAGE_MODEL_SCRIPT := preload("res://src/systems/shotgun_damage_model.gd")
+const ENEMY_PERCEPTION_SYSTEM_SCRIPT := preload("res://src/systems/enemy_perception_system.gd")
+const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
+const WEAPON_SHOTGUN := "shotgun"
 
-## Enemy stats per type (from ТЗ v1.13)
+const SIGHT_FOV_DEG := 180.0
+const SIGHT_MAX_DISTANCE_PX := 1500.0
+const FIRE_SPAWN_OFFSET_PX := 20.0
+const FIRE_RAY_RANGE_PX := 2000.0
+const DETECT_FIRE_DELAY_SEC := 0.5
+const STOP_FIRE_DELAY_SEC := 0.2
+const FIRE_SETTLE_SPEED_EPS := 6.0
+const VISION_DEBUG_COLOR := Color(1.0, 0.96, 0.62, 0.9)
+const VISION_DEBUG_COLOR_DIM := Color(1.0, 0.96, 0.62, 0.55)
+const VISION_DEBUG_WIDTH := 2.0
+const VISION_DEBUG_FILL_COLOR := Color(1.0, 0.96, 0.62, 0.20)
+const VISION_DEBUG_FILL_COLOR_DIM := Color(1.0, 0.96, 0.62, 0.11)
+const VISION_DEBUG_FILL_RAY_COUNT := 24
+
+## Enemy stats per type
 const ENEMY_STATS := {
 	"zombie": {"hp": 100, "damage": 10, "speed": 2.0},
 	"fast": {"hp": 100, "damage": 7, "speed": 4.0},
@@ -35,8 +47,11 @@ var hp: int = 30
 ## Max HP (for potential HP bars)
 var max_hp: int = 30
 
-## Contact damage
+## Contact damage (kept for compatibility)
 var contact_damage: int = 10
+
+## Runtime toggle from LevelMVP (F6).
+var weapons_enabled: bool = false
 
 ## Movement speed in tiles/sec
 var speed_tiles: float = 2.0
@@ -56,34 +71,33 @@ var knockback_vel: Vector2 = Vector2.ZERO
 ## Reference to collision shape
 @onready var collision: CollisionShape2D = $CollisionShape2D
 
-## Reference to hitbox area (for player contact detection)
-@onready var hitbox: Area2D = $Hitbox
-
-## Room AI/nav
+## Room/nav wiring (kept for compatibility with RoomNavSystem)
 var nav_system: Node = null
 var home_room_id: int = -1
-var ai_state: int = AIState.IDLE_ROAM
-var _roam_target: Vector2 = Vector2.ZERO
-var _roam_wait_timer: float = 0.0
-var _waypoints: Array[Vector2] = []
-var _repath_timer: float = 0.0
-var _heard_timer: float = 0.0
 
-## Contact damage throttling
-var _touching_player: bool = false
-var _contact_cooldown: float = 0.0
+## Weapon timing
+var _shot_cooldown: float = 0.0
+var _detection_fire_delay_timer: float = 0.0
+var _stop_fire_delay_timer: float = 0.0
+var _player_visible_prev: bool = false
+var _was_moving_for_fire: bool = false
+var _shot_rng := RandomNumberGenerator.new()
+
+## Modular AI systems
+var _perception = null
+var _pursuit = null
+var _vision_fill_poly: Polygon2D = null
+var _vision_center_line: Line2D = null
+var _vision_left_line: Line2D = null
+var _vision_right_line: Line2D = null
 
 
 func _ready() -> void:
-	# Add to enemies group for easy lookup
 	add_to_group("enemies")
-
-	# Connect hitbox signals
-	if hitbox:
-		hitbox.body_entered.connect(_on_hitbox_body_entered)
-		hitbox.body_exited.connect(_on_hitbox_body_exited)
-
-	# Spawn animation (Phase 3: visual spawn cue)
+	_shot_rng.randomize()
+	_perception = ENEMY_PERCEPTION_SYSTEM_SCRIPT.new(self)
+	_pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(self, sprite, speed_tiles)
+	_setup_vision_debug_lines()
 	_play_spawn_animation()
 
 
@@ -93,7 +107,6 @@ func initialize(id: int, type: String, wave: int) -> void:
 	enemy_type = type
 	wave_id = wave
 
-	# Load stats from type
 	if ENEMY_STATS.has(type):
 		var stats: Dictionary = ENEMY_STATS[type]
 		hp = stats.hp
@@ -103,26 +116,27 @@ func initialize(id: int, type: String, wave: int) -> void:
 	else:
 		push_warning("[Enemy] Unknown enemy type: %s" % type)
 
+	if _pursuit:
+		_pursuit.set_speed_tiles(speed_tiles)
+
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
 		return
 
-	if _contact_cooldown > 0.0:
-		_contact_cooldown = maxf(0.0, _contact_cooldown - delta)
-	if _touching_player and _contact_cooldown <= 0.0 and enemy_type != "zombie":
-		if EventBus:
-			EventBus.emit_enemy_contact(entity_id, enemy_type, _contact_damage_amount())
-		_contact_cooldown = 1.0
-
-	# Check if frozen
 	if RuntimeState and RuntimeState.is_frozen:
 		return
+
+	if _shot_cooldown > 0.0:
+		_shot_cooldown = maxf(0.0, _shot_cooldown - delta)
+	if _detection_fire_delay_timer > 0.0:
+		_detection_fire_delay_timer = maxf(0.0, _detection_fire_delay_timer - delta)
+	if _stop_fire_delay_timer > 0.0:
+		_stop_fire_delay_timer = maxf(0.0, _stop_fire_delay_timer - delta)
 
 	# Handle stagger (blocks normal movement)
 	if stagger_timer > 0:
 		stagger_timer -= delta
-		# Apply knockback velocity with decay during stagger
 		if knockback_vel.length_squared() > 1.0:
 			velocity = knockback_vel
 			move_and_slide()
@@ -133,141 +147,234 @@ func _physics_process(delta: float) -> void:
 	if knockback_vel.length_squared() > 1.0:
 		knockback_vel = knockback_vel.lerp(Vector2.ZERO, minf(10.0 * delta, 1.0))
 
-	# Room-aware AI movement if nav is available, otherwise fallback to direct chase.
-	if nav_system and home_room_id >= 0:
-		_update_room_ai(delta)
+	if not _perception or not _pursuit:
+		return
+
+	var player_valid: bool = bool(_perception.has_player())
+	var player_pos: Vector2 = _perception.get_player_position()
+	var player_visible: bool = bool(_perception.can_see_player(
+		global_position,
+		_pursuit.get_facing_dir(),
+		SIGHT_FOV_DEG,
+		SIGHT_MAX_DISTANCE_PX,
+		_ray_excludes()
+	))
+	if player_visible and not _player_visible_prev:
+		_detection_fire_delay_timer = DETECT_FIRE_DELAY_SEC + STOP_FIRE_DELAY_SEC
+		_stop_fire_delay_timer = 0.0
+		_was_moving_for_fire = false
+		if EventBus:
+			EventBus.emit_enemy_player_spotted(entity_id, Vector3(player_pos.x, player_pos.y, 0.0))
+	_player_visible_prev = player_visible if player_valid else false
+
+	var use_room_nav: bool = nav_system != null and home_room_id >= 0
+	var decision: Dictionary = _pursuit.update(delta, use_room_nav, player_valid, player_pos, player_visible)
+	var request_fire := bool(decision.get("request_fire", false))
+	if request_fire:
+		var moving_now := velocity.length() > FIRE_SETTLE_SPEED_EPS
+		if moving_now:
+			_was_moving_for_fire = true
+		elif _was_moving_for_fire:
+			_stop_fire_delay_timer = STOP_FIRE_DELAY_SEC
+			_was_moving_for_fire = false
+		if weapons_enabled:
+			_try_fire_at_player(decision.get("fire_target", player_pos) as Vector2)
 	else:
-		_move_toward_player(delta)
+		_was_moving_for_fire = false
+	_update_vision_debug_lines(player_valid, player_pos, player_visible)
 
 
 func set_room_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	nav_system = p_nav_system
 	home_room_id = p_home_room_id
-	set_meta("room_id", p_home_room_id)
-	ai_state = AIState.IDLE_ROAM
-	_waypoints.clear()
-	_roam_target = Vector2.ZERO
-	_roam_wait_timer = 0.0
-	_repath_timer = 0.0
-	_heard_timer = 0.0
+	if _pursuit:
+		_pursuit.configure_navigation(p_nav_system, p_home_room_id)
 
 
 func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
-	if not nav_system:
+	if _pursuit:
+		_pursuit.on_heard_shot(shot_room_id, shot_pos)
+
+
+func _try_fire_at_player(player_pos: Vector2) -> void:
+	if _shot_cooldown > 0.0:
 		return
-	var own_room := int(get_meta("room_id", home_room_id))
-	if own_room < 0 and nav_system.has_method("room_id_at_point"):
-		own_room = int(nav_system.room_id_at_point(global_position))
-		set_meta("room_id", own_room)
-	if own_room < 0:
+	if _detection_fire_delay_timer > 0.0:
 		return
-	var same_or_adjacent := own_room == shot_room_id
-	if not same_or_adjacent and nav_system.has_method("is_adjacent"):
-		same_or_adjacent = bool(nav_system.is_adjacent(own_room, shot_room_id))
-	if not same_or_adjacent:
-		return
-	ai_state = AIState.CHASE
-	_heard_timer = 10.0
-	_plan_path_to(shot_pos)
-
-
-func _move_toward_player(delta: float) -> void:
-	# Get player position
-	var player_pos := Vector2.ZERO
-	if RuntimeState:
-		player_pos = Vector2(RuntimeState.player_pos.x, RuntimeState.player_pos.y)
-
-	# Calculate direction
-	var direction := (player_pos - position).normalized()
-
-	# Calculate velocity
-	var tile_size: int = GameConfig.tile_size if GameConfig else 32
-	var speed_pixels := speed_tiles * tile_size
-	velocity = direction * speed_pixels
-
-	# Move
-	move_and_slide()
-
-	# Rotate sprite to face movement direction
-	if sprite and direction.length_squared() > 0:
-		sprite.rotation = direction.angle()
-
-
-func _update_room_ai(delta: float) -> void:
-	if _heard_timer > 0.0:
-		_heard_timer = maxf(0.0, _heard_timer - delta)
-	elif ai_state != AIState.IDLE_ROAM:
-		ai_state = AIState.IDLE_ROAM
-		_waypoints.clear()
-
-	if ai_state == AIState.IDLE_ROAM:
-		_update_idle_roam(delta)
+	if _stop_fire_delay_timer > 0.0:
 		return
 
-	_repath_timer -= delta
-	if _repath_timer <= 0.0:
-		_repath_timer = 0.35
-		var player_pos := Vector2.ZERO
-		if RuntimeState:
-			player_pos = Vector2(RuntimeState.player_pos.x, RuntimeState.player_pos.y)
-		_plan_path_to(player_pos)
-
-	_follow_waypoints(delta)
-
-
-func _update_idle_roam(delta: float) -> void:
-	if _roam_wait_timer > 0.0:
-		_roam_wait_timer = maxf(0.0, _roam_wait_timer - delta)
-		velocity = Vector2.ZERO
+	var aim_dir := (player_pos - global_position).normalized()
+	if aim_dir.length_squared() <= 0.0001:
 		return
-	if _roam_target == Vector2.ZERO or global_position.distance_to(_roam_target) < 10.0:
-		if nav_system and nav_system.has_method("random_point_in_room"):
-			_roam_target = nav_system.random_point_in_room(home_room_id, 28.0)
-		else:
-			_roam_target = global_position
-		_roam_wait_timer = randf_range(0.1, 0.35)
-		velocity = Vector2.ZERO
+	if _pursuit:
+		_pursuit.face_towards(player_pos)
+
+	var muzzle := global_position + aim_dir * FIRE_SPAWN_OFFSET_PX
+	_fire_enemy_shotgun(muzzle, aim_dir)
+	_shot_cooldown = _shotgun_cooldown_sec()
+
+	if EventBus:
+		EventBus.emit_enemy_shot(
+			entity_id,
+			WEAPON_SHOTGUN,
+			Vector3(muzzle.x, muzzle.y, 0),
+			Vector3(aim_dir.x, aim_dir.y, 0)
+		)
+
+
+func _fire_enemy_shotgun(origin: Vector2, aim_dir: Vector2) -> void:
+	if not _perception:
+		return
+	var stats := _shotgun_stats()
+	var pellets := maxi(int(stats.get("pellets", 16)), 1)
+	var cone_deg := maxf(float(stats.get("cone_deg", 8.0)), 0.0)
+	var spread_profile := SHOTGUN_SPREAD_SCRIPT.sample_pellets(pellets, cone_deg, _shot_rng)
+
+	var hits := 0
+	for pellet_variant in spread_profile:
+		var pellet := pellet_variant as Dictionary
+		var angle_offset := float(pellet.get("angle_offset", 0.0))
+		var dir := aim_dir.rotated(angle_offset)
+		if _perception.ray_hits_player(origin, dir, FIRE_RAY_RANGE_PX, _ray_excludes()):
+			hits += 1
+
+	if hits <= 0 or not EventBus:
 		return
 
-	var dir := (_roam_target - global_position).normalized()
-	var tile_size: int = GameConfig.tile_size if GameConfig else 32
-	var speed_pixels := speed_tiles * tile_size * 0.85
-	velocity = dir * speed_pixels
-	move_and_slide()
-	if sprite and dir.length_squared() > 0:
-		sprite.rotation = dir.angle()
-
-
-func _plan_path_to(target_pos: Vector2) -> void:
-	if nav_system and nav_system.has_method("build_path_points"):
-		_waypoints = nav_system.build_path_points(global_position, target_pos)
+	var shot_total_damage := maxf(float(stats.get("shot_damage_total", 25.0)), 0.0)
+	var applied_damage := 0
+	if SHOTGUN_DAMAGE_MODEL_SCRIPT.is_lethal_hits(hits, pellets):
+		applied_damage = _player_lethal_damage()
 	else:
-		_waypoints = [target_pos]
+		applied_damage = SHOTGUN_DAMAGE_MODEL_SCRIPT.damage_for_hits(hits, pellets, shot_total_damage)
+
+	if applied_damage > 0:
+		EventBus.emit_enemy_contact(entity_id, "enemy_shotgun", applied_damage)
 
 
-func _follow_waypoints(delta: float) -> void:
-	if _waypoints.is_empty():
-		velocity = Vector2.ZERO
+func _ray_excludes() -> Array[RID]:
+	return [get_rid()]
+
+
+func _setup_vision_debug_lines() -> void:
+	_vision_fill_poly = _create_vision_fill_poly()
+	_vision_center_line = _create_vision_line()
+	_vision_left_line = _create_vision_line()
+	_vision_right_line = _create_vision_line()
+	add_child(_vision_fill_poly)
+	add_child(_vision_center_line)
+	add_child(_vision_left_line)
+	add_child(_vision_right_line)
+
+
+func _create_vision_line() -> Line2D:
+	var line := Line2D.new()
+	line.width = VISION_DEBUG_WIDTH
+	line.default_color = VISION_DEBUG_COLOR
+	line.antialiased = true
+	line.z_as_relative = false
+	line.z_index = 220
+	line.points = PackedVector2Array([Vector2.ZERO, Vector2.ZERO])
+	return line
+
+
+func _create_vision_fill_poly() -> Polygon2D:
+	var poly := Polygon2D.new()
+	poly.color = VISION_DEBUG_FILL_COLOR_DIM
+	poly.z_as_relative = false
+	poly.z_index = 210
+	poly.polygon = PackedVector2Array([Vector2.ZERO, Vector2.ZERO, Vector2.ZERO])
+	return poly
+
+
+func _update_vision_debug_lines(player_valid: bool, player_pos: Vector2, player_visible: bool) -> void:
+	if not _vision_center_line or not _vision_left_line or not _vision_right_line or not _vision_fill_poly:
 		return
-	var waypoint := _waypoints[0]
-	if global_position.distance_to(waypoint) <= 12.0:
-		_waypoints.remove_at(0)
-		if _waypoints.is_empty():
-			velocity = Vector2.ZERO
-			return
-		waypoint = _waypoints[0]
-	var dir := (waypoint - global_position).normalized()
-	var tile_size: int = GameConfig.tile_size if GameConfig else 32
-	var speed_pixels := speed_tiles * tile_size
-	velocity = dir * speed_pixels
-	move_and_slide()
-	if sprite and dir.length_squared() > 0:
-		sprite.rotation = dir.angle()
+	var facing: Vector2 = Vector2.RIGHT
+	if _pursuit:
+		facing = _pursuit.get_facing_dir() as Vector2
+	if facing.length_squared() <= 0.0001:
+		facing = Vector2.RIGHT
+
+	var half_fov := deg_to_rad(SIGHT_FOV_DEG) * 0.5
+	var left_dir: Vector2 = facing.rotated(-half_fov)
+	var right_dir: Vector2 = facing.rotated(half_fov)
+
+	var center_end := _vision_ray_end(facing, SIGHT_MAX_DISTANCE_PX)
+	var left_end := _vision_ray_end(left_dir, SIGHT_MAX_DISTANCE_PX)
+	var right_end := _vision_ray_end(right_dir, SIGHT_MAX_DISTANCE_PX)
+	if player_valid and player_visible:
+		center_end = player_pos
+
+	var color := VISION_DEBUG_COLOR if player_visible else VISION_DEBUG_COLOR_DIM
+	_vision_fill_poly.color = VISION_DEBUG_FILL_COLOR if player_visible else VISION_DEBUG_FILL_COLOR_DIM
+	_vision_center_line.default_color = color
+	_vision_left_line.default_color = color
+	_vision_right_line.default_color = color
+
+	var fan_points := PackedVector2Array()
+	fan_points.append(Vector2.ZERO)
+	for i in range(VISION_DEBUG_FILL_RAY_COUNT + 1):
+		var t := float(i) / float(VISION_DEBUG_FILL_RAY_COUNT)
+		var angle_offset := -half_fov + t * (half_fov * 2.0)
+		var sample_dir := facing.rotated(angle_offset)
+		var sample_end := _vision_ray_end(sample_dir, SIGHT_MAX_DISTANCE_PX)
+		fan_points.append(to_local(sample_end))
+	_vision_fill_poly.polygon = fan_points
+
+	_set_vision_line_points(_vision_center_line, center_end)
+	_set_vision_line_points(_vision_left_line, left_end)
+	_set_vision_line_points(_vision_right_line, right_end)
 
 
-func _contact_damage_amount() -> int:
-	var max_hp := GameConfig.player_max_hp if GameConfig else 100
-	return maxi(1, int(ceil(float(max_hp) * 0.25)))
+func _set_vision_line_points(line: Line2D, world_end: Vector2) -> void:
+	line.points = PackedVector2Array([
+		Vector2.ZERO,
+		to_local(world_end)
+	])
+
+
+func _vision_ray_end(dir: Vector2, max_range: float) -> Vector2:
+	var n_dir := dir.normalized()
+	if n_dir.length_squared() <= 0.0001:
+		return global_position
+	var target := global_position + n_dir * max_range
+	var query := PhysicsRayQueryParameters2D.create(global_position, target)
+	query.collide_with_areas = true
+	query.collide_with_bodies = true
+	query.exclude = _ray_excludes()
+
+	var hit := get_world_2d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return target
+	return hit.get("position", target) as Vector2
+
+
+func _shotgun_stats() -> Dictionary:
+	if GameConfig and GameConfig.weapon_stats.has(WEAPON_SHOTGUN):
+		return GameConfig.weapon_stats[WEAPON_SHOTGUN] as Dictionary
+	return {
+		"cooldown_sec": 1.2,
+		"rpm": 50.0,
+		"pellets": 16,
+		"cone_deg": 8.0,
+	}
+
+
+func _shotgun_cooldown_sec() -> float:
+	var stats := _shotgun_stats()
+	var cooldown_sec := float(stats.get("cooldown_sec", -1.0))
+	if cooldown_sec > 0.0:
+		return cooldown_sec
+	var rpm := maxf(float(stats.get("rpm", 60.0)), 1.0)
+	return 60.0 / rpm
+
+
+func _player_lethal_damage() -> int:
+	if RuntimeState:
+		return maxi(int(RuntimeState.player_hp), 1)
+	return GameConfig.player_max_hp if GameConfig else 100
 
 
 ## Apply damage from any source (melee, projectile, etc.)
@@ -276,16 +383,13 @@ func apply_damage(amount: int, source: String) -> void:
 	if is_dead:
 		return
 	hp -= amount
-	# Visual feedback (white flash per visual polish spec)
 	if sprite:
 		var flash_dur := GameConfig.hit_flash_duration if GameConfig else 0.06
 		sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
 		var tween := create_tween()
 		tween.tween_property(sprite, "modulate", Color.WHITE, flash_dur)
-	# Track stats
 	if RuntimeState:
 		RuntimeState.damage_dealt += amount
-	# Emit damage event
 	if EventBus:
 		EventBus.emit_damage_dealt(entity_id, amount, source)
 	if hp <= 0:
@@ -309,14 +413,12 @@ func take_damage(amount: int) -> void:
 
 	hp -= amount
 
-	# Visual feedback (white flash per visual polish spec)
 	if sprite:
 		var flash_dur := GameConfig.hit_flash_duration if GameConfig else 0.06
 		sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
 		var tween := create_tween()
 		tween.tween_property(sprite, "modulate", Color.WHITE, flash_dur)
 
-	# Check death
 	if hp <= 0:
 		die()
 
@@ -328,42 +430,25 @@ func die() -> void:
 
 	is_dead = true
 
-	# Update stats BEFORE emitting event (so VFXSystem can read position)
 	if RuntimeState:
 		RuntimeState.kills += 1
 
-	# Disable collision immediately
 	if collision:
 		collision.set_deferred("disabled", true)
-	if hitbox:
-		hitbox.set_deferred("monitoring", false)
 
-	# Phase 2: VFXSystem handles corpse creation through enemy_killed event
-	# Store position for VFXSystem before removing from group
-	var death_pos := position
-	var death_rot := sprite.rotation if sprite else 0.0
-
-	# Emit kill event (VFXSystem will create corpse at this position)
-	# Note: we stay in "enemies" group briefly so VFXSystem can find us
 	if EventBus:
 		EventBus.emit_enemy_killed(entity_id, enemy_type, wave_id)
 
-	# Death visual feedback then cleanup
 	_play_death_effect()
 
 
 func _cleanup_after_death() -> void:
-	# Remove from enemies group
 	remove_from_group("enemies")
-
-	# Disable physics
 	set_physics_process(false)
-
-	# Queue free - VFXSystem creates the visual corpse
 	queue_free()
 
 
-## Phase 3: Spawn scale-in animation + flash
+## Spawn scale-in animation + flash
 func _play_spawn_animation() -> void:
 	if not sprite:
 		return
@@ -375,7 +460,7 @@ func _play_spawn_animation() -> void:
 	tween.tween_property(sprite, "modulate", Color.WHITE, 0.2)
 
 
-## Kill feedback: scale pop 1.0 → kill_pop_scale → 0 + fade
+## Kill feedback: scale pop 1.0 -> kill_pop_scale -> 0 + fade
 func _play_death_effect() -> void:
 	if not sprite:
 		call_deferred("_cleanup_after_death")
@@ -386,25 +471,9 @@ func _play_death_effect() -> void:
 
 	sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
 	var tween := create_tween()
-	# Scale pop: 1.0 → pop_scale
 	tween.tween_property(sprite, "scale", Vector2(pop_scale, pop_scale), pop_dur * 0.5).set_ease(Tween.EASE_OUT)
-	# Then shrink to 0 + fade
 	tween.set_parallel(true)
 	tween.tween_property(sprite, "scale", Vector2(0, 0), pop_dur * 0.5).set_ease(Tween.EASE_IN)
 	tween.tween_property(sprite, "modulate:a", 0.0, pop_dur * 0.5)
 	tween.set_parallel(false)
 	tween.tween_callback(_cleanup_after_death)
-
-
-func _on_hitbox_body_entered(body: Node2D) -> void:
-	if is_dead:
-		return
-
-	# Check if it's the player
-	if body.is_in_group("player"):
-		_touching_player = true
-
-
-func _on_hitbox_body_exited(body: Node2D) -> void:
-	if body.is_in_group("player"):
-		_touching_player = false

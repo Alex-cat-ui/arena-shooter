@@ -3,8 +3,9 @@
 ## Run via: godot --headless res://tests/test_mission_transition_gate.tscn
 extends Node
 
-var _tests_run := 0
-var _tests_passed := 0
+const TestHelpers = preload("res://tests/test_helpers.gd")
+
+var _t := TestHelpers.new()
 
 
 func _ready() -> void:
@@ -15,7 +16,7 @@ func _ready() -> void:
 	Engine.max_fps = 60
 	GameConfig.reset_to_defaults()
 	GameConfig.god_mode = true
-	GameConfig.waves_enabled = true
+	GameConfig.waves_enabled = false
 	GameConfig.start_delay_sec = 999.0
 
 	if StateManager.current_state != GameState.State.MAIN_MENU:
@@ -31,61 +32,44 @@ func _ready() -> void:
 
 	await _run_tests(level)
 
-	print("")
-	print("=".repeat(60))
-	print("MISSION TRANSITION GATE RESULTS: %d/%d passed" % [_tests_passed, _tests_run])
-	print("=".repeat(60))
-	get_tree().quit(0 if _tests_passed == _tests_run else 1)
+	_t.summary("MISSION TRANSITION GATE RESULTS")
+	get_tree().quit(_t.quit_code())
 
 
 func _run_tests(level: Node) -> void:
-	if not level or not level.wave_manager:
-		_test("Level and WaveManager are available", false)
+	if not level:
+		_t.check("Level is available", false)
 		return
 
-	var total_waves := GameConfig.waves_per_level
 	level._mission_cycle_pos = 0
 
-	# Case 1: alive enemies -> blocked
-	_set_wave_state(level, total_waves, true, 2, false)
+	# Case 1: any alive enemy in scene -> blocked
+	var dummy_enemy := Node2D.new()
+	dummy_enemy.name = "DummyEnemy"
+	dummy_enemy.add_to_group("enemies")
+	level.entities_container.add_child(dummy_enemy)
 	var before: int = int(level._current_mission_index())
 	_try_transition(level)
-	_test("Blocked while alive_total > 0", level._current_mission_index() == before)
+	_t.check("Blocked while alive enemies exist", level._current_mission_index() == before)
+	level._north_transition_enabled = false
+	level._north_transition_rect = Rect2()
+	level._north_transition_cooldown = 0.0
+	dummy_enemy.queue_free()
+	await get_tree().process_frame
 
-	# Case 2: wave not finished spawning -> blocked
-	_set_wave_state(level, total_waves, false, 0, false)
-	before = level._current_mission_index()
-	_try_transition(level)
-	_test("Blocked while wave not finished", level._current_mission_index() == before)
-
-	# Case 3: not final wave -> blocked
-	_set_wave_state(level, maxi(1, total_waves - 1), true, 0, false)
-	before = level._current_mission_index()
-	_try_transition(level)
-	_test("Blocked before final wave", level._current_mission_index() == before)
-
-	# Case 4: boss active -> blocked
-	_set_wave_state(level, total_waves, true, 0, true)
-	before = level._current_mission_index()
-	_try_transition(level)
-	_test("Blocked while boss is active", level._current_mission_index() == before)
-
-	# Case 5: final wave done + no enemies + no boss -> allowed
-	_set_wave_state(level, total_waves, true, 0, false)
+	# Case 2: no alive enemies -> allowed
+	for node_variant in level.get_tree().get_nodes_in_group("enemies"):
+		var node := node_variant as Node
+		if node and is_instance_valid(node):
+			node.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
 	before = level._current_mission_index()
 	_try_transition(level)
 	await get_tree().process_frame
 	var after: int = int(level._current_mission_index())
-	_test("Allowed after full clear", after != before)
-	_test("RuntimeState mission index synced", RuntimeState.mission_index == after)
-
-
-func _set_wave_state(level: Node, wave_idx: int, finished: bool, alive: int, boss_active: bool) -> void:
-	level.wave_manager.wave_index = wave_idx
-	level.wave_manager.wave_finished_spawning = finished
-	level.wave_manager.alive_total = alive
-	level.wave_manager.boss_spawned = boss_active
-	level._north_transition_cooldown = 0.0
+	_t.check("Allowed after clear", after != before)
+	_t.check("RuntimeState mission index synced", RuntimeState.mission_index == after)
 
 
 func _try_transition(level: Node) -> void:
@@ -98,10 +82,3 @@ func _try_transition(level: Node) -> void:
 	level._check_north_transition()
 
 
-func _test(name: String, result: bool) -> void:
-	_tests_run += 1
-	if result:
-		_tests_passed += 1
-		print("[PASS] %s" % name)
-	else:
-		print("[FAIL] %s" % name)

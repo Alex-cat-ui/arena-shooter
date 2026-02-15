@@ -30,14 +30,12 @@ func rebuild_for_layout(layout) -> void:
 
 	var seed_base := int(layout.layout_seed) if "layout_seed" in layout else int(Time.get_ticks_msec())
 	_rng.seed = int(absi(seed_base * 1103515245 + 12345))
-	var start_room_id := -1
-	if "player_room_id" in layout:
-		start_room_id = int(layout.player_room_id)
+	var blocked_spawn_rooms := _blocked_spawn_room_ids(layout)
 
 	for room_id in range(layout.rooms.size()):
 		if room_id in layout._void_ids:
 			continue
-		if room_id == start_room_id:
+		if blocked_spawn_rooms.has(room_id):
 			continue
 		if layout._is_closet_room(room_id):
 			continue
@@ -196,3 +194,26 @@ func _spawn_enemy(spawn_pos: Vector2, room_id: int) -> void:
 		enemy.set_physics_process(true)
 
 	_next_enemy_id += 1
+
+
+func _blocked_spawn_room_ids(layout) -> Dictionary:
+	var blocked := {}
+	if "player_room_id" in layout:
+		blocked[int(layout.player_room_id)] = true
+
+	var street_room_id := _street_entry_room_id(layout)
+	if street_room_id >= 0:
+		blocked[street_room_id] = true
+	return blocked
+
+
+func _street_entry_room_id(layout) -> int:
+	if not ("north_exit_rect" in layout):
+		return -1
+	var gate := layout.north_exit_rect as Rect2
+	if gate == Rect2():
+		return -1
+	if not layout.has_method("_room_id_at_point"):
+		return -1
+	var probe := gate.get_center() + Vector2(0.0, 24.0)
+	return int(layout._room_id_at_point(probe))

@@ -346,6 +346,17 @@ func get_alive_prev_wave() -> int:
 ## ============================================================================
 
 func _enter_boss_phase() -> void:
+	var boss_enabled := GameConfig.spawn_boss_enabled if GameConfig else false
+	if not boss_enabled:
+		_boss_phase = false
+		_waiting_for_clear = false
+		_waiting_for_boss_delay = false
+		_spawning_active = false
+		if EventBus:
+			EventBus.emit_all_waves_completed()
+		print("[WaveManager] All %d waves completed (boss disabled)." % _total_waves)
+		return
+
 	_boss_phase = true
 	_waiting_for_clear = true
 	_waiting_for_boss_delay = false

@@ -5,6 +5,8 @@
 class_name ProjectileSystem
 extends Node
 
+const SHOTGUN_SPREAD_SCRIPT := preload("res://src/systems/shotgun_spread.gd")
+
 ## Projectile scene
 var projectile_scene: PackedScene = null
 
@@ -126,21 +128,18 @@ func _fire_shotgun(stats: Dictionary, position: Vector2, direction: Vector2, spe
 	var shot_total_damage := maxf(float(stats.get("shot_damage_total", 25.0)), 0.0)
 	var shot_id := _next_shotgun_shot_id
 	_next_shotgun_shot_id += 1
-	var cone_rad := deg_to_rad(cone_deg)
-	var half := cone_rad * 0.5
+	var spread_profile := SHOTGUN_SPREAD_SCRIPT.sample_pellets(pellets, cone_deg, _rng)
 
-	for i in range(pellets):
-		# Center-weighted random spread: denser at center, sparser at cone edges.
-		var triangular := (_rng.randf() + _rng.randf()) - 1.0
-		var uniform := _rng.randf_range(-1.0, 1.0)
-		var weighted := clampf(triangular * 0.8 + uniform * 0.2, -1.0, 1.0)
-		var angle_offset := weighted * half
+	for pellet_variant in spread_profile:
+		var pellet := pellet_variant as Dictionary
+		var angle_offset := float(pellet.get("angle_offset", 0.0))
+		var speed_scale := float(pellet.get("speed_scale", 1.0))
 		var dir := direction.rotated(angle_offset)
 		_spawn_projectile(
 			str(stats.get("projectile_type", "pellet")),
 			position,
 			dir,
-			speed_pixels,
+			speed_pixels * speed_scale,
 			1, # actual pellet damage to enemies is aggregated in CombatSystem by shot metadata
 			shot_id,
 			pellets,

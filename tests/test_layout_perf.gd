@@ -3,6 +3,8 @@
 ## Run via: godot --headless res://tests/test_layout_perf.tscn
 extends Node
 
+const TestHelpers = preload("res://tests/test_helpers.gd")
+
 const SEED_COUNT := 30
 const ARENA := Rect2(-1100, -1100, 2200, 2200)
 const MAX_AVG_MS := 1200.0
@@ -13,17 +15,10 @@ const TEST_MISSION := 3
 
 
 func _ready() -> void:
-	var walls_node := Node2D.new()
-	add_child(walls_node)
-	var debug_node := Node2D.new()
-	add_child(debug_node)
-	var player_node := CharacterBody2D.new()
-	var col := CollisionShape2D.new()
-	var shape := CircleShape2D.new()
-	shape.radius = 12.0
-	col.shape = shape
-	player_node.add_child(col)
-	add_child(player_node)
+	var _nodes := TestHelpers.create_layout_nodes(self)
+	var walls_node: Node2D = _nodes["walls"]
+	var debug_node: Node2D = _nodes["debug"]
+	var player_node: CharacterBody2D = _nodes["player"]
 
 	var ms_samples: Array = []
 	var attempts_samples: Array = []

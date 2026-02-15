@@ -14,6 +14,7 @@ const BOSS_SCENE := preload("res://scenes/entities/boss.tscn")
 const PROCEDURAL_LAYOUT_V2_SCRIPT := preload("res://src/systems/procedural_layout_v2.gd")
 const ROOM_ENEMY_SPAWNER_SCRIPT := preload("res://src/systems/room_enemy_spawner.gd")
 const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/room_nav_system.gd")
+const LAYOUT_DOOR_SYSTEM_SCRIPT := preload("res://src/systems/layout_door_system.gd")
 
 ## Node references
 @onready var player: CharacterBody2D = $Entities/Player
@@ -27,6 +28,7 @@ const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/room_nav_system.gd")
 @onready var weapon_label: Label = $HUD/HUDContainer/WeaponLabel
 @onready var floor_root: Node2D = $Floor
 @onready var floor_sprite: Sprite2D = $Floor/FloorSprite
+@onready var debug_hint_label: Label = $HUD/DebugHint
 
 ## Container nodes
 @onready var entities_container: Node2D = $Entities
@@ -43,6 +45,7 @@ var vfx_system: VFXSystem = null
 var footprint_system: FootprintSystem = null
 var room_enemy_spawner = null
 var room_nav_system = null
+var layout_door_system = null
 
 ## Systems (Phase 3: Arena Polish + Weapons)
 var ability_system: AbilitySystem = null
@@ -61,6 +64,7 @@ var atmosphere_system: AtmosphereSystem = null
 
 ## Procedural layout
 var layout_walls: Node2D = null
+var layout_doors: Node2D = null
 var layout_debug: Node2D = null
 var _layout = null
 var _walkable_floor: Node2D = null
@@ -88,6 +92,9 @@ var _vignette_rect: ColorRect = null
 var _floor_overlay: ColorRect = null
 var _debug_container: VBoxContainer = null
 var _momentum_label: Label = null
+var _music_system_ref: MusicSystem = null
+var _review_seed_index: int = -1
+var _last_review_seed: int = 0
 var _camera_follow_pos: Vector2 = Vector2.ZERO
 var _camera_follow_initialized: bool = false
 var _cached_white_pixel_tex: ImageTexture = null
@@ -98,12 +105,16 @@ var _layout_room_stats: Dictionary = {
 	"exterior_rooms": 0,
 	"closets": 0,
 }
+var _enemy_weapons_enabled: bool = false
 
-const CAMERA_FOLLOW_LERP_MOVING := 5.0
-const CAMERA_FOLLOW_LERP_STOPPING := 2.0
+const CAMERA_FOLLOW_LERP_MOVING := 2.5
+const CAMERA_FOLLOW_LERP_STOPPING := 1.0
 const CAMERA_VELOCITY_EPSILON := 6.0
 const V2_FLOOR_FILL_COLOR := Color(0.58, 0.58, 0.58, 1.0)
 const PLAYER_NORTH_SPAWN_OFFSET := 100.0
+const WAVES_RUNTIME_ENABLED := false
+const DOOR_REVIEW_SEEDS := [21, 9, 16, 3, 14]
+const RIGHT_DEBUG_HINT_BASE := "ESC - Pause | F1 - Game Over\nF2 - Level Complete | F3 - Debug\nF4 - Regenerate | F6 - Enemy Guns | F7 - Review Seed\nLMB - Shoot | 1-6 Weapons | Wheel\nQ - Katana | RMB - Heavy | Space - Dash"
 
 
 func _ready() -> void:
@@ -134,6 +145,10 @@ func _ready() -> void:
 
 	# Subscribe to events
 	_subscribe_to_events()
+	_bind_enemy_toggle_hook()
+	_apply_enemy_weapon_toggle_to_all()
+	_cache_music_system_ref()
+	_refresh_right_debug_hint()
 
 	_update_hud()
 
@@ -164,20 +179,20 @@ func _random_arena_rect() -> Rect2:
 
 
 func _init_systems() -> void:
-	# Create WaveManager
-	wave_manager = WaveManager.new()
-	wave_manager.name = "WaveManager"
-	wave_manager.enemy_scene = ENEMY_SCENE
-	wave_manager.boss_scene = BOSS_SCENE  # Phase 2: boss scene
-	wave_manager.entities_container = entities_container
-	# Set arena bounds based on floor size
-	wave_manager.arena_min = _arena_min
-	wave_manager.arena_max = _arena_max
-	add_child(wave_manager)
-
-	# Initialize WaveManager with waves count from config
-	var total_waves: int = GameConfig.waves_per_level if GameConfig else 3
-	wave_manager.initialize(total_waves)
+	# Wave flow is currently disabled by design; static room enemies are used.
+	if _waves_runtime_enabled():
+		wave_manager = WaveManager.new()
+		wave_manager.name = "WaveManager"
+		wave_manager.enemy_scene = ENEMY_SCENE
+		wave_manager.boss_scene = BOSS_SCENE
+		wave_manager.entities_container = entities_container
+		wave_manager.arena_min = _arena_min
+		wave_manager.arena_max = _arena_max
+		add_child(wave_manager)
+		var total_waves: int = GameConfig.waves_per_level if GameConfig else 3
+		wave_manager.initialize(total_waves)
+	else:
+		wave_manager = null
 
 	# Create CombatSystem
 	combat_system = CombatSystem.new()
@@ -216,10 +231,12 @@ func _init_systems() -> void:
 	add_child(camera_shake)
 	camera_shake.initialize(camera)
 
-	# Phase 3: Create WaveOverlay
-	wave_overlay = WaveOverlay.new()
-	wave_overlay.name = "WaveOverlay"
-	add_child(wave_overlay)
+	if _waves_runtime_enabled():
+		wave_overlay = WaveOverlay.new()
+		wave_overlay.name = "WaveOverlay"
+		add_child(wave_overlay)
+	else:
+		wave_overlay = null
 
 	# Phase 3: Create ArenaBoundary (added before Entities for z-ordering)
 	arena_boundary = ArenaBoundary.new()
@@ -234,8 +251,9 @@ func _init_systems() -> void:
 		_arena_min = arena_rect.position
 		_arena_max = arena_rect.end
 		arena_boundary.initialize(_arena_min, _arena_max)
-		wave_manager.arena_min = _arena_min
-		wave_manager.arena_max = _arena_max
+		if wave_manager:
+			wave_manager.arena_min = _arena_min
+			wave_manager.arena_max = _arena_max
 	else:
 		arena_boundary.initialize(_arena_min, _arena_max)
 
@@ -245,10 +263,20 @@ func _init_systems() -> void:
 	layout_walls.z_as_relative = false
 	layout_walls.z_index = 20
 	add_child(layout_walls)
+	layout_doors = Node2D.new()
+	layout_doors.name = "LayoutDoors"
+	layout_doors.z_as_relative = false
+	layout_doors.z_index = 26
+	add_child(layout_doors)
 	layout_debug = Node2D.new()
 	layout_debug.name = "LayoutDebug"
 	layout_debug.z_index = 100
 	add_child(layout_debug)
+	layout_door_system = LAYOUT_DOOR_SYSTEM_SCRIPT.new()
+	layout_door_system.name = "LayoutDoorSystem"
+	add_child(layout_door_system)
+	if layout_door_system and layout_door_system.has_method("initialize"):
+		layout_door_system.initialize(layout_doors)
 	_ensure_walkable_floor_node()
 
 	if GameConfig and GameConfig.procedural_layout_enabled:
@@ -258,6 +286,8 @@ func _init_systems() -> void:
 			s = int(Time.get_ticks_msec()) % 999999
 		_layout = _generate_layout(arena_rect, s)
 		_ensure_layout_recovered(arena_rect, s)
+	if layout_door_system and layout_door_system.has_method("rebuild_for_layout"):
+		layout_door_system.rebuild_for_layout(_layout)
 	_rebuild_walkable_floor()
 	_update_layout_room_stats()
 	_sync_layout_runtime_memory()
@@ -565,6 +595,11 @@ func _create_debug_overlay() -> void:
 	room_types_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
 	_debug_container.add_child(room_types_label)
 
+	var music_label := Label.new()
+	music_label.name = "MusicLabel"
+	music_label.add_theme_color_override("font_color", Color(0.5, 0.5, 0.5, 0.7))
+	_debug_container.add_child(music_label)
+
 
 func _style_hud_labels() -> void:
 	# HP emphasized (larger color)
@@ -577,24 +612,28 @@ func _style_hud_labels() -> void:
 		state_label.add_theme_color_override("font_color", dim_color)
 	if wave_label:
 		wave_label.add_theme_color_override("font_color", Color(0.8, 0.8, 0.5, 0.9))
+		wave_label.visible = _waves_runtime_enabled()
 	if time_label:
 		time_label.add_theme_color_override("font_color", dim_color)
 	if boss_hp_label:
 		boss_hp_label.add_theme_color_override("font_color", Color(1.0, 0.5, 0.0, 1.0))
+		boss_hp_label.visible = _waves_runtime_enabled()
 	if weapon_label:
 		weapon_label.add_theme_color_override("font_color", Color(0.5, 0.8, 1.0, 0.9))
 
 
 func _subscribe_to_events() -> void:
 	if EventBus:
-		EventBus.wave_started.connect(_on_wave_started)
+		if _waves_runtime_enabled():
+			EventBus.wave_started.connect(_on_wave_started)
+			EventBus.all_waves_completed.connect(_on_all_waves_completed)
 		EventBus.player_damaged.connect(_on_player_damaged)
 		EventBus.player_died.connect(_on_player_died)
-		EventBus.all_waves_completed.connect(_on_all_waves_completed)
 		# Phase 2: Boss events
-		EventBus.boss_spawned.connect(_on_boss_spawned)
-		EventBus.boss_killed.connect(_on_boss_killed)
-		EventBus.boss_damaged.connect(_on_boss_damaged)
+		if _waves_runtime_enabled():
+			EventBus.boss_spawned.connect(_on_boss_spawned)
+			EventBus.boss_killed.connect(_on_boss_killed)
+			EventBus.boss_damaged.connect(_on_boss_damaged)
 		# Phase 3: Rocket explosion -> camera shake
 		EventBus.rocket_exploded.connect(_on_rocket_exploded)
 
@@ -616,12 +655,15 @@ func _process(delta: float) -> void:
 		_start_delay_timer -= delta
 		if _start_delay_timer <= 0:
 			_start_delay_finished = true
-			print("[LevelMVP] Start delay finished, waves beginning")
-			if EventBus:
+			if _waves_runtime_enabled():
+				print("[LevelMVP] Start delay finished, waves beginning")
+			else:
+				print("[LevelMVP] Start delay finished (waves disabled)")
+			if EventBus and _waves_runtime_enabled():
 				EventBus.emit_start_delay_finished()
 
 	# Update systems
-	if wave_manager and (GameConfig.waves_enabled if GameConfig else true):
+	if wave_manager:
 		wave_manager.update(delta)
 	if combat_system:
 		combat_system.update(delta)
@@ -706,6 +748,20 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.keycode == KEY_F4:
 			print("[LevelMVP] F4: Regenerating layout")
 			regenerate_layout(0)
+		elif event.keycode == KEY_F6:
+			_enemy_weapons_enabled = not _enemy_weapons_enabled
+			_apply_enemy_weapon_toggle_to_all()
+			_refresh_right_debug_hint()
+			print("[LevelMVP] Enemy weapons: %s" % ("ON" if _enemy_weapons_enabled else "OFF"))
+		elif event.keycode == KEY_F7:
+			if DOOR_REVIEW_SEEDS.is_empty():
+				return
+			_review_seed_index = (_review_seed_index + 1) % DOOR_REVIEW_SEEDS.size()
+			var review_seed := int(DOOR_REVIEW_SEEDS[_review_seed_index])
+			_last_review_seed = review_seed
+			print("[LevelMVP] F7: Review seed %d (%d/%d)" % [review_seed, _review_seed_index + 1, DOOR_REVIEW_SEEDS.size()])
+			regenerate_layout(review_seed)
+			_refresh_right_debug_hint()
 
 
 func _update_hud() -> void:
@@ -722,12 +778,15 @@ func _update_hud() -> void:
 		state_label.text = "State: %s" % state_text
 
 	if wave_label:
-		var wave_text := "Wave: %d" % RuntimeState.current_wave
-		if wave_manager:
-			wave_text += " / %d" % (GameConfig.waves_per_level if GameConfig else 3)
-			if RuntimeState.current_wave > 0:
-				wave_text += " (Alive: %d)" % wave_manager.alive_total
-		wave_label.text = wave_text
+		if _waves_runtime_enabled():
+			var wave_text := "Wave: %d" % RuntimeState.current_wave
+			if wave_manager:
+				wave_text += " / %d" % (GameConfig.waves_per_level if GameConfig else 3)
+				if RuntimeState.current_wave > 0:
+					wave_text += " (Alive: %d)" % wave_manager.alive_total
+			wave_label.text = wave_text
+		else:
+			wave_label.text = "Wave: OFF"
 
 	if time_label:
 		time_label.text = "Time: %.1f | Kills: %d" % [RuntimeState.time_elapsed, RuntimeState.kills]
@@ -810,12 +869,24 @@ func _update_debug_overlay() -> void:
 
 	var room_types_label := _debug_container.get_node_or_null("RoomTypesLabel") as Label
 	if room_types_label:
-		room_types_label.text = "RoomTypes: corr=%d | inner=%d | outer=%d | closet=%d" % [
+		room_types_label.text = "RoomTypes: corr=%d | inner=%d | outer=%d | closet=%d | enemy_guns=%s" % [
 			int(_layout_room_stats["corridors"]),
 			int(_layout_room_stats["interior_rooms"]),
 			int(_layout_room_stats["exterior_rooms"]),
 			int(_layout_room_stats["closets"]),
+			("ON" if _enemy_weapons_enabled else "OFF"),
 		]
+
+	var music_label := _debug_container.get_node_or_null("MusicLabel") as Label
+	if music_label:
+		var music_system := _cache_music_system_ref()
+		if music_system:
+			music_label.text = "Music: %s | %s" % [
+				music_system.get_current_context_name(),
+				music_system.get_current_track_name(),
+			]
+		else:
+			music_label.text = "Music: offline"
 
 
 ## ============================================================================
@@ -823,6 +894,8 @@ func _update_debug_overlay() -> void:
 ## ============================================================================
 
 func _on_wave_started(wave_index: int, wave_size: int) -> void:
+	if not _waves_runtime_enabled():
+		return
 	print("[LevelMVP] Wave %d started (size: %d)" % [wave_index, wave_size])
 	# Phase 3: Show wave overlay
 	if wave_overlay:
@@ -841,8 +914,11 @@ func _on_player_died() -> void:
 
 
 func _on_all_waves_completed() -> void:
-	# Phase 2: Don't trigger LEVEL_COMPLETE here - boss must be killed first
-	print("[LevelMVP] All waves completed! Waiting for boss...")
+	var boss_enabled := GameConfig.spawn_boss_enabled if GameConfig else false
+	if boss_enabled:
+		print("[LevelMVP] All waves completed! Waiting for boss...")
+	else:
+		print("[LevelMVP] All waves completed (boss disabled). North transition unlocked after clear.")
 
 
 ## Phase 3: Rocket explosion -> camera shake
@@ -893,6 +969,7 @@ func regenerate_layout(new_seed: int = 0) -> void:
 		return
 	# Clear existing walls and debug
 	_clear_node_children_detached(layout_walls)
+	_clear_node_children_detached(layout_doors)
 	_clear_node_children_detached(layout_debug)
 	# Random arena shape on regeneration
 	var arena_rect := _random_arena_rect()
@@ -909,6 +986,8 @@ func regenerate_layout(new_seed: int = 0) -> void:
 		s = int(Time.get_ticks_msec()) % 999999
 	_layout = _generate_layout(arena_rect, s)
 	_ensure_layout_recovered(arena_rect, s)
+	if layout_door_system and layout_door_system.has_method("rebuild_for_layout"):
+		layout_door_system.rebuild_for_layout(_layout)
 	_rebuild_walkable_floor()
 	_update_layout_room_stats()
 	_sync_layout_runtime_memory()
@@ -1039,12 +1118,10 @@ func _check_north_transition() -> void:
 
 
 func _is_north_transition_unlocked() -> bool:
+	if not _waves_runtime_enabled():
+		return _alive_scene_enemies_count() == 0
 	if not wave_manager:
-		return true
-
-	var waves_enabled := GameConfig.waves_enabled if GameConfig else true
-	if not waves_enabled:
-		return true
+		return _alive_scene_enemies_count() == 0
 
 	if wave_manager.alive_total > 0:
 		return false
@@ -1059,6 +1136,24 @@ func _is_north_transition_unlocked() -> bool:
 	return wave_manager.wave_index >= total_waves
 
 
+func _waves_runtime_enabled() -> bool:
+	return WAVES_RUNTIME_ENABLED
+
+
+func _alive_scene_enemies_count() -> int:
+	if not get_tree():
+		return 0
+	var alive := 0
+	for node_variant in get_tree().get_nodes_in_group("enemies"):
+		var node := node_variant as Node
+		if not node:
+			continue
+		if "is_dead" in node and bool(node.is_dead):
+			continue
+		alive += 1
+	return alive
+
+
 func _advance_mission_cycle() -> void:
 	if _mission_cycle.is_empty():
 		return
@@ -1066,6 +1161,8 @@ func _advance_mission_cycle() -> void:
 	var next_mission := _current_mission_index()
 	print("[LevelMVP] Transition -> mission %d" % next_mission)
 	regenerate_layout(0)
+	if EventBus:
+		EventBus.emit_mission_transitioned(next_mission)
 
 
 func _reset_camera_follow() -> void:
@@ -1117,6 +1214,46 @@ func _ensure_player_runtime_ready() -> void:
 	_reset_camera_follow()
 
 
+func _bind_enemy_toggle_hook() -> void:
+	if not entities_container:
+		return
+	if not entities_container.child_entered_tree.is_connected(_on_entity_child_entered_enemy_toggle):
+		entities_container.child_entered_tree.connect(_on_entity_child_entered_enemy_toggle)
+
+
+func _on_entity_child_entered_enemy_toggle(node: Node) -> void:
+	call_deferred("_apply_enemy_weapon_toggle_to_node", node)
+
+
+func _apply_enemy_weapon_toggle_to_all() -> void:
+	if not entities_container:
+		return
+	for child in entities_container.get_children():
+		_apply_enemy_weapon_toggle_to_node(child)
+
+
+func _apply_enemy_weapon_toggle_to_node(node: Node) -> void:
+	if not node:
+		return
+	if not node.is_in_group("enemies"):
+		return
+	if "weapons_enabled" in node:
+		node.weapons_enabled = _enemy_weapons_enabled
+
+
+func _refresh_right_debug_hint() -> void:
+	if not debug_hint_label:
+		return
+	var review_text := "OFF"
+	if _last_review_seed > 0 and _review_seed_index >= 0:
+		review_text = "%d (%d/%d)" % [_last_review_seed, _review_seed_index + 1, DOOR_REVIEW_SEEDS.size()]
+	debug_hint_label.text = "%s\nEnemy Guns: %s\nReview Seed: %s" % [
+		RIGHT_DEBUG_HINT_BASE,
+		("ON" if _enemy_weapons_enabled else "OFF"),
+		review_text,
+	]
+
+
 func _is_player_stuck(cb: CharacterBody2D) -> bool:
 	var probes := [Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]
 	for dir_variant in probes:
@@ -1133,6 +1270,18 @@ func _is_near_layout_north_spawn(pos: Vector2) -> bool:
 		return false
 	var north_target := (_layout._entry_gate as Rect2).get_center() + Vector2(0.0, -PLAYER_NORTH_SPAWN_OFFSET)
 	return pos.distance_to(north_target) <= 40.0
+
+
+func _cache_music_system_ref() -> MusicSystem:
+	if _music_system_ref and is_instance_valid(_music_system_ref):
+		return _music_system_ref
+	if not get_tree():
+		return null
+	var root := get_tree().root
+	if not root:
+		return null
+	_music_system_ref = root.find_child("MusicSystem", true, false) as MusicSystem
+	return _music_system_ref
 
 
 func _update_layout_room_stats() -> void:

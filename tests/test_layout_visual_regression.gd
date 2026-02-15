@@ -3,36 +3,29 @@
 ## Run via: godot --headless res://tests/test_layout_visual_regression.tscn
 extends Node
 
+const TestHelpers = preload("res://tests/test_helpers.gd")
+
 const SEED_COUNT := 50
 const TEST_MISSION := 3
 const ARENA := Rect2(-1100, -1100, 2200, 2200)
+# Zero tolerance: any disconnected walk-cell island is a hard regression.
 const MAX_WALKABILITY_FAILS := 0
+# Zero tolerance: generated level should not leave blocked walk cells.
 const MAX_UNREACHABLE_CELLS_PER_LAYOUT := 1
+# Zero tolerance: pseudo-gaps indicate wall sealing regression.
 const MAX_TOTAL_PSEUDO_GAPS := 0
+# Zero tolerance: north exit generation must always succeed.
 const MAX_TOTAL_NORTH_EXIT_FAILS := 0
 const MAX_AVG_OUTER_RUN_PCT := 31.0
 const MAX_SINGLE_OUTER_RUN_PCT := 40.0
 const MIN_AVG_OUTCROPS := 1.0
 const MIN_AVG_TU_ROOMS := 1.5
-const PROCEDURAL_LAYOUT_V2_SCRIPT := preload("res://src/systems/procedural_layout_v2.gd")
 
 
 func _ready() -> void:
 	print("=".repeat(68))
 	print("VISUAL REGRESSION TEST (V2): %d seeds, arena %s" % [SEED_COUNT, str(ARENA)])
 	print("=".repeat(68))
-
-	var walls_node := Node2D.new()
-	add_child(walls_node)
-	var debug_node := Node2D.new()
-	add_child(debug_node)
-	var player_node := CharacterBody2D.new()
-	var col_shape := CollisionShape2D.new()
-	var shape := CircleShape2D.new()
-	shape.radius = 12.0
-	col_shape.shape = shape
-	player_node.add_child(col_shape)
-	add_child(player_node)
 
 	var invalid_count := 0
 	var walkability_failures := 0
@@ -48,24 +41,38 @@ func _ready() -> void:
 	var total_closet_range_violations := 0
 
 	for s in range(1, SEED_COUNT + 1):
-		for child in walls_node.get_children():
-			child.queue_free()
-		await get_tree().process_frame
-
-		var layout := PROCEDURAL_LAYOUT_V2_SCRIPT.generate_and_build(ARENA, s, walls_node, debug_node, player_node, TEST_MISSION)
+		var built := TestHelpers.create_layout(self, s, ARENA, TEST_MISSION)
+		var layout = built["layout"]
+		var player_node := built["player"] as CharacterBody2D
+		var walls_node := built["walls"] as Node2D
+		var debug_node := built["debug"] as Node2D
 		if not layout.valid:
 			invalid_count += 1
+			player_node.queue_free()
+			walls_node.queue_free()
+			debug_node.queue_free()
+			await get_tree().process_frame
 			continue
 
-		total_unreachable_cells += layout.walk_unreachable_cells_stat
-		if layout.walk_unreachable_cells_stat > MAX_UNREACHABLE_CELLS_PER_LAYOUT:
+		var walk_unreach_v = layout.get("walk_unreachable_cells_stat")
+		var walk_unreach := int(walk_unreach_v) if walk_unreach_v != null else 0
+		total_unreachable_cells += walk_unreach
+		if walk_unreach > MAX_UNREACHABLE_CELLS_PER_LAYOUT:
 			walkability_failures += 1
 
-		total_pseudo_gaps += layout.pseudo_gap_count_stat
-		total_north_exit_fails += layout.north_core_exit_fail_stat
-		total_outcrops += layout.outcrop_count_stat
-		total_outer_run_pct += layout.outer_longest_run_pct_stat
-		max_outer_run_pct = maxf(max_outer_run_pct, layout.outer_longest_run_pct_stat)
+		var pseudo_v = layout.get("pseudo_gap_count_stat")
+		var north_fail_v = layout.get("north_core_exit_fail_stat")
+		var outcrop_v = layout.get("outcrop_count_stat")
+		var outer_run_v = layout.get("outer_longest_run_pct_stat")
+		var pseudo_gaps := int(pseudo_v) if pseudo_v != null else 0
+		var north_exit_fails := int(north_fail_v) if north_fail_v != null else 0
+		var outcrops := int(outcrop_v) if outcrop_v != null else 0
+		var outer_run := float(outer_run_v) if outer_run_v != null else 0.0
+		total_pseudo_gaps += pseudo_gaps
+		total_north_exit_fails += north_exit_fails
+		total_outcrops += outcrops
+		total_outer_run_pct += outer_run
+		max_outer_run_pct = maxf(max_outer_run_pct, outer_run)
 
 		var t_u_count := _count_t_u_rooms(layout)
 		total_t_u_rooms += t_u_count
@@ -75,6 +82,11 @@ func _ready() -> void:
 		if closets_count < 1 or closets_count > 4:
 			total_closet_range_violations += 1
 		total_closet_bad_entries += _count_closet_bad_entries(layout)
+
+		player_node.queue_free()
+		walls_node.queue_free()
+		debug_node.queue_free()
+		await get_tree().process_frame
 
 	var avg_unreachable := float(total_unreachable_cells) / maxf(float(SEED_COUNT), 1.0)
 	var avg_t_u_rooms := float(total_t_u_rooms) / maxf(float(SEED_COUNT), 1.0)
@@ -161,4 +173,3 @@ func _count_closet_bad_entries(layout) -> int:
 		if deg != 1:
 			bad += 1
 	return bad
-

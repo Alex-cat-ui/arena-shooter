@@ -27,10 +27,13 @@ var projectile_system: Node = null
 ## Reference to AbilitySystem (set by level, Phase 3)
 var ability_system: Node = null
 
+const PLAYER_ACCEL_TIME_SEC := 1.0 / 3.0
+const PLAYER_DECEL_TIME_SEC := 1.0 / 3.0
 
 func _ready() -> void:
 	print("[Player] Ready")
 	add_to_group("player")
+	safe_margin = 2.0
 	_load_config()
 
 
@@ -62,7 +65,18 @@ func _physics_process(delta: float) -> void:
 
 	# Calculate velocity in pixels/sec
 	var speed_pixels := speed_tiles * tile_size
-	velocity = input_dir * speed_pixels
+	var target_velocity := input_dir * speed_pixels
+	if target_velocity.length_squared() > 0.0:
+		var accel_per_sec := speed_pixels / maxf(PLAYER_ACCEL_TIME_SEC, 0.001)
+		velocity = velocity.move_toward(target_velocity, accel_per_sec * delta)
+	else:
+		var decel_per_sec := speed_pixels / maxf(PLAYER_DECEL_TIME_SEC, 0.001)
+		velocity = velocity.move_toward(Vector2.ZERO, decel_per_sec * delta)
+		if velocity.length_squared() <= 1.0:
+			velocity = Vector2.ZERO
+
+	# Preserve movement intent for door interaction even when slide collision clamps velocity.
+	set_meta("door_push_velocity", target_velocity)
 
 	# Move
 	move_and_slide()
