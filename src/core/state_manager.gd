@@ -4,68 +4,68 @@
 ## CANON: UI does NOT control gameplay entities directly.
 extends Node
 
-const GameState = preload("res://src/core/game_state.gd")
+const GAME_STATE_SCRIPT := preload("res://src/core/game_state.gd")
 
 ## Current game state
-var current_state: GameState.State = GameState.State.MAIN_MENU
+var current_state: GAME_STATE_SCRIPT.State = GAME_STATE_SCRIPT.State.MAIN_MENU
 
 ## Previous state (for back navigation)
-var previous_state: GameState.State = GameState.State.MAIN_MENU
+var previous_state: GAME_STATE_SCRIPT.State = GAME_STATE_SCRIPT.State.MAIN_MENU
 
 ## Valid state transitions map
 ## Key: from state, Value: array of valid target states
 var _valid_transitions: Dictionary = {
-	GameState.State.MAIN_MENU: [
-		GameState.State.LEVEL_SETUP,
-		GameState.State.SETTINGS,
-		GameState.State.EXIT
+	GAME_STATE_SCRIPT.State.MAIN_MENU: [
+		GAME_STATE_SCRIPT.State.LEVEL_SETUP,
+		GAME_STATE_SCRIPT.State.SETTINGS,
+		GAME_STATE_SCRIPT.State.EXIT
 	],
-	GameState.State.SETTINGS: [
-		GameState.State.MAIN_MENU
+	GAME_STATE_SCRIPT.State.SETTINGS: [
+		GAME_STATE_SCRIPT.State.MAIN_MENU
 	],
-	GameState.State.LEVEL_SETUP: [
-		GameState.State.MAIN_MENU,
-		GameState.State.PLAYING
+	GAME_STATE_SCRIPT.State.LEVEL_SETUP: [
+		GAME_STATE_SCRIPT.State.MAIN_MENU,
+		GAME_STATE_SCRIPT.State.PLAYING
 	],
-	GameState.State.PLAYING: [
-		GameState.State.PAUSED,
-		GameState.State.GAME_OVER,
-		GameState.State.LEVEL_COMPLETE,
-		GameState.State.MAIN_MENU
+	GAME_STATE_SCRIPT.State.PLAYING: [
+		GAME_STATE_SCRIPT.State.PAUSED,
+		GAME_STATE_SCRIPT.State.GAME_OVER,
+		GAME_STATE_SCRIPT.State.LEVEL_COMPLETE,
+		GAME_STATE_SCRIPT.State.MAIN_MENU
 	],
-	GameState.State.PAUSED: [
-		GameState.State.PLAYING,
-		GameState.State.MAIN_MENU
+	GAME_STATE_SCRIPT.State.PAUSED: [
+		GAME_STATE_SCRIPT.State.PLAYING,
+		GAME_STATE_SCRIPT.State.MAIN_MENU
 	],
-	GameState.State.GAME_OVER: [
-		GameState.State.LEVEL_SETUP,
-		GameState.State.MAIN_MENU
+	GAME_STATE_SCRIPT.State.GAME_OVER: [
+		GAME_STATE_SCRIPT.State.LEVEL_SETUP,
+		GAME_STATE_SCRIPT.State.MAIN_MENU
 	],
-	GameState.State.LEVEL_COMPLETE: [
-		GameState.State.LEVEL_SETUP,
-		GameState.State.MAIN_MENU
+	GAME_STATE_SCRIPT.State.LEVEL_COMPLETE: [
+		GAME_STATE_SCRIPT.State.LEVEL_SETUP,
+		GAME_STATE_SCRIPT.State.MAIN_MENU
 	],
-	GameState.State.EXIT: []
+	GAME_STATE_SCRIPT.State.EXIT: []
 }
 
 
 func _ready() -> void:
-	current_state = GameState.State.MAIN_MENU
+	current_state = GAME_STATE_SCRIPT.State.MAIN_MENU
 
 
 ## Request state transition
 ## Returns true if transition was valid and executed
-func change_state(new_state: GameState.State) -> bool:
+func change_state(new_state: GAME_STATE_SCRIPT.State) -> bool:
 	# Check if transition is valid
 	if not _is_valid_transition(current_state, new_state):
 		push_warning("Invalid state transition: %s -> %s" % [
-			GameState.state_to_string(current_state),
-			GameState.state_to_string(new_state)
+			GAME_STATE_SCRIPT.state_to_string(current_state),
+			GAME_STATE_SCRIPT.state_to_string(new_state)
 		])
 		return false
 
 	# Handle EXIT specially
-	if new_state == GameState.State.EXIT:
+	if new_state == GAME_STATE_SCRIPT.State.EXIT:
 		_handle_exit()
 		return true
 
@@ -82,45 +82,45 @@ func change_state(new_state: GameState.State) -> bool:
 		EventBus.emit_state_changed(old_state, new_state)
 
 	print("[StateManager] %s -> %s" % [
-		GameState.state_to_string(old_state),
-		GameState.state_to_string(new_state)
+		GAME_STATE_SCRIPT.state_to_string(old_state),
+		GAME_STATE_SCRIPT.state_to_string(new_state)
 	])
 
 	return true
 
 
 ## Check if transition is valid
-func _is_valid_transition(from: GameState.State, to: GameState.State) -> bool:
+func _is_valid_transition(from: GAME_STATE_SCRIPT.State, to: GAME_STATE_SCRIPT.State) -> bool:
 	if not _valid_transitions.has(from):
 		return false
 	return to in _valid_transitions[from]
 
 
 ## Handle state-specific logic on transition
-func _on_state_changed(old_state: GameState.State, new_state: GameState.State) -> void:
+func _on_state_changed(old_state: GAME_STATE_SCRIPT.State, new_state: GAME_STATE_SCRIPT.State) -> void:
 	# Reset RuntimeState when going to MAIN_MENU
-	if new_state == GameState.State.MAIN_MENU:
+	if new_state == GAME_STATE_SCRIPT.State.MAIN_MENU:
 		if RuntimeState:
 			RuntimeState.reset()
 
 	# Reset RuntimeState when starting level
-	if new_state == GameState.State.PLAYING and old_state == GameState.State.LEVEL_SETUP:
+	if new_state == GAME_STATE_SCRIPT.State.PLAYING and old_state == GAME_STATE_SCRIPT.State.LEVEL_SETUP:
 		if RuntimeState:
 			RuntimeState.reset()
 			RuntimeState.is_level_active = true
 
 	# Freeze on pause
-	if new_state == GameState.State.PAUSED:
+	if new_state == GAME_STATE_SCRIPT.State.PAUSED:
 		if RuntimeState:
 			RuntimeState.is_frozen = true
 
 	# Unfreeze on resume
-	if new_state == GameState.State.PLAYING and old_state == GameState.State.PAUSED:
+	if new_state == GAME_STATE_SCRIPT.State.PLAYING and old_state == GAME_STATE_SCRIPT.State.PAUSED:
 		if RuntimeState:
 			RuntimeState.is_frozen = false
 
 	# Freeze on game over / level complete
-	if new_state in [GameState.State.GAME_OVER, GameState.State.LEVEL_COMPLETE]:
+	if new_state in [GAME_STATE_SCRIPT.State.GAME_OVER, GAME_STATE_SCRIPT.State.LEVEL_COMPLETE]:
 		if RuntimeState:
 			RuntimeState.is_frozen = true
 			RuntimeState.is_level_active = false
@@ -134,27 +134,27 @@ func _handle_exit() -> void:
 
 ## Helper: is game currently in playable state
 func is_playing() -> bool:
-	return current_state == GameState.State.PLAYING
+	return current_state == GAME_STATE_SCRIPT.State.PLAYING
 
 
 ## Helper: is game paused
 func is_paused() -> bool:
-	return current_state == GameState.State.PAUSED
+	return current_state == GAME_STATE_SCRIPT.State.PAUSED
 
 
 ## Helper: is game frozen (paused, game over, level complete)
 func is_frozen() -> bool:
 	return current_state in [
-		GameState.State.PAUSED,
-		GameState.State.GAME_OVER,
-		GameState.State.LEVEL_COMPLETE
+		GAME_STATE_SCRIPT.State.PAUSED,
+		GAME_STATE_SCRIPT.State.GAME_OVER,
+		GAME_STATE_SCRIPT.State.LEVEL_COMPLETE
 	]
 
 
 ## Helper: is in menu state
 func is_in_menu() -> bool:
 	return current_state in [
-		GameState.State.MAIN_MENU,
-		GameState.State.SETTINGS,
-		GameState.State.LEVEL_SETUP
+		GAME_STATE_SCRIPT.State.MAIN_MENU,
+		GAME_STATE_SCRIPT.State.SETTINGS,
+		GAME_STATE_SCRIPT.State.LEVEL_SETUP
 	]

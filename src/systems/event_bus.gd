@@ -5,7 +5,7 @@
 ## CANON: No direct recursive event calls - use event queue flushed per frame.
 extends Node
 
-const GameState = preload("res://src/core/game_state.gd")
+const GAME_STATE_SCRIPT := preload("res://src/core/game_state.gd")
 
 ## Event priorities
 enum Priority {
@@ -19,7 +19,7 @@ enum Priority {
 ## ============================================================================
 
 ## State changed event
-signal state_changed(old_state: GameState.State, new_state: GameState.State)
+signal state_changed(old_state: GAME_STATE_SCRIPT.State, new_state: GAME_STATE_SCRIPT.State)
 
 ## Level started event (after bootstrap complete)
 signal level_started()
@@ -135,7 +135,7 @@ var _is_processing: bool = false
 ## PUBLIC API - State & Level
 ## ============================================================================
 
-func emit_state_changed(old_state: GameState.State, new_state: GameState.State) -> void:
+func emit_state_changed(old_state: GAME_STATE_SCRIPT.State, new_state: GAME_STATE_SCRIPT.State) -> void:
 	_queue_event("state_changed", [old_state, new_state])
 
 func emit_level_started() -> void:

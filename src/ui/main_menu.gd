@@ -3,7 +3,7 @@
 ## CANON: UI changes ONLY GameConfig, does NOT control gameplay entities.
 extends Control
 
-const GameState = preload("res://src/core/game_state.gd")
+const GAME_STATE_SCRIPT := preload("res://src/core/game_state.gd")
 const STEALTH_TEST_SCENE_PATH := "res://src/levels/stealth_test_room.tscn"
 
 ## Button references (resolved dynamically)
@@ -60,7 +60,7 @@ func _animate_background(bg: ColorRect) -> void:
 
 func _on_new_game_pressed() -> void:
 	if StateManager:
-		StateManager.change_state(GameState.State.LEVEL_SETUP)
+		StateManager.change_state(GAME_STATE_SCRIPT.State.LEVEL_SETUP)
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
@@ -79,12 +79,12 @@ func _on_stealth_test_pressed() -> void:
 
 func _on_settings_pressed() -> void:
 	if StateManager:
-		StateManager.change_state(GameState.State.SETTINGS)
+		StateManager.change_state(GAME_STATE_SCRIPT.State.SETTINGS)
 
 
 func _on_exit_pressed() -> void:
 	if StateManager:
-		StateManager.change_state(GameState.State.EXIT)
+		StateManager.change_state(GAME_STATE_SCRIPT.State.EXIT)
 
 
 func open_stealth_test_scene(perform_change: bool = true) -> int:

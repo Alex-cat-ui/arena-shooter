@@ -66,6 +66,10 @@ func _ensure_textures_loaded() -> void:
 
 
 func _load_texture(path: String) -> Texture2D:
+	if ResourceLoader.exists(path, "Texture2D"):
+		var texture := load(path) as Texture2D
+		if texture != null:
+			return texture
 	var image := Image.load_from_file(path)
 	if image == null or image.is_empty():
 		push_warning("[EnemyAlertMarkerPresenter] Failed to load marker image: %s" % path)

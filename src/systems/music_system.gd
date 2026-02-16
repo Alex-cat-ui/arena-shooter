@@ -5,7 +5,7 @@
 class_name MusicSystem
 extends Node
 
-const GameState = preload("res://src/core/game_state.gd")
+const GAME_STATE_SCRIPT := preload("res://src/core/game_state.gd")
 
 const MENU_MUSIC_PATH := "res://assets/audio/music/menu/"
 const AMBIENT_MUSIC_PATH := "res://assets/audio/music/level/Ambient/"
@@ -105,18 +105,18 @@ func _scan_tracks() -> void:
 
 func _get_tracks_in_folder(path: String) -> Array[String]:
 	var tracks: Array[String] = []
-	var dir := DirAccess.open(path)
-	if not dir:
+	var folder := DirAccess.open(path)
+	if not folder:
 		return tracks
-	dir.list_dir_begin()
-	var file_name := dir.get_next()
+	folder.list_dir_begin()
+	var file_name := folder.get_next()
 	while file_name != "":
-		if not dir.current_is_dir():
+		if not folder.current_is_dir():
 			var lower := file_name.to_lower()
 			if lower.ends_with(".mp3") or lower.ends_with(".wav") or lower.ends_with(".ogg"):
 				tracks.append(path + file_name)
-		file_name = dir.get_next()
-	dir.list_dir_end()
+		file_name = folder.get_next()
+	folder.list_dir_end()
 	tracks.sort()
 	return tracks
 
@@ -311,12 +311,12 @@ func _on_player_finished(player: AudioStreamPlayer) -> void:
 	_play_next_track_in_current_context()
 
 
-func _on_state_changed(_old_state: GameState.State, new_state: GameState.State) -> void:
+func _on_state_changed(_old_state: GAME_STATE_SCRIPT.State, new_state: GAME_STATE_SCRIPT.State) -> void:
 	match new_state:
-		GameState.State.MAIN_MENU, GameState.State.SETTINGS, GameState.State.LEVEL_SETUP:
+		GAME_STATE_SCRIPT.State.MAIN_MENU, GAME_STATE_SCRIPT.State.SETTINGS, GAME_STATE_SCRIPT.State.LEVEL_SETUP:
 			_battle_lock_active = false
 			play_context(MusicContext.MENU, false)
-		GameState.State.PLAYING:
+		GAME_STATE_SCRIPT.State.PLAYING:
 			if _current_context == MusicContext.MENU or _current_context == MusicContext.NONE:
 				_switch_to_ambient(true)
 		_:

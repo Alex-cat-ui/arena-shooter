@@ -3,9 +3,9 @@
 ## Manages UI screens and level loading based on GameState.
 extends Node
 
-const GameState = preload("res://src/core/game_state.gd")
-const MusicSystem = preload("res://src/systems/music_system.gd")
-const SFXSystem = preload("res://src/systems/sfx_system.gd")
+const GAME_STATE_SCRIPT := preload("res://src/core/game_state.gd")
+const MUSIC_SYSTEM_SCRIPT := preload("res://src/systems/music_system.gd")
+const SFX_SYSTEM_SCRIPT := preload("res://src/systems/sfx_system.gd")
 
 ## UI scene paths
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
@@ -29,10 +29,10 @@ var _current_ui: Control = null
 var _current_level: Node = null
 
 ## Music system (Phase 2)
-var music_system: MusicSystem = null
+var music_system: MUSIC_SYSTEM_SCRIPT = null
 
 ## SFX system (Phase 4)
-var sfx_system: SFXSystem = null
+var sfx_system: SFX_SYSTEM_SCRIPT = null
 
 ## Prevent overlapping level load calls while waiting for queue_free to complete.
 var _is_level_loading: bool = false
@@ -46,12 +46,12 @@ func _ready() -> void:
 		EventBus.state_changed.connect(_on_state_changed)
 
 	# Initialize MusicSystem (Phase 2)
-	music_system = MusicSystem.new()
+	music_system = MUSIC_SYSTEM_SCRIPT.new()
 	music_system.name = "MusicSystem"
 	add_child(music_system)
 
 	# Initialize SFXSystem (Phase 4)
-	sfx_system = SFXSystem.new()
+	sfx_system = SFX_SYSTEM_SCRIPT.new()
 	sfx_system.name = "SFXSystem"
 	add_child(sfx_system)
 
@@ -60,40 +60,40 @@ func _ready() -> void:
 
 	# Start menu music
 	if music_system:
-		music_system.play_context(MusicSystem.MusicContext.MENU)
+		music_system.play_context(MUSIC_SYSTEM_SCRIPT.MusicContext.MENU)
 
 	print("[AppRoot] Ready (Phase 4: Music + SFX enabled)")
 
 
-func _on_state_changed(old_state: GameState.State, new_state: GameState.State) -> void:
+func _on_state_changed(old_state: GAME_STATE_SCRIPT.State, new_state: GAME_STATE_SCRIPT.State) -> void:
 	print("[AppRoot] State changed: %s -> %s" % [
-		GameState.state_to_string(old_state),
-		GameState.state_to_string(new_state)
+		GAME_STATE_SCRIPT.state_to_string(old_state),
+		GAME_STATE_SCRIPT.state_to_string(new_state)
 	])
 
 	match new_state:
-		GameState.State.MAIN_MENU:
+		GAME_STATE_SCRIPT.State.MAIN_MENU:
 			_unload_level()
 			_show_main_menu()
-		GameState.State.SETTINGS:
+		GAME_STATE_SCRIPT.State.SETTINGS:
 			_show_settings()
-		GameState.State.LEVEL_SETUP:
+		GAME_STATE_SCRIPT.State.LEVEL_SETUP:
 			_unload_level()
 			_show_level_setup()
-		GameState.State.PLAYING:
-			if old_state == GameState.State.LEVEL_SETUP:
+		GAME_STATE_SCRIPT.State.PLAYING:
+			if old_state == GAME_STATE_SCRIPT.State.LEVEL_SETUP:
 				_clear_ui()
 				_load_level()
-			elif old_state == GameState.State.PAUSED:
+			elif old_state == GAME_STATE_SCRIPT.State.PAUSED:
 				_clear_ui()
 				_resume_level()
-		GameState.State.PAUSED:
+		GAME_STATE_SCRIPT.State.PAUSED:
 			_pause_level()
 			_show_pause_menu()
-		GameState.State.GAME_OVER:
+		GAME_STATE_SCRIPT.State.GAME_OVER:
 			_pause_level()
 			_show_game_over()
-		GameState.State.LEVEL_COMPLETE:
+		GAME_STATE_SCRIPT.State.LEVEL_COMPLETE:
 			_pause_level()
 			_show_level_complete()
 

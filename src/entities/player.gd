@@ -190,7 +190,7 @@ func set_position_v3(pos: Vector3) -> void:
 
 
 ## Take damage (called by CombatSystem)
-func take_damage(amount: int) -> void:
+func take_damage(_amount: int) -> void:
 	# Visual feedback
 	if sprite:
 		sprite.modulate = Color.RED

@@ -83,10 +83,10 @@ func _refresh_visibility() -> void:
 
 
 func _is_ring_state_visible() -> bool:
-	var owner := get_parent()
-	if owner == null:
+	var parent_node := get_parent()
+	if parent_node == null:
 		return false
-	var state_name := String(owner.get_meta("awareness_state", "CALM")).to_upper()
+	var state_name := String(parent_node.get_meta("awareness_state", "CALM")).to_upper()
 	if state_name == "ALERT" or state_name == "COMBAT":
 		return true
 	if state_name == "CALM" or state_name == "IDLE":
