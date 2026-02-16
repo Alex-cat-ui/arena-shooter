@@ -145,6 +145,7 @@ var _runtime_budget_tick_delta: float = 0.0
 
 
 func _ready() -> void:
+	print("ENEMY_RUNTIME_MARKER_v20260216")
 	add_to_group("enemies")
 	_shot_rng.randomize()
 	_perception = ENEMY_PERCEPTION_SYSTEM_SCRIPT.new(self)

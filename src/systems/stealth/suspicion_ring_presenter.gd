@@ -30,6 +30,7 @@ var _enabled: bool = false
 
 
 func _ready() -> void:
+	print("RING_POLICY_ACTIVE_v20260216")
 	position = head_offset
 	z_as_relative = false
 	z_index = 240

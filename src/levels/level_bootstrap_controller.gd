@@ -30,6 +30,7 @@ func init_systems(
 	transition_controller,
 	camera_controller
 ) -> void:
+	print("MAIN_BOOTSTRAP_v20260216")
 	ctx.combat_system = CombatSystem.new()
 	ctx.combat_system.name = "CombatSystem"
 	ctx.combat_system.player_node = ctx.player

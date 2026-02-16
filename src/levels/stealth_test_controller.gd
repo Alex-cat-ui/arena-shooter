@@ -14,6 +14,7 @@ const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_confi
 const COMBAT_SYSTEM_SCRIPT := preload("res://src/systems/combat_system.gd")
 const PROJECTILE_SYSTEM_SCRIPT := preload("res://src/systems/projectile_system.gd")
 const ABILITY_SYSTEM_SCRIPT := preload("res://src/systems/ability_system.gd")
+const STEALTH_RUNTIME_MARKER := "STEALTH_TEST_ACTIVE v5765ce6"
 
 @export var room_rect: Rect2 = Rect2(-560.0, -320.0, 1120.0, 640.0)
 @export var default_player_spawn: Vector2 = Vector2(-320.0, 90.0)
@@ -55,6 +56,7 @@ var _debug_refresh_accum: float = 0.0
 
 
 func _ready() -> void:
+	print("STEALTH_TEST_BOOTSTRAP_v20260216")
 	if RuntimeState:
 		RuntimeState.is_frozen = false
 		RuntimeState.player_visibility_mul = 1.0
@@ -405,7 +407,8 @@ func _set_overlay_visible(visible: bool) -> void:
 func _update_hint_text() -> void:
 	if not _hint_label:
 		return
-	_hint_label.text = "Controls: 1 CALM | 2 ALERT | 3 COMBAT | TAB Debug | R Reset\nA1/A2: CALM -> stand in shadow (slow suspicion), then behind box (LOS blocked, no gain).\nA3/A4: ALERT -> step into flashlight cone (fast gain), then behind box (flashlight blocked by LOS).\nA5/A6: break LOS and watch suspicion decay; after COMBAT verify normal escalation/combat flow.\nTuning: shadow %.2f | flash %.0fdeg / %.0fpx / x%.2f" % [
+	_hint_label.text = "%s\nControls: 1 CALM | 2 ALERT | 3 COMBAT | TAB Debug | R Reset\nA1/A2: CALM -> stand in shadow (slow suspicion), then behind box (LOS blocked, no gain).\nA3/A4: ALERT -> step into flashlight cone (fast gain), then behind box (flashlight blocked by LOS).\nA5/A6: break LOS and watch suspicion decay; after COMBAT verify normal escalation/combat flow.\nTuning: shadow %.2f | flash %.0fdeg / %.0fpx / x%.2f" % [
+		STEALTH_RUNTIME_MARKER,
 		_shadow_multiplier_default(),
 		_flashlight_angle_deg(),
 		_flashlight_distance_px(),

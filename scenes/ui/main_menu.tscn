@@ -56,6 +56,12 @@ layout_mode = 2
 size_flags_horizontal = 4
 text = "New Game"
 
+[node name="StealthTestButton" type="Button" parent="VBoxContainer"]
+custom_minimum_size = Vector2(200, 40)
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Stealth Test"
+
 [node name="SettingsButton" type="Button" parent="VBoxContainer"]
 custom_minimum_size = Vector2(200, 40)
 layout_mode = 2
@@ -68,6 +74,14 @@ layout_mode = 2
 size_flags_horizontal = 4
 text = "Exit"
 
+[node name="StatusLabel" type="Label" parent="VBoxContainer"]
+visible = false
+layout_mode = 2
+text = ""
+horizontal_alignment = 1
+autowrap_mode = 2
+
 [connection signal="pressed" from="VBoxContainer/NewGameButton" to="." method="_on_new_game_pressed"]
+[connection signal="pressed" from="VBoxContainer/StealthTestButton" to="." method="_on_stealth_test_pressed"]
 [connection signal="pressed" from="VBoxContainer/SettingsButton" to="." method="_on_settings_pressed"]
 [connection signal="pressed" from="VBoxContainer/ExitButton" to="." method="_on_exit_pressed"]
