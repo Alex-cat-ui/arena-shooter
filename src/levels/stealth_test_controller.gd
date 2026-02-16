@@ -358,44 +358,22 @@ func _enemy_spawn_position() -> Vector2:
 
 
 func _force_enemy_calm() -> void:
-	if not _enemy or not is_instance_valid(_enemy):
-		return
-	var awareness = _enemy.get("_awareness")
-	if awareness and awareness.has_method("reset"):
-		awareness.reset()
-		if awareness.has_method("get_state_name"):
-			_enemy.set_meta("awareness_state", awareness.get_state_name())
-	if _enemy.has_method("_apply_alert_level"):
-		_enemy.call("_apply_alert_level", ENEMY_ALERT_LEVELS_SCRIPT.CALM)
+	_force_enemy_state("CALM")
 
 
 func _force_enemy_alert() -> void:
-	_force_enemy_awareness_transition("register_noise", ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
+	_force_enemy_state("ALERT")
 
 
 func _force_enemy_combat() -> void:
-	if _enemy and is_instance_valid(_enemy) and _enemy.has_method("disable_suspicion_test_profile"):
-		_enemy.disable_suspicion_test_profile()
-	_force_enemy_awareness_transition("register_reinforcement", ENEMY_ALERT_LEVELS_SCRIPT.COMBAT)
-	if _enemy and is_instance_valid(_enemy) and _enemy.has_method("enable_suspicion_test_profile"):
-		_enemy.enable_suspicion_test_profile(_suspicion_profile)
-	if _enemy and is_instance_valid(_enemy):
-		_enemy.weapons_enabled = true
+	_force_enemy_state("COMBAT")
 
 
-func _force_enemy_awareness_transition(method_name: String, fallback_level: int) -> void:
+func _force_enemy_state(target_state: String) -> void:
 	if not _enemy or not is_instance_valid(_enemy):
 		return
-	var awareness = _enemy.get("_awareness")
-	if awareness == null or not awareness.has_method(method_name):
-		if _enemy.has_method("_apply_alert_level"):
-			_enemy.call("_apply_alert_level", fallback_level)
-		return
-	var transitions: Array[Dictionary] = awareness.call(method_name)
-	if _enemy.has_method("_apply_awareness_transitions"):
-		_enemy.call("_apply_awareness_transitions", transitions)
-	if _enemy.has_method("_apply_alert_level"):
-		_enemy.call("_apply_alert_level", fallback_level)
+	if _enemy.has_method("debug_force_awareness_state"):
+		_enemy.debug_force_awareness_state(target_state)
 
 
 func _set_overlay_visible(visible: bool) -> void:

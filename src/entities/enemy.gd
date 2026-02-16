@@ -27,6 +27,8 @@ const VISION_DEBUG_WIDTH := 2.0
 const VISION_DEBUG_FILL_COLOR := Color(1.0, 0.96, 0.62, 0.20)
 const VISION_DEBUG_FILL_COLOR_DIM := Color(1.0, 0.96, 0.62, 0.11)
 const VISION_DEBUG_FILL_RAY_COUNT := 24
+const AWARENESS_CALM := "CALM"
+const AWARENESS_ALERT := "ALERT"
 const AWARENESS_COMBAT := "COMBAT"
 const TEST_LOOK_LOS_GRACE_SEC := 0.25
 const TEST_INTENT_POLICY_LOCK_SEC := 0.45
@@ -459,6 +461,46 @@ func apply_room_alert_propagation(_source_enemy_id: int, _source_room_id: int) -
 		_apply_awareness_transitions(_awareness.register_room_alert_propagation())
 
 
+func debug_force_awareness_state(target_state: String) -> void:
+	if not _awareness:
+		return
+	var normalized_state := String(target_state).strip_edges().to_upper()
+	match normalized_state:
+		AWARENESS_CALM:
+			_awareness.reset()
+			if _awareness.has_method("set_suspicion_profile_enabled"):
+				_awareness.set_suspicion_profile_enabled(_suspicion_test_profile_enabled)
+			_confirmed_visual_prev = false
+			_player_visible_prev = false
+			_last_seen_age = INF
+			_set_awareness_meta_from_system()
+			_apply_alert_level(ENEMY_ALERT_LEVELS_SCRIPT.CALM)
+		AWARENESS_ALERT:
+			_awareness.reset()
+			if _awareness.has_method("set_suspicion_profile_enabled"):
+				_awareness.set_suspicion_profile_enabled(_suspicion_test_profile_enabled)
+			var alert_transitions: Array[Dictionary] = _awareness.register_noise()
+			_apply_awareness_transitions(alert_transitions)
+			_set_awareness_meta_from_system()
+			_apply_alert_level(ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
+		AWARENESS_COMBAT:
+			var suspicion_profile_enabled_before := _suspicion_test_profile_enabled
+			if _awareness.has_method("set_suspicion_profile_enabled"):
+				_awareness.set_suspicion_profile_enabled(false)
+			var combat_transitions: Array[Dictionary] = _awareness.register_reinforcement()
+			_apply_awareness_transitions(combat_transitions)
+			if _awareness.has_method("get_state_name") and String(_awareness.get_state_name()) != AWARENESS_COMBAT:
+				_apply_awareness_transitions(_awareness.process(0.0, true))
+			if _awareness.has_method("set_suspicion_profile_enabled"):
+				_awareness.set_suspicion_profile_enabled(suspicion_profile_enabled_before)
+			_set_awareness_meta_from_system()
+			if _awareness.has_method("get_state_name") and String(_awareness.get_state_name()) == AWARENESS_COMBAT:
+				_raise_room_alert_for_combat_same_tick()
+				_apply_alert_level(maxi(_resolve_room_alert_level(), ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
+		_:
+			push_warning("[Enemy] debug_force_awareness_state: unknown target_state='%s'" % normalized_state)
+
+
 func _connect_event_bus_signals() -> void:
 	if not EventBus:
 		return
@@ -491,6 +533,14 @@ func _apply_awareness_transitions(transitions: Array[Dictionary]) -> void:
 			set_meta("awareness_state", to_state)
 			if to_state == AWARENESS_COMBAT:
 				_raise_room_alert_for_combat_same_tick()
+
+
+func _set_awareness_meta_from_system() -> void:
+	if not _awareness or not _awareness.has_method("get_state_name"):
+		return
+	var state_name := String(_awareness.get_state_name())
+	set_meta("awareness_state", state_name)
+	_debug_last_state_name = state_name
 
 
 func _apply_alert_level(level: int) -> void:
