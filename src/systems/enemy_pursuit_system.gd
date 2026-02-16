@@ -28,6 +28,9 @@ const TARGET_FACING_LOCK_WINDOW_SEC := 0.22
 const TARGET_FACING_SHARP_DELTA_RAD := 1.8
 const ENEMY_ACCEL_TIME_SEC := 1.0 / 3.0
 const ENEMY_DECEL_TIME_SEC := 1.0 / 3.0
+const COMBAT_L1_DETOUR_OFFSET_PX := 120.0
+const COMBAT_L1_DETOUR_HOLD_SEC := 0.85
+const COMBAT_L1_DETOUR_REACHED_PX := 24.0
 
 var owner: CharacterBody2D = null
 var sprite: Sprite2D = null
@@ -53,6 +56,9 @@ var _return_target: Vector2 = Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
 var _target_facing_lock_timer: float = 0.0
 var _pending_target_facing: Vector2 = Vector2.ZERO
+var _combat_l1_waypoint: Vector2 = Vector2.ZERO
+var _combat_l1_waypoint_timer: float = 0.0
+var _combat_l1_detour_side: float = 1.0
 
 
 func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -> void:
@@ -100,6 +106,9 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_target_facing_dir = facing_dir
 	_target_facing_lock_timer = 0.0
 	_pending_target_facing = Vector2.ZERO
+	_combat_l1_waypoint = Vector2.ZERO
+	_combat_l1_waypoint_timer = 0.0
+	_combat_l1_detour_side = 1.0
 	if _patrol:
 		_patrol.configure(nav_system, home_room_id)
 
@@ -168,7 +177,7 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 			face_towards(player_pos if has_los else target)
 			request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH:
-			_execute_move_to_target(delta, player_pos, 1.0)
+			_execute_move_to_target(delta, player_pos, 1.0, true)
 			face_towards(player_pos)
 			request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT:
@@ -183,17 +192,83 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 	return {"request_fire": request_fire}
 
 
-func _execute_move_to_target(delta: float, target: Vector2, speed_scale: float) -> void:
+func _execute_move_to_target(delta: float, target: Vector2, speed_scale: float, use_combat_l1_detour: bool = false) -> void:
 	if target == Vector2.ZERO:
+		_clear_combat_l1_detour()
 		_stop_motion(delta)
 		return
+	var move_target := target
+	if use_combat_l1_detour:
+		move_target = _resolve_combat_l1_move_target(target, delta)
+	else:
+		_clear_combat_l1_detour()
 	_repath_timer -= delta
 	if _repath_timer <= 0.0:
 		_repath_timer = _pursuit_cfg_float("path_repath_interval_sec", PATH_REPATH_INTERVAL_SEC)
-		_plan_path_to(target)
+		_plan_path_to(move_target)
 	_follow_waypoints(speed_scale, delta)
-	if owner.global_position.distance_to(target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
+	if owner.global_position.distance_to(move_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
 		_stop_motion(delta)
+
+
+func _resolve_combat_l1_move_target(target: Vector2, delta: float) -> Vector2:
+	_combat_l1_waypoint_timer = maxf(0.0, _combat_l1_waypoint_timer - maxf(delta, 0.0))
+	if not _is_combat_l1_ray_blocked(target):
+		_clear_combat_l1_detour()
+		return target
+	if _combat_l1_waypoint != Vector2.ZERO:
+		var waypoint_reached_px := _pursuit_cfg_float("combat_l1_detour_reached_px", COMBAT_L1_DETOUR_REACHED_PX)
+		if owner.global_position.distance_to(_combat_l1_waypoint) <= waypoint_reached_px:
+			_clear_combat_l1_detour()
+		elif _combat_l1_waypoint_timer > 0.0:
+			return _combat_l1_waypoint
+
+	var to_target := target - owner.global_position
+	if to_target.length_squared() <= 0.0001:
+		return target
+	var dir := to_target.normalized()
+	var perp := Vector2(-dir.y, dir.x)
+	var offset := _pursuit_cfg_float("combat_l1_detour_offset_px", COMBAT_L1_DETOUR_OFFSET_PX)
+	var candidate_a := target + perp * offset * _combat_l1_detour_side
+	var candidate_b := target - perp * offset * _combat_l1_detour_side
+	var candidate := candidate_a
+	var a_clear := not _is_combat_l1_ray_blocked(candidate_a) and _is_l1_waypoint_navigable(candidate_a)
+	var b_clear := not _is_combat_l1_ray_blocked(candidate_b) and _is_l1_waypoint_navigable(candidate_b)
+	if a_clear and b_clear:
+		candidate = candidate_a if owner.global_position.distance_to(candidate_a) <= owner.global_position.distance_to(candidate_b) else candidate_b
+	elif b_clear:
+		candidate = candidate_b
+	elif not _is_l1_waypoint_navigable(candidate_a) and _is_l1_waypoint_navigable(candidate_b):
+		candidate = candidate_b
+	_combat_l1_waypoint = candidate
+	_combat_l1_waypoint_timer = _pursuit_cfg_float("combat_l1_detour_hold_sec", COMBAT_L1_DETOUR_HOLD_SEC)
+	_combat_l1_detour_side *= -1.0
+	return _combat_l1_waypoint
+
+
+func _is_combat_l1_ray_blocked(target: Vector2) -> bool:
+	if owner == null or owner.get_world_2d() == null:
+		return false
+	var query := PhysicsRayQueryParameters2D.create(owner.global_position, target)
+	query.exclude = [owner.get_rid()]
+	query.collide_with_areas = false
+	query.collision_mask = 1
+	var hit := owner.get_world_2d().direct_space_state.intersect_ray(query)
+	if hit.is_empty():
+		return false
+	var hit_pos := hit.get("position", target) as Vector2
+	return hit_pos.distance_to(target) > 8.0
+
+
+func _is_l1_waypoint_navigable(point: Vector2) -> bool:
+	if nav_system and nav_system.has_method("room_id_at_point"):
+		return int(nav_system.room_id_at_point(point)) >= 0
+	return true
+
+
+func _clear_combat_l1_detour() -> void:
+	_combat_l1_waypoint = Vector2.ZERO
+	_combat_l1_waypoint_timer = 0.0
 
 
 func _execute_search(delta: float, center: Vector2) -> void:
