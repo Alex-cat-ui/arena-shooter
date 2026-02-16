@@ -1,14 +1,11 @@
-[gd_scene load_steps=19 format=3]
+[gd_scene load_steps=18 format=3]
 
 [ext_resource type="Script" path="res://src/levels/stealth_test_controller.gd" id="1_controller"]
-[ext_resource type="Script" path="res://src/entities/player.gd" id="2_player_script"]
+[ext_resource type="PackedScene" path="res://scenes/entities/player.tscn" id="2_player_scene"]
 [ext_resource type="Script" path="res://src/systems/stealth/shadow_zone.gd" id="3_shadow_zone_script"]
 [ext_resource type="Script" path="res://src/systems/combat_system.gd" id="4_combat_system_script"]
 [ext_resource type="Script" path="res://src/systems/projectile_system.gd" id="5_projectile_system_script"]
 [ext_resource type="Script" path="res://src/systems/ability_system.gd" id="6_ability_system_script"]
-
-[sub_resource type="CircleShape2D" id="CircleShape2D_player"]
-radius = 16.0
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_wall_h"]
 size = Vector2(1120, 24)
@@ -138,19 +135,8 @@ polygon = PackedVector2Array(-140, -95, 140, -95, 140, 95, -140, 95)
 
 [node name="Entities" type="Node2D" parent="."]
 
-[node name="Player" type="CharacterBody2D" parent="Entities"]
-collision_layer = 1
+[node name="Player" parent="Entities" instance=ExtResource("2_player_scene")]
 collision_mask = 3
-script = ExtResource("2_player_script")
-
-[node name="Sprite2D" type="Sprite2D" parent="Entities/Player"]
-
-[node name="CollisionShape2D" type="CollisionShape2D" parent="Entities/Player"]
-shape = SubResource("CircleShape2D_player")
-
-[node name="PlayerVisual" type="Polygon2D" parent="Entities/Player"]
-color = Color(0.18, 0.71, 0.35, 1)
-polygon = PackedVector2Array(-14, -14, 14, -14, 14, 14, -14, 14)
 
 [node name="Projectiles" type="Node2D" parent="."]
 
