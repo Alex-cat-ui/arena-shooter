@@ -10,10 +10,37 @@ const AWARENESS_TEST_SCENE := "res://tests/test_enemy_awareness_system.tscn"
 const AGGRO_TEST_SCENE := "res://tests/test_enemy_aggro_coordinator.tscn"
 const NOISE_FLOW_TEST_SCENE := "res://tests/test_enemy_noise_alert_flow.tscn"
 const DOOR_TEST_SCENE := "res://tests/test_door_physics_full.tscn"
+const DOOR_INTERACTION_FLOW_SCENE := "res://tests/test_door_interaction_flow.tscn"
+const DOOR_SELECTION_METRIC_SCENE := "res://tests/test_layout_door_selection_metric.tscn"
+const ALERT_MARKER_TEST_SCENE := "res://tests/test_enemy_alert_marker.tscn"
+const ALERT_SYSTEM_TEST_SCENE := "res://tests/test_enemy_alert_system.tscn"
+const SQUAD_SYSTEM_TEST_SCENE := "res://tests/test_enemy_squad_system.tscn"
+const UTILITY_BRAIN_TEST_SCENE := "res://tests/test_enemy_utility_brain.tscn"
+const BEHAVIOR_INTEGRATION_TEST_SCENE := "res://tests/test_enemy_behavior_integration.tscn"
+const RUNTIME_BUDGET_SCHEDULER_TEST_SCENE := "res://tests/test_enemy_runtime_budget_scheduler.tscn"
+const CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE := "res://tests/test_config_validator_ai_balance.tscn"
+const ENEMY_SUSPICION_TEST_SCENE := "res://tests/test_enemy_suspicion.tscn"
+const FLASHLIGHT_CONE_TEST_SCENE := "res://tests/test_flashlight_cone.tscn"
+const ALERT_FLASHLIGHT_DETECTION_TEST_SCENE := "res://tests/test_alert_flashlight_detection.tscn"
+const STEALTH_ROOM_SMOKE_TEST_SCENE := "res://tests/test_stealth_room_smoke.tscn"
+const STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE := "res://tests/test_stealth_weapon_pipeline_equivalence.tscn"
+const STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE := "res://tests/test_stealth_room_alert_flashlight_integration.tscn"
+const SHADOW_ZONE_TEST_SCENE := "res://tests/test_shadow_zone.tscn"
+const LEVEL_RUNTIME_GUARD_TEST_SCENE := "res://tests/test_level_runtime_guard.tscn"
+const LEVEL_INPUT_CONTROLLER_TEST_SCENE := "res://tests/test_level_input_controller.tscn"
+const LEVEL_HUD_CONTROLLER_TEST_SCENE := "res://tests/test_level_hud_controller.tscn"
+const LEVEL_CAMERA_CONTROLLER_TEST_SCENE := "res://tests/test_level_camera_controller.tscn"
+const LEVEL_LAYOUT_REGEN_TEST_SCENE := "res://tests/test_level_layout_controller_regen.tscn"
+const LEVEL_LAYOUT_FLOOR_TEST_SCENE := "res://tests/test_level_layout_floor_rebuild.tscn"
+const LEVEL_TRANSITION_CONTROLLER_TEST_SCENE := "res://tests/test_level_transition_controller.tscn"
+const LEVEL_ENEMY_RUNTIME_CONTROLLER_TEST_SCENE := "res://tests/test_level_enemy_runtime_controller.tscn"
+const LEVEL_EVENTS_CONTROLLER_TEST_SCENE := "res://tests/test_level_events_controller.tscn"
+const LEVEL_BOOTSTRAP_CONTROLLER_TEST_SCENE := "res://tests/test_level_bootstrap_controller.tscn"
+const MISSION_TRANSITION_GATE_TEST_SCENE := "res://tests/test_mission_transition_gate.tscn"
 
 func _ready() -> void:
 	print("=" .repeat(60))
-	print("INTEGRATION TEST: Core + AI + Doors")
+	print("INTEGRATION TEST: Core + AI + Doors + Alert")
 	print("=" .repeat(60))
 
 	await _run_tests()
@@ -54,14 +81,6 @@ func _run_tests() -> void:
 
 	_test("player_max_hp = 100", func():
 		return GameConfig.player_max_hp == 100
-	)
-
-	_test("enemies_per_wave = 12", func():
-		return GameConfig.enemies_per_wave == 12
-	)
-
-	_test("wave_size_growth = 3", func():
-		return GameConfig.wave_size_growth == 3
 	)
 
 	_test("start_delay_sec = 1.5", func():
@@ -122,30 +141,7 @@ func _run_tests() -> void:
 		return StateManager.change_state(GameState.State.MAIN_MENU)
 	)
 
-	print("\n--- SECTION 4: Wave calculations (CANON) ---")
-
-	_test("Wave 1 size = 12 (EnemiesPerWave)", func():
-		var wave_size := GameConfig.enemies_per_wave + (1 - 1) * GameConfig.wave_size_growth
-		return wave_size == 12
-	)
-
-	_test("Wave 2 size = 15", func():
-		var wave_size := GameConfig.enemies_per_wave + (2 - 1) * GameConfig.wave_size_growth
-		return wave_size == 15
-	)
-
-	_test("Wave 3 size = 18", func():
-		var wave_size := GameConfig.enemies_per_wave + (3 - 1) * GameConfig.wave_size_growth
-		return wave_size == 18
-	)
-
-	_test("Wave transition threshold calculation", func():
-		var wave_peak := 12
-		var threshold := maxi(2, ceili(wave_peak * GameConfig.wave_advance_threshold))
-		return threshold == 3
-	)
-
-	print("\n--- SECTION 5: Config validation ---")
+	print("\n--- SECTION 4: Config validation ---")
 
 	_test("Valid config passes validation", func():
 		GameConfig.reset_to_defaults()
@@ -161,15 +157,7 @@ func _run_tests() -> void:
 		return is_invalid
 	)
 
-	_test("Invalid enemies_per_wave caught", func():
-		GameConfig.enemies_per_wave = 0
-		var result := ConfigValidator.validate()
-		var is_invalid := not result.is_valid
-		GameConfig.reset_to_defaults()
-		return is_invalid
-	)
-
-	print("\n--- SECTION 6: Vector3 utilities (CANON) ---")
+	print("\n--- SECTION 5: Vector3 utilities (CANON) ---")
 
 	_test("vec2_to_vec3 conversion", func():
 		var v3 := RuntimeState.vec2_to_vec3(Vector2(10, 20))
@@ -184,37 +172,37 @@ func _run_tests() -> void:
 	print("\n--- SECTION 7: Enemy stats (ТЗ v1.13) ---")
 
 	_test("Zombie HP=100, DMG=10", func():
-		var stats: Dictionary = Enemy.ENEMY_STATS.get("zombie", {})
+		var stats: Dictionary = GameConfig.enemy_stats.get("zombie", {})
 		return stats.hp == 100 and stats.damage == 10
 	)
 
 	_test("Fast HP=100, DMG=7", func():
-		var stats: Dictionary = Enemy.ENEMY_STATS.get("fast", {})
+		var stats: Dictionary = GameConfig.enemy_stats.get("fast", {})
 		return stats.hp == 100 and stats.damage == 7
 	)
 
 	_test("Tank HP=100, DMG=15", func():
-		var stats: Dictionary = Enemy.ENEMY_STATS.get("tank", {})
+		var stats: Dictionary = GameConfig.enemy_stats.get("tank", {})
 		return stats.hp == 100 and stats.damage == 15
 	)
 
 	_test("Swarm HP=100, DMG=5", func():
-		var stats: Dictionary = Enemy.ENEMY_STATS.get("swarm", {})
+		var stats: Dictionary = GameConfig.enemy_stats.get("swarm", {})
 		return stats.hp == 100 and stats.damage == 5
 	)
 
 	print("\n--- SECTION 8: Projectile TTL (ТЗ v1.13) ---")
 
 	_test("Bullet TTL = 2.0s", func():
-		return Projectile.PROJECTILE_TTL.get("bullet", 0) == 2.0
+		return GameConfig.projectile_ttl.get("bullet", 0.0) == 2.0
 	)
 
 	_test("Rocket TTL = 3.0s", func():
-		return Projectile.PROJECTILE_TTL.get("rocket", 0) == 3.0
+		return GameConfig.projectile_ttl.get("rocket", 0.0) == 3.0
 	)
 
 	_test("Piercing bullet TTL = 2.0s", func():
-		return Projectile.PROJECTILE_TTL.get("piercing_bullet", 0) == 2.0
+		return GameConfig.projectile_ttl.get("piercing_bullet", 0.0) == 2.0
 	)
 
 	print("\n--- SECTION 9: Weapon stats (ТЗ v1.13 - from GameConfig) ---")
@@ -246,51 +234,7 @@ func _run_tests() -> void:
 		return RuntimeState.kills == 0 and RuntimeState.damage_dealt == 0
 	)
 
-	# ==========================================================================
-	# PHASE 2 TESTS
-	# ==========================================================================
-
-	print("\n--- SECTION 11: Boss stats (Phase 2, ТЗ v1.13) ---")
-
-	_test("Boss HP = 500", func():
-		return Boss.BOSS_HP == 500
-	)
-
-	_test("Boss hitbox = 9 tiles", func():
-		return Boss.BOSS_HITBOX_TILES == 9.0
-	)
-
-	_test("Boss contact damage = 50% player HP", func():
-		return Boss.BOSS_CONTACT_DAMAGE_PERCENT == 0.5
-	)
-
-	_test("Boss contact i-frames = 3s", func():
-		return Boss.BOSS_CONTACT_IFRAMES == 3.0
-	)
-
-	_test("Boss AoE radius = 8 tiles", func():
-		return Boss.BOSS_AOE_RADIUS_TILES == 8.0
-	)
-
-	_test("Boss AoE cooldown = 1-2s", func():
-		return Boss.BOSS_AOE_COOLDOWN_MIN == 1.0 and Boss.BOSS_AOE_COOLDOWN_MAX == 2.0
-	)
-
-	_test("Boss min spawn distance = 10 tiles", func():
-		return Boss.BOSS_MIN_SPAWN_DISTANCE_TILES == 10.0
-	)
-
-	print("\n--- SECTION 12: GameConfig Phase 2 params ---")
-
-	_test("waves_per_level exists and valid", func():
-		return GameConfig.waves_per_level >= 1 and GameConfig.waves_per_level <= 200
-	)
-
-	_test("boss_contact_iframes_sec = 3.0", func():
-		return is_equal_approx(GameConfig.boss_contact_iframes_sec, 3.0)
-	)
-
-	print("\n--- SECTION 13: State transitions Phase 2 ---")
+	print("\n--- SECTION 11: State transitions ---")
 
 	_test("PLAYING -> LEVEL_COMPLETE valid", func():
 		StateManager.change_state(GameState.State.LEVEL_SETUP)
@@ -316,31 +260,19 @@ func _run_tests() -> void:
 		return StateManager.change_state(GameState.State.MAIN_MENU)
 	)
 
-	print("\n--- SECTION 14: VFX System constants ---")
+	print("\n--- SECTION 12: VFX System constants ---")
 
 	_test("Corpse limit = 200", func():
 		return VFXSystem.CORPSE_LIMIT == 200
 	)
 
-	print("\n--- SECTION 15: Footprint System constants ---")
+	print("\n--- SECTION 13: Footprint System constants ---")
 
 	_test("Max footprints = 20", func():
 		return FootprintSystem.MAX_FOOTPRINTS == 20
 	)
 
-	print("\n--- SECTION 16: EventBus Phase 2 signals ---")
-
-	_test("boss_spawned signal exists", func():
-		return EventBus.has_signal("boss_spawned")
-	)
-
-	_test("boss_killed signal exists", func():
-		return EventBus.has_signal("boss_killed")
-	)
-
-	_test("boss_damaged signal exists", func():
-		return EventBus.has_signal("boss_damaged")
-	)
+	print("\n--- SECTION 14: EventBus signals ---")
 
 	_test("blood_spawned signal exists", func():
 		return EventBus.has_signal("blood_spawned")
@@ -358,7 +290,7 @@ func _run_tests() -> void:
 	# VISUAL POLISH TESTS
 	# ==========================================================================
 
-	print("\n--- SECTION 17: Visual Polish GameConfig defaults ---")
+	print("\n--- SECTION 15: Visual Polish GameConfig defaults ---")
 
 	_test("footprints_enabled = true", func():
 		return GameConfig.footprints_enabled == true
@@ -374,14 +306,6 @@ func _run_tests() -> void:
 
 	_test("footprint_max_count = 4000", func():
 		return GameConfig.footprint_max_count == 4000
-	)
-
-	_test("melee_arc_light_radius = 26.0", func():
-		return is_equal_approx(GameConfig.melee_arc_light_radius, 26.0)
-	)
-
-	_test("melee_arc_heavy_radius = 30.0", func():
-		return is_equal_approx(GameConfig.melee_arc_heavy_radius, 30.0)
 	)
 
 	_test("shadow_player_alpha = 0.25", func():
@@ -408,14 +332,7 @@ func _run_tests() -> void:
 		return GameConfig.debug_overlay_visible == false
 	)
 
-	print("\n--- SECTION 18: Visual Polish system classes ---")
-
-	_test("MeleeArcSystem class exists", func():
-		var inst := MeleeArcSystem.new()
-		var exists := inst != null
-		inst.free()
-		return exists
-	)
+	print("\n--- SECTION 16: Visual Polish system classes ---")
 
 	_test("ShadowSystem class exists", func():
 		var inst := ShadowSystem.new()
@@ -438,7 +355,7 @@ func _run_tests() -> void:
 		return exists
 	)
 
-	print("\n--- SECTION 19: Visual Polish reset_to_defaults ---")
+	print("\n--- SECTION 17: Visual Polish reset_to_defaults ---")
 
 	_test("Visual polish values survive reset_to_defaults", func():
 		GameConfig.footprint_step_distance_px = 999.0
@@ -446,7 +363,7 @@ func _run_tests() -> void:
 		return is_equal_approx(GameConfig.footprint_step_distance_px, 40.0)
 	)
 
-	print("\n--- SECTION 20: AI/Door suites ---")
+	print("\n--- SECTION 18: AI/Door/Alert suites ---")
 
 	_test("Awareness test scene exists", func():
 		return load(AWARENESS_TEST_SCENE) is PackedScene
@@ -460,13 +377,125 @@ func _run_tests() -> void:
 	_test("Door physics test scene exists", func():
 		return load(DOOR_TEST_SCENE) is PackedScene
 	)
+	_test("Door interaction flow test scene exists", func():
+		return load(DOOR_INTERACTION_FLOW_SCENE) is PackedScene
+	)
+	_test("Door selection metric test scene exists", func():
+		return load(DOOR_SELECTION_METRIC_SCENE) is PackedScene
+	)
+	_test("Enemy alert marker test scene exists", func():
+		return load(ALERT_MARKER_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy alert system test scene exists", func():
+		return load(ALERT_SYSTEM_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy squad system test scene exists", func():
+		return load(SQUAD_SYSTEM_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy utility brain test scene exists", func():
+		return load(UTILITY_BRAIN_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy behavior integration test scene exists", func():
+		return load(BEHAVIOR_INTEGRATION_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy runtime budget scheduler test scene exists", func():
+		return load(RUNTIME_BUDGET_SCHEDULER_TEST_SCENE) is PackedScene
+	)
+	_test("Config validator AI balance test scene exists", func():
+		return load(CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy suspicion test scene exists", func():
+		return load(ENEMY_SUSPICION_TEST_SCENE) is PackedScene
+	)
+	_test("Flashlight cone test scene exists", func():
+		return load(FLASHLIGHT_CONE_TEST_SCENE) is PackedScene
+	)
+	_test("Alert flashlight detection test scene exists", func():
+		return load(ALERT_FLASHLIGHT_DETECTION_TEST_SCENE) is PackedScene
+	)
+	_test("Stealth room smoke test scene exists", func():
+		return load(STEALTH_ROOM_SMOKE_TEST_SCENE) is PackedScene
+	)
+	_test("Stealth weapon pipeline equivalence test scene exists", func():
+		return load(STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE) is PackedScene
+	)
+	_test("Stealth room alert flashlight integration test scene exists", func():
+		return load(STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE) is PackedScene
+	)
+	_test("Shadow zone test scene exists", func():
+		return load(SHADOW_ZONE_TEST_SCENE) is PackedScene
+	)
 
+	await _run_embedded_scene_suite("Config validator AI balance suite", CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy awareness suite", AWARENESS_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy aggro coordinator suite", AGGRO_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy noise alert flow suite", NOISE_FLOW_TEST_SCENE)
 	await _run_embedded_scene_suite("Door physics full suite", DOOR_TEST_SCENE)
+	await _run_embedded_scene_suite("Door interaction flow suite", DOOR_INTERACTION_FLOW_SCENE)
+	await _run_embedded_scene_suite("Door selection metric suite", DOOR_SELECTION_METRIC_SCENE)
+	await _run_embedded_scene_suite("Enemy alert marker suite", ALERT_MARKER_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy alert system suite", ALERT_SYSTEM_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy squad system suite", SQUAD_SYSTEM_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy utility brain suite", UTILITY_BRAIN_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy behavior integration suite", BEHAVIOR_INTEGRATION_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy runtime budget scheduler suite", RUNTIME_BUDGET_SCHEDULER_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy suspicion suite", ENEMY_SUSPICION_TEST_SCENE)
+	await _run_embedded_scene_suite("Flashlight cone suite", FLASHLIGHT_CONE_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert flashlight detection suite", ALERT_FLASHLIGHT_DETECTION_TEST_SCENE)
+	await _run_embedded_scene_suite("Stealth room smoke suite", STEALTH_ROOM_SMOKE_TEST_SCENE)
+	await _run_embedded_scene_suite("Stealth weapon pipeline equivalence suite", STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE)
+	await _run_embedded_scene_suite("Stealth room alert flashlight integration suite", STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow zone suite", SHADOW_ZONE_TEST_SCENE)
 
-	print("\nAll tests completed (Core + AI + Door suites).")
+	print("\n--- SECTION 19: Level decomposition controller suites ---")
+
+	_test("Level runtime guard test scene exists", func():
+		return load(LEVEL_RUNTIME_GUARD_TEST_SCENE) is PackedScene
+	)
+	_test("Level input controller test scene exists", func():
+		return load(LEVEL_INPUT_CONTROLLER_TEST_SCENE) is PackedScene
+	)
+	_test("Level HUD controller test scene exists", func():
+		return load(LEVEL_HUD_CONTROLLER_TEST_SCENE) is PackedScene
+	)
+	_test("Level camera controller test scene exists", func():
+		return load(LEVEL_CAMERA_CONTROLLER_TEST_SCENE) is PackedScene
+	)
+	_test("Level layout regen test scene exists", func():
+		return load(LEVEL_LAYOUT_REGEN_TEST_SCENE) is PackedScene
+	)
+	_test("Level layout floor test scene exists", func():
+		return load(LEVEL_LAYOUT_FLOOR_TEST_SCENE) is PackedScene
+	)
+	_test("Level transition controller test scene exists", func():
+		return load(LEVEL_TRANSITION_CONTROLLER_TEST_SCENE) is PackedScene
+	)
+	_test("Level enemy runtime controller test scene exists", func():
+		return load(LEVEL_ENEMY_RUNTIME_CONTROLLER_TEST_SCENE) is PackedScene
+	)
+	_test("Level events controller test scene exists", func():
+		return load(LEVEL_EVENTS_CONTROLLER_TEST_SCENE) is PackedScene
+	)
+	_test("Level bootstrap controller test scene exists", func():
+		return load(LEVEL_BOOTSTRAP_CONTROLLER_TEST_SCENE) is PackedScene
+	)
+	_test("Mission transition gate test scene exists", func():
+		return load(MISSION_TRANSITION_GATE_TEST_SCENE) is PackedScene
+	)
+
+	await _run_embedded_scene_suite("Level runtime guard suite", LEVEL_RUNTIME_GUARD_TEST_SCENE)
+	await _run_embedded_scene_suite("Level input controller suite", LEVEL_INPUT_CONTROLLER_TEST_SCENE)
+	await _run_embedded_scene_suite("Level HUD controller suite", LEVEL_HUD_CONTROLLER_TEST_SCENE)
+	await _run_embedded_scene_suite("Level camera controller suite", LEVEL_CAMERA_CONTROLLER_TEST_SCENE)
+	await _run_embedded_scene_suite("Level layout controller regen suite", LEVEL_LAYOUT_REGEN_TEST_SCENE)
+	await _run_embedded_scene_suite("Level layout floor rebuild suite", LEVEL_LAYOUT_FLOOR_TEST_SCENE)
+	await _run_embedded_scene_suite("Level transition controller suite", LEVEL_TRANSITION_CONTROLLER_TEST_SCENE)
+	await _run_embedded_scene_suite("Level enemy runtime controller suite", LEVEL_ENEMY_RUNTIME_CONTROLLER_TEST_SCENE)
+	await _run_embedded_scene_suite("Level events controller suite", LEVEL_EVENTS_CONTROLLER_TEST_SCENE)
+	await _run_embedded_scene_suite("Level bootstrap controller suite", LEVEL_BOOTSTRAP_CONTROLLER_TEST_SCENE)
+	await _run_embedded_scene_suite("Mission transition gate suite", MISSION_TRANSITION_GATE_TEST_SCENE)
+
+	print("\nAll tests completed (Core + AI + Door + Alert + Decomposition suites).")
 
 
 func _test(name: String, test_func: Callable) -> void:
