@@ -5,6 +5,8 @@
 ## CANON: No direct recursive event calls - use event queue flushed per frame.
 extends Node
 
+const GameState = preload("res://src/core/game_state.gd")
+
 ## Event priorities
 enum Priority {
 	HIGH = 0,

@@ -3,6 +3,7 @@
 ## CANON: UI changes ONLY GameConfig, does NOT control gameplay entities.
 extends Control
 
+const GameState = preload("res://src/core/game_state.gd")
 const STEALTH_TEST_SCENE_PATH := "res://src/levels/stealth_test_room.tscn"
 
 ## Button references (resolved dynamically)

@@ -4,6 +4,8 @@
 ## CANON: UI does NOT control gameplay entities directly.
 extends Node
 
+const GameState = preload("res://src/core/game_state.gd")
+
 ## Current game state
 var current_state: GameState.State = GameState.State.MAIN_MENU
 

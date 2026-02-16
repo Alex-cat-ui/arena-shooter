@@ -5,6 +5,8 @@
 class_name MusicSystem
 extends Node
 
+const GameState = preload("res://src/core/game_state.gd")
+
 const MENU_MUSIC_PATH := "res://assets/audio/music/menu/"
 const AMBIENT_MUSIC_PATH := "res://assets/audio/music/level/Ambient/"
 const BATTLE_MUSIC_PATH := "res://assets/audio/music/level/Battle_music/"

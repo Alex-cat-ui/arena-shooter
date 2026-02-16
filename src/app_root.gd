@@ -3,6 +3,10 @@
 ## Manages UI screens and level loading based on GameState.
 extends Node
 
+const GameState = preload("res://src/core/game_state.gd")
+const MusicSystem = preload("res://src/systems/music_system.gd")
+const SFXSystem = preload("res://src/systems/sfx_system.gd")
+
 ## UI scene paths
 const MAIN_MENU_SCENE := "res://scenes/ui/main_menu.tscn"
 const SETTINGS_MENU_SCENE := "res://scenes/ui/settings_menu.tscn"
