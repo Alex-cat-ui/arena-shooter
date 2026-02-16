@@ -428,7 +428,14 @@ func _refresh_debug_label(force: bool) -> void:
 	var shadow_mul := 1.0
 	var visibility_factor := 0.0
 	var flashlight_active := false
+	var flashlight_in_cone := false
+	var los_to_player := false
 	var flashlight_hit := false
+	var flashlight_bonus_raw := 1.0
+	var effective_visibility_pre_clamp := 0.0
+	var effective_visibility_post_clamp := 0.0
+	var facing_used_for_flashlight := Vector2.RIGHT
+	var facing_after_move := Vector2.RIGHT
 	var confirmed := false
 	var intent_type := -1
 	var last_seen_age := INF
@@ -446,14 +453,21 @@ func _refresh_debug_label(force: bool) -> void:
 			shadow_mul = float(snapshot.get("shadow_mul", 1.0))
 			visibility_factor = float(snapshot.get("visibility_factor", 0.0))
 			flashlight_active = bool(snapshot.get("flashlight_active", false))
+			flashlight_in_cone = bool(snapshot.get("in_cone", false))
+			los_to_player = bool(snapshot.get("los_to_player", has_los))
 			flashlight_hit = bool(snapshot.get("flashlight_hit", false))
+			flashlight_bonus_raw = float(snapshot.get("flashlight_bonus_raw", 1.0))
+			effective_visibility_pre_clamp = float(snapshot.get("effective_visibility_pre_clamp", visibility_factor))
+			effective_visibility_post_clamp = float(snapshot.get("effective_visibility_post_clamp", visibility_factor))
+			facing_used_for_flashlight = snapshot.get("facing_used_for_flashlight", Vector2.RIGHT) as Vector2
+			facing_after_move = snapshot.get("facing_after_move", Vector2.RIGHT) as Vector2
 			confirmed = bool(snapshot.get("confirmed", false))
 			intent_type = int(snapshot.get("intent_type", -1))
 			last_seen_age = float(snapshot.get("last_seen_age", INF))
 			weapons_enabled = bool(snapshot.get("weapons_enabled", false))
 
 	var visibility_mul := RuntimeState.player_visibility_mul if RuntimeState else 1.0
-	_debug_label.text = "state=%s | room_alert=%s | intent=%s | LOS=%s | suspicion=%.3f | vis=%.3f | dist=%.1f | last_seen_age=%.2f | weapons=%s\nbreakdown: distance_factor=%.3f | shadow_mul=%.3f | player_visibility_mul=%.3f | flashlight_active=%s | flashlight_hit=%s | confirmed=%s" % [
+	_debug_label.text = "state=%s | room_alert=%s | intent=%s | LOS=%s | suspicion=%.3f | vis=%.3f | dist=%.1f | last_seen_age=%.2f | weapons=%s\nbreakdown: distance_factor=%.3f | shadow_mul=%.3f | player_visibility_mul=%.3f | flashlight_active=%s | in_cone=%s | los_to_player=%s | flashlight_hit=%s | flashlight_bonus_raw=%.2f | effective_visibility_pre_clamp=%.3f | effective_visibility_post_clamp=%.3f | facing_used_for_flashlight=%s | facing_after_move=%s | confirmed=%s" % [
 		enemy_state,
 		enemy_alert,
 		_intent_name(intent_type),
@@ -467,7 +481,14 @@ func _refresh_debug_label(force: bool) -> void:
 		shadow_mul,
 		visibility_mul,
 		str(flashlight_active),
+		str(flashlight_in_cone),
+		str(los_to_player),
 		str(flashlight_hit),
+		flashlight_bonus_raw,
+		effective_visibility_pre_clamp,
+		effective_visibility_post_clamp,
+		_vec2_compact(facing_used_for_flashlight),
+		_vec2_compact(facing_after_move),
 		str(confirmed),
 	]
 
@@ -496,3 +517,7 @@ func _intent_name(intent_type: int) -> String:
 			return "RETURN_HOME"
 		_:
 			return "UNKNOWN(%d)" % intent_type
+
+
+func _vec2_compact(value: Vector2) -> String:
+	return "(%.2f,%.2f)" % [value.x, value.y]
