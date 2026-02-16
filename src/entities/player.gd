@@ -85,16 +85,11 @@ func _physics_process(delta: float) -> void:
 	# Update aim direction and rotate sprite
 	_update_aim()
 
-	# Handle katana mode toggle (Phase 4)
-	_handle_katana_toggle()
+	# Handle weapon switching (Phase 3)
+	_handle_weapon_switch()
 
-	# Handle weapon switching (Phase 3) — only in gun mode
-	if not RuntimeState or not RuntimeState.katana_mode:
-		_handle_weapon_switch()
-
-	# Handle shooting — only in gun mode
-	if not RuntimeState or not RuntimeState.katana_mode:
-		_handle_shooting(delta)
+	# Handle shooting
+	_handle_shooting(delta)
 
 
 func _update_aim() -> void:
@@ -111,18 +106,6 @@ func _update_aim() -> void:
 	# CANON: ROTATE_SPRITE mode - rotate sprite to face aim direction
 	if sprite and aim_dir.length_squared() > 0:
 		sprite.rotation = aim_dir.angle()
-
-
-## Phase 4: Toggle katana mode with Q
-func _handle_katana_toggle() -> void:
-	if not GameConfig or not GameConfig.katana_enabled:
-		return
-	if Input.is_action_just_pressed("katana_toggle"):
-		if RuntimeState:
-			RuntimeState.katana_mode = not RuntimeState.katana_mode
-			if EventBus:
-				EventBus.emit_katana_mode_changed(RuntimeState.katana_mode)
-			print("[Player] Katana mode: %s" % ("ON" if RuntimeState.katana_mode else "OFF"))
 
 
 ## Phase 3: Weapon switching via mouse wheel and keys 1-6

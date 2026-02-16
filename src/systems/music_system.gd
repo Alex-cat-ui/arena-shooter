@@ -341,6 +341,6 @@ func _on_enemy_player_spotted(_enemy_id: int, _position: Vector3) -> void:
 	play_context(MusicContext.BATTLE, false)
 
 
-func _on_enemy_killed(_enemy_id: int, _enemy_type: String, _wave_id: int) -> void:
+func _on_enemy_killed(_enemy_id: int, _enemy_type: String) -> void:
 	if _battle_lock_active and _count_alive_enemies() <= 0:
 		_switch_to_ambient(true)

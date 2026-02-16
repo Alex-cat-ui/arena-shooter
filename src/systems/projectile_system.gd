@@ -18,72 +18,11 @@ var _next_projectile_id: int = 1
 var _next_shotgun_shot_id: int = 1
 var _rng := RandomNumberGenerator.new()
 
-## Weapon stats - populated from GameConfig on _ready
-## Fallback values match ТЗ v1.13
-var WEAPON_STATS: Dictionary = {
-	"pistol": {
-		"damage": 10,
-		"rpm": 180,
-		"speed_tiles": 12.0,
-		"projectile_type": "bullet",
-		"pellets": 1,
-	},
-	"auto": {
-		"damage": 7,
-		"rpm": 150,
-		"speed_tiles": 14.0,
-		"projectile_type": "bullet",
-		"pellets": 1,
-	},
-	"shotgun": {
-		"damage": 6,
-		"rpm": 50.0,
-		"cooldown_sec": 1.2,
-		"speed_tiles": 40.0,
-		"projectile_type": "pellet",
-		"pellets": 16,
-		"cone_deg": 8.0,
-		"shot_damage_total": 25.0,
-	},
-	"plasma": {
-		"damage": 20,
-		"rpm": 120,
-		"speed_tiles": 9.0,
-		"projectile_type": "plasma",
-		"pellets": 1,
-	},
-	"rocket": {
-		"damage": 40,
-		"rpm": 30,
-		"speed_tiles": 4.0,
-		"projectile_type": "rocket",
-		"pellets": 1,
-		"aoe_damage": 20,
-		"aoe_radius_tiles": 7.0,
-	},
-	"piercing": {
-		"damage": 10,
-		"rpm": 180,
-		"speed_tiles": 12.0,
-		"projectile_type": "piercing_bullet",
-		"pellets": 1,
-	},
-}
-
 
 func _ready() -> void:
 	# Load projectile scene
 	projectile_scene = load("res://scenes/entities/projectile.tscn")
 	_rng.randomize()
-
-	# Override stats from GameConfig (canonical source of truth)
-	if GameConfig and GameConfig.weapon_stats:
-		for key in GameConfig.weapon_stats:
-			var stats: Dictionary = GameConfig.weapon_stats[key]
-			# Skip hitscan weapons (chain_lightning) - no projectile
-			if stats.get("projectile_type", "") == "hitscan":
-				continue
-			WEAPON_STATS[key] = stats
 
 
 ## Spawn projectile(s) for weapon
@@ -92,11 +31,11 @@ func fire_weapon(weapon_type: String, position: Vector2, direction: Vector2) -> 
 		push_warning("[ProjectileSystem] Missing scene or container")
 		return
 
-	if not WEAPON_STATS.has(weapon_type):
+	var stats := _weapon_stats_for(weapon_type)
+	if stats.is_empty():
 		push_warning("[ProjectileSystem] Unknown weapon: %s" % weapon_type)
 		return
 
-	var stats: Dictionary = WEAPON_STATS[weapon_type]
 	var tile_size: int = GameConfig.tile_size if GameConfig else 32
 	var speed_pixels: float = stats.speed_tiles * tile_size
 	if weapon_type == "shotgun":
@@ -158,9 +97,9 @@ func _spawn_projectile(type: String, pos: Vector2, dir: Vector2, speed: float, d
 
 ## Get weapon cooldown in seconds
 func get_weapon_cooldown(weapon_type: String) -> float:
-	if not WEAPON_STATS.has(weapon_type):
+	var stats := _weapon_stats_for(weapon_type)
+	if stats.is_empty():
 		return 1.0
-	var stats := WEAPON_STATS[weapon_type] as Dictionary
 	var cooldown_sec: float = float(stats.get("cooldown_sec", -1.0))
 	if cooldown_sec > 0.0:
 		return cooldown_sec
@@ -173,3 +112,9 @@ func clear_all() -> void:
 	if projectiles_container:
 		for child in projectiles_container.get_children():
 			child.queue_free()
+
+
+func _weapon_stats_for(weapon_type: String) -> Dictionary:
+	if not GameConfig or not GameConfig.weapon_stats.has(weapon_type):
+		return {}
+	return GameConfig.weapon_stats[weapon_type] as Dictionary

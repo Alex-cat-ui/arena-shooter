@@ -7,8 +7,8 @@ extends Area2D
 
 const WORLD_SOLID_LAYER := 1
 
-## Projectile types and their TTL
-const PROJECTILE_TTL := {
+## Projectile TTL fallback (canonical values live in GameConfig.projectile_ttl).
+const DEFAULT_PROJECTILE_TTL := {
 	"bullet": 2.0,
 	"pellet": 2.0,
 	"plasma": 2.0,
@@ -64,7 +64,7 @@ func initialize(id: int, type: String, pos: Vector2, dir: Vector2, speed: float,
 	velocity = dir.normalized() * speed
 
 	# Set TTL based on type
-	ttl = PROJECTILE_TTL.get(type, 2.0)
+	ttl = _ttl_for_type(type)
 
 	# Check if piercing
 	is_piercing = (type == "piercing_bullet")
@@ -99,9 +99,6 @@ func _on_body_entered(body: Node2D) -> void:
 	# Check if it's an enemy
 	if body.is_in_group("enemies"):
 		_hit_enemy(body)
-	# Phase 2: Check if it's a boss
-	elif body.is_in_group("boss"):
-		_hit_boss(body)
 	elif projectile_type == "pellet" and _is_pellet_blocker(body):
 		_destroy("blocked")
 
@@ -111,15 +108,12 @@ func _on_area_entered(area: Area2D) -> void:
 	var parent := area.get_parent()
 	if parent and parent.is_in_group("enemies"):
 		_hit_enemy(parent)
-	# Phase 2: Check if it's a boss hitbox
-	elif parent and parent.is_in_group("boss"):
-		_hit_boss(parent)
 
 
 func _is_pellet_blocker(body: Node2D) -> bool:
 	if body == null:
 		return false
-	if body.is_in_group("player") or body.is_in_group("enemies") or body.is_in_group("boss"):
+	if body.is_in_group("player") or body.is_in_group("enemies"):
 		return false
 	var collision_body := body as CollisionObject2D
 	if not collision_body:
@@ -149,34 +143,6 @@ func _hit_enemy(enemy: Node2D) -> void:
 	if not is_piercing:
 		_destroy("hit")
 
-
-## Phase 2: Hit boss
-func _hit_boss(boss: Node2D) -> void:
-	if not "entity_id" in boss:
-		return
-
-	var boss_id: int = boss.entity_id
-
-	# Check piercing - hit boss only once per projectile
-	if is_piercing:
-		var key := "boss_%d" % boss_id
-		if _hit_enemies.has(key):
-			return
-		_hit_enemies[key] = true
-
-	# Apply damage directly to boss (not through event for simplicity)
-	if boss.has_method("take_damage"):
-		boss.take_damage(damage)
-
-	# Track stats
-	if RuntimeState:
-		RuntimeState.damage_dealt += damage
-
-	# Destroy if not piercing
-	if not is_piercing:
-		_destroy("hit_boss")
-
-
 func _destroy(reason: String) -> void:
 	# Rocket AoE explosion on any destruction
 	if projectile_type == "rocket":
@@ -189,7 +155,7 @@ func _destroy(reason: String) -> void:
 	queue_free()
 
 
-## Rocket AoE explosion - damages all enemies/bosses in radius
+## Rocket AoE explosion - damages all enemies in radius
 func _explode_rocket() -> void:
 	# Read AoE stats from GameConfig
 	var aoe_damage: int = 20
@@ -209,13 +175,12 @@ func _explode_rocket() -> void:
 			if enemy.has_method("take_damage"):
 				enemy.take_damage(aoe_damage)
 
-	# Also check boss
-	var bosses := get_tree().get_nodes_in_group("boss")
-	for boss in bosses:
-		if boss is Node2D and boss.position.distance_to(position) <= aoe_radius_px:
-			if boss.has_method("take_damage"):
-				boss.take_damage(aoe_damage)
-
 	# Emit rocket_exploded event for camera shake
 	if EventBus:
 		EventBus.emit_rocket_exploded(Vector3(position.x, position.y, 0))
+
+
+func _ttl_for_type(type: String) -> float:
+	if GameConfig and GameConfig.projectile_ttl.has(type):
+		return float(GameConfig.projectile_ttl.get(type, 2.0))
+	return float(DEFAULT_PROJECTILE_TTL.get(type, 2.0))

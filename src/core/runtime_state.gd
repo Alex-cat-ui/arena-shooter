@@ -11,9 +11,6 @@ extends Node
 ## Player current HP
 var player_hp: int = 100
 
-## Current wave index (1-based, 0 = not started)
-var current_wave: int = 0
-
 ## Total kills this session
 var kills: int = 0
 
@@ -32,20 +29,14 @@ var player_pos: Vector3 = Vector3.ZERO
 ## Player aim direction (normalized, CANON: Vector3)
 var player_aim_dir: Vector3 = Vector3(1, 0, 0)
 
+## Player visibility multiplier for stealth test zones (1.0 = fully visible).
+var player_visibility_mul: float = 1.0
+
 ## Is level currently active (gameplay running)
 var is_level_active: bool = false
 
 ## Is gameplay frozen (pause, game over, etc.)
 var is_frozen: bool = false
-
-## Katana mode active (Q toggle)
-var katana_mode: bool = false
-
-## Player invulnerability (dash slash i-frames)
-var is_player_invulnerable: bool = false
-
-## Invulnerability timer (auto-decrements)
-var invuln_timer: float = 0.0
 
 ## Active mission index in cycle (3 -> 1 -> 2)
 var mission_index: int = 3
@@ -61,18 +52,15 @@ var layout_room_memory: Array = []
 ## Called on: exit to MAIN_MENU, restart level, start new level
 func reset() -> void:
 	player_hp = GameConfig.player_max_hp if GameConfig else 100
-	current_wave = 0
 	kills = 0
 	damage_dealt = 0
 	damage_received = 0
 	time_elapsed = 0.0
 	player_pos = Vector3.ZERO
 	player_aim_dir = Vector3(1, 0, 0)
+	player_visibility_mul = 1.0
 	is_level_active = false
 	is_frozen = false
-	katana_mode = false
-	is_player_invulnerable = false
-	invuln_timer = 0.0
 	mission_index = 3
 	layout_room_memory = []
 

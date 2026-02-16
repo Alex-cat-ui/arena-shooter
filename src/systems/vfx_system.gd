@@ -264,7 +264,7 @@ func has_corpse_at(pos: Vector2, radius: float = 20.0) -> bool:
 
 
 ## Event handler for enemy death
-func _on_enemy_killed(enemy_id: int, enemy_type: String, wave_id: int) -> void:
+func _on_enemy_killed(enemy_id: int, enemy_type: String) -> void:
 	# Find the enemy to get its position
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	for enemy in enemies:

@@ -28,47 +28,18 @@ signal mission_transitioned(mission_index: int)
 ## Level ended event (game over or complete)
 signal level_ended(is_victory: bool)
 
-## Start delay finished - waves can begin
+## Start delay finished
 signal start_delay_finished()
-
-## ============================================================================
-## SIGNALS - Wave System
-## ============================================================================
-
-## Wave started (waveIndex 1-based, waveSize = total enemies this wave)
-signal wave_started(wave_index: int, wave_size: int)
-
-## Wave finished spawning all enemies
-signal wave_finished_spawning(wave_index: int)
-
-## All waves completed
-signal all_waves_completed()
-
-## ============================================================================
-## SIGNALS - Boss (Phase 2)
-## ============================================================================
-
-## Boss spawned event
-signal boss_spawned(boss_id: int, position: Vector3)
-
-## Boss damaged event
-signal boss_damaged(boss_id: int, amount: int, new_hp: int)
-
-## Boss killed event (triggers LEVEL_COMPLETE)
-signal boss_killed(boss_id: int)
-
-## Boss AoE attack event (for VFX)
-signal boss_aoe_attack(center: Vector3, radius: float)
 
 ## ============================================================================
 ## SIGNALS - Enemy
 ## ============================================================================
 
 ## Enemy spawned
-signal enemy_spawned(enemy_id: int, enemy_type: String, wave_id: int, position: Vector3)
+signal enemy_spawned(enemy_id: int, enemy_type: String, position: Vector3)
 
 ## Enemy killed
-signal enemy_killed(enemy_id: int, enemy_type: String, wave_id: int)
+signal enemy_killed(enemy_id: int, enemy_type: String)
 
 ## Enemy reached player (for contact damage)
 signal enemy_contact(enemy_id: int, enemy_type: String, damage: int)
@@ -148,16 +119,6 @@ signal rocket_exploded(position: Vector3)
 signal chain_lightning_hit(origin: Vector3, target: Vector3)
 
 ## ============================================================================
-## SIGNALS - Melee / Katana (Phase 4 - Patch 0.2)
-## ============================================================================
-
-## Katana mode toggled
-signal katana_mode_changed(is_katana: bool)
-
-## Melee slash hit enemy (for VFX/SFX)
-signal melee_hit(position: Vector3, move_type: String)
-
-## ============================================================================
 ## INTERNAL STATE
 ## ============================================================================
 
@@ -188,43 +149,14 @@ func emit_start_delay_finished() -> void:
 	_queue_event("start_delay_finished", [])
 
 ## ============================================================================
-## PUBLIC API - Wave System
-## ============================================================================
-
-func emit_wave_started(wave_index: int, wave_size: int) -> void:
-	_queue_event("wave_started", [wave_index, wave_size])
-
-func emit_wave_finished_spawning(wave_index: int) -> void:
-	_queue_event("wave_finished_spawning", [wave_index])
-
-func emit_all_waves_completed() -> void:
-	_queue_event("all_waves_completed", [])
-
-## ============================================================================
-## PUBLIC API - Boss (Phase 2)
-## ============================================================================
-
-func emit_boss_spawned(boss_id: int, position: Vector3) -> void:
-	_queue_event("boss_spawned", [boss_id, position], Priority.HIGH)
-
-func emit_boss_damaged(boss_id: int, amount: int, new_hp: int) -> void:
-	_queue_event("boss_damaged", [boss_id, amount, new_hp])
-
-func emit_boss_killed(boss_id: int) -> void:
-	_queue_event("boss_killed", [boss_id], Priority.HIGH)
-
-func emit_boss_aoe_attack(center: Vector3, radius: float) -> void:
-	_queue_event("boss_aoe_attack", [center, radius])
-
-## ============================================================================
 ## PUBLIC API - Enemy
 ## ============================================================================
 
-func emit_enemy_spawned(enemy_id: int, enemy_type: String, wave_id: int, position: Vector3) -> void:
-	_queue_event("enemy_spawned", [enemy_id, enemy_type, wave_id, position])
+func emit_enemy_spawned(enemy_id: int, enemy_type: String, position: Vector3) -> void:
+	_queue_event("enemy_spawned", [enemy_id, enemy_type, position])
 
-func emit_enemy_killed(enemy_id: int, enemy_type: String, wave_id: int) -> void:
-	_queue_event("enemy_killed", [enemy_id, enemy_type, wave_id], Priority.HIGH)
+func emit_enemy_killed(enemy_id: int, enemy_type: String) -> void:
+	_queue_event("enemy_killed", [enemy_id, enemy_type], Priority.HIGH)
 
 func emit_enemy_contact(enemy_id: int, enemy_type: String, damage: int) -> void:
 	_queue_event("enemy_contact", [enemy_id, enemy_type, damage])
@@ -304,16 +236,6 @@ func emit_chain_lightning_hit(origin: Vector3, target: Vector3) -> void:
 	_queue_event("chain_lightning_hit", [origin, target])
 
 ## ============================================================================
-## PUBLIC API - Melee / Katana (Phase 4)
-## ============================================================================
-
-func emit_katana_mode_changed(is_katana: bool) -> void:
-	_queue_event("katana_mode_changed", [is_katana])
-
-func emit_melee_hit(position: Vector3, move_type: String) -> void:
-	_queue_event("melee_hit", [position, move_type])
-
-## ============================================================================
 ## INTERNAL METHODS
 ## ============================================================================
 
@@ -368,27 +290,11 @@ func _dispatch_event(event: Dictionary) -> void:
 			level_ended.emit(event.args[0])
 		"start_delay_finished":
 			start_delay_finished.emit()
-		# Wave System
-		"wave_started":
-			wave_started.emit(event.args[0], event.args[1])
-		"wave_finished_spawning":
-			wave_finished_spawning.emit(event.args[0])
-		"all_waves_completed":
-			all_waves_completed.emit()
-		# Boss (Phase 2)
-		"boss_spawned":
-			boss_spawned.emit(event.args[0], event.args[1])
-		"boss_damaged":
-			boss_damaged.emit(event.args[0], event.args[1], event.args[2])
-		"boss_killed":
-			boss_killed.emit(event.args[0])
-		"boss_aoe_attack":
-			boss_aoe_attack.emit(event.args[0], event.args[1])
 		# Enemy
 		"enemy_spawned":
-			enemy_spawned.emit(event.args[0], event.args[1], event.args[2], event.args[3])
+			enemy_spawned.emit(event.args[0], event.args[1], event.args[2])
 		"enemy_killed":
-			enemy_killed.emit(event.args[0], event.args[1], event.args[2])
+			enemy_killed.emit(event.args[0], event.args[1])
 		"enemy_contact":
 			enemy_contact.emit(event.args[0], event.args[1], event.args[2])
 		"enemy_shot":
@@ -432,10 +338,5 @@ func _dispatch_event(event: Dictionary) -> void:
 			rocket_exploded.emit(event.args[0])
 		"chain_lightning_hit":
 			chain_lightning_hit.emit(event.args[0], event.args[1])
-		# Melee / Katana (Phase 4)
-		"katana_mode_changed":
-			katana_mode_changed.emit(event.args[0])
-		"melee_hit":
-			melee_hit.emit(event.args[0], event.args[1])
 		_:
 			push_warning("Unknown event: %s" % event.name)

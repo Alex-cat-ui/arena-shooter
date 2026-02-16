@@ -30,6 +30,9 @@ var music_system: MusicSystem = null
 ## SFX system (Phase 4)
 var sfx_system: SFXSystem = null
 
+## Prevent overlapping level load calls while waiting for queue_free to complete.
+var _is_level_loading: bool = false
+
 
 func _ready() -> void:
 	print("[AppRoot] Initializing...")
@@ -142,7 +145,16 @@ func _show_level_complete() -> void:
 ## ============================================================================
 
 func _load_level() -> void:
-	_unload_level()
+	if _is_level_loading:
+		return
+	_is_level_loading = true
+
+	var old_level := _current_level
+	if old_level and is_instance_valid(old_level):
+		_current_level = null
+		old_level.queue_free()
+		await old_level.tree_exited
+		print("[AppRoot] Level unloaded")
 
 	var scene := load(LEVEL_MVP_SCENE) as PackedScene
 	if scene:
@@ -156,6 +168,7 @@ func _load_level() -> void:
 		print("[AppRoot] Level loaded")
 	else:
 		push_error("Failed to load level scene: %s" % LEVEL_MVP_SCENE)
+	_is_level_loading = false
 
 
 func _unload_level() -> void:

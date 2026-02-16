@@ -47,7 +47,10 @@ func configure(p_nav_system: Node, p_home_room_id: int) -> void:
 	home_room_id = p_home_room_id
 	_state = PatrolState.MOVE
 	_state_timer = 0.0
-	_route_rebuild_timer = _rng.randf_range(ROUTE_REBUILD_MIN_SEC, ROUTE_REBUILD_MAX_SEC)
+	_route_rebuild_timer = _rng.randf_range(
+		_patrol_cfg_float("route_rebuild_min_sec", ROUTE_REBUILD_MIN_SEC),
+		_patrol_cfg_float("route_rebuild_max_sec", ROUTE_REBUILD_MAX_SEC)
+	)
 	_look_phase = 0.0
 	_look_base_dir = Vector2.RIGHT
 	_rebuild_route()
@@ -62,7 +65,10 @@ func notify_calm() -> void:
 	if _route.is_empty():
 		_rebuild_route()
 	_state = PatrolState.PAUSE
-	_state_timer = _rng.randf_range(PAUSE_MIN_SEC * 0.65, PAUSE_MAX_SEC * 0.75)
+	_state_timer = _rng.randf_range(
+		_patrol_cfg_float("pause_min_sec", PAUSE_MIN_SEC) * 0.65,
+		_patrol_cfg_float("pause_max_sec", PAUSE_MAX_SEC) * 0.75
+	)
 
 
 func update(delta: float, facing_dir: Vector2) -> Dictionary:
@@ -70,7 +76,10 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 		return {"waiting": true}
 	_route_rebuild_timer -= delta
 	if _route_rebuild_timer <= 0.0:
-		_route_rebuild_timer = _rng.randf_range(ROUTE_REBUILD_MIN_SEC, ROUTE_REBUILD_MAX_SEC)
+		_route_rebuild_timer = _rng.randf_range(
+			_patrol_cfg_float("route_rebuild_min_sec", ROUTE_REBUILD_MIN_SEC),
+			_patrol_cfg_float("route_rebuild_max_sec", ROUTE_REBUILD_MAX_SEC)
+		)
 		_rebuild_route()
 
 	if _route.is_empty():
@@ -80,9 +89,12 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 		PatrolState.PAUSE:
 			_state_timer -= delta
 			if _state_timer <= 0.0:
-				if _rng.randf() < LOOK_CHANCE:
+				if _rng.randf() < _patrol_cfg_float("look_chance", LOOK_CHANCE):
 					_state = PatrolState.LOOK
-					_state_timer = _rng.randf_range(LOOK_MIN_SEC, LOOK_MAX_SEC)
+					_state_timer = _rng.randf_range(
+						_patrol_cfg_float("look_min_sec", LOOK_MIN_SEC),
+						_patrol_cfg_float("look_max_sec", LOOK_MAX_SEC)
+					)
 					_look_phase = 0.0
 					_look_base_dir = facing_dir.normalized() if facing_dir.length_squared() > 0.0001 else Vector2.RIGHT
 				else:
@@ -90,8 +102,8 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 			return {"waiting": true}
 		PatrolState.LOOK:
 			_state_timer -= delta
-			_look_phase += delta * LOOK_SWEEP_SPEED
-			var angle := sin(_look_phase) * LOOK_SWEEP_RAD
+			_look_phase += delta * _patrol_cfg_float("look_sweep_speed", LOOK_SWEEP_SPEED)
+			var angle := sin(_look_phase) * _patrol_cfg_float("look_sweep_rad", LOOK_SWEEP_RAD)
 			var look_dir := _look_base_dir.rotated(angle)
 			if _state_timer <= 0.0:
 				_state = PatrolState.MOVE
@@ -100,16 +112,19 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 			pass
 
 	var target := _route[_route_index] as Vector2
-	if owner.global_position.distance_to(target) <= POINT_REACHED_PX:
+	if owner.global_position.distance_to(target) <= _patrol_cfg_float("point_reached_px", POINT_REACHED_PX):
 		_route_index = (_route_index + 1) % _route.size()
 		_state = PatrolState.PAUSE
-		_state_timer = _rng.randf_range(PAUSE_MIN_SEC, PAUSE_MAX_SEC)
+		_state_timer = _rng.randf_range(
+			_patrol_cfg_float("pause_min_sec", PAUSE_MIN_SEC),
+			_patrol_cfg_float("pause_max_sec", PAUSE_MAX_SEC)
+		)
 		return {"waiting": true}
 
 	return {
 		"waiting": false,
 		"target": target,
-		"speed_scale": PATROL_SPEED_SCALE,
+		"speed_scale": _patrol_cfg_float("speed_scale", PATROL_SPEED_SCALE),
 	}
 
 
@@ -123,7 +138,10 @@ func _rebuild_route() -> void:
 	_route.append(fallback)
 
 	if nav_system and nav_system.has_method("random_point_in_room") and home_room_id >= 0:
-		var point_count := _rng.randi_range(ROUTE_POINTS_MIN, ROUTE_POINTS_MAX)
+		var point_count := _rng.randi_range(
+			_patrol_cfg_int("route_points_min", ROUTE_POINTS_MIN),
+			_patrol_cfg_int("route_points_max", ROUTE_POINTS_MAX)
+		)
 		for i in range(point_count):
 			var margin := _rng.randf_range(18.0, 34.0)
 			_route.append(nav_system.random_point_in_room(home_room_id, margin))
@@ -133,11 +151,25 @@ func _rebuild_route() -> void:
 	for p in _route:
 		var keep := true
 		for q in compact:
-			if p.distance_to(q) < 42.0:
+			if p.distance_to(q) < _patrol_cfg_float("route_dedup_min_dist_px", 42.0):
 				keep = false
 				break
 		if keep:
 			compact.append(p)
 	_route = compact
 	if _route.size() < 2:
-		_route = [fallback, fallback + Vector2(24.0, 0.0)]
+		_route = [fallback, fallback + Vector2(_patrol_cfg_float("fallback_step_px", 24.0), 0.0)]
+
+
+func _patrol_cfg_float(key: String, fallback: float) -> float:
+	if GameConfig and GameConfig.ai_balance.has("patrol"):
+		var section := GameConfig.ai_balance["patrol"] as Dictionary
+		return float(section.get(key, fallback))
+	return fallback
+
+
+func _patrol_cfg_int(key: String, fallback: int) -> int:
+	if GameConfig and GameConfig.ai_balance.has("patrol"):
+		var section := GameConfig.ai_balance["patrol"] as Dictionary
+		return int(section.get(key, fallback))
+	return fallback

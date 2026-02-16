@@ -3,7 +3,6 @@
 ## CANON: UI changes ONLY GameConfig. Cannot start if validation fails.
 extends Control
 
-@onready var waves_spinbox: SpinBox = $VBoxContainer/WavesContainer/WavesSpinBox
 @onready var delay_spinbox: SpinBox = $VBoxContainer/DelayContainer/DelaySpinBox
 @onready var max_enemies_spinbox: SpinBox = $VBoxContainer/MaxEnemiesContainer/MaxEnemiesSpinBox
 @onready var start_button: Button = $VBoxContainer/ButtonContainer/StartButton
@@ -18,7 +17,6 @@ func _ready() -> void:
 
 func _load_current_values() -> void:
 	if GameConfig:
-		waves_spinbox.value = GameConfig.waves_per_level
 		delay_spinbox.value = GameConfig.start_delay_sec
 		max_enemies_spinbox.value = GameConfig.max_alive_enemies
 
@@ -39,12 +37,6 @@ func _validate_config() -> void:
 	if result.warnings.size() > 0 and result.is_valid:
 		validation_label.text += "\nWarnings: " + ", ".join(result.warnings)
 		validation_label.modulate = Color.YELLOW
-
-
-func _on_waves_spin_box_value_changed(value: float) -> void:
-	if GameConfig:
-		GameConfig.waves_per_level = int(value)
-		_validate_config()
 
 
 func _on_delay_spin_box_value_changed(value: float) -> void:

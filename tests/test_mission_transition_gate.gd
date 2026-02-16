@@ -1,14 +1,19 @@
-## test_mission_transition_gate.gd
-## Verifies north mission transition is gated by combat clear conditions.
-## Run via: godot --headless res://tests/test_mission_transition_gate.tscn
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 
+var embedded_mode: bool = false
 var _t := TestHelpers.new()
 
 
 func _ready() -> void:
+	if embedded_mode:
+		return
+	var result := await run_suite()
+	get_tree().quit(0 if bool(result.get("ok", false)) else 1)
+
+
+func run_suite() -> Dictionary:
 	print("=".repeat(60))
 	print("MISSION TRANSITION GATE TEST")
 	print("=".repeat(60))
@@ -16,7 +21,6 @@ func _ready() -> void:
 	Engine.max_fps = 60
 	GameConfig.reset_to_defaults()
 	GameConfig.god_mode = true
-	GameConfig.waves_enabled = false
 	GameConfig.start_delay_sec = 999.0
 
 	if StateManager.current_state != GameState.State.MAIN_MENU:
@@ -33,7 +37,13 @@ func _ready() -> void:
 	await _run_tests(level)
 
 	_t.summary("MISSION TRANSITION GATE RESULTS")
-	get_tree().quit(_t.quit_code())
+	level.queue_free()
+	await get_tree().process_frame
+	return {
+		"ok": _t.quit_code() == 0,
+		"run": _t.tests_run,
+		"passed": _t.tests_passed,
+	}
 
 
 func _run_tests(level: Node) -> void:
@@ -41,19 +51,17 @@ func _run_tests(level: Node) -> void:
 		_t.check("Level is available", false)
 		return
 
-	level._mission_cycle_pos = 0
+	level.set_mission_cycle_position(0)
 
 	# Case 1: any alive enemy in scene -> blocked
 	var dummy_enemy := Node2D.new()
 	dummy_enemy.name = "DummyEnemy"
 	dummy_enemy.add_to_group("enemies")
 	level.entities_container.add_child(dummy_enemy)
-	var before: int = int(level._current_mission_index())
+	var before: int = int(level.get_current_mission_index())
 	_try_transition(level)
-	_t.check("Blocked while alive enemies exist", level._current_mission_index() == before)
-	level._north_transition_enabled = false
-	level._north_transition_rect = Rect2()
-	level._north_transition_cooldown = 0.0
+	_t.check("Blocked while alive enemies exist", level.get_current_mission_index() == before)
+	level.set_north_transition_probe(Rect2(), false, 0.0)
 	dummy_enemy.queue_free()
 	await get_tree().process_frame
 
@@ -64,11 +72,13 @@ func _run_tests(level: Node) -> void:
 			node.queue_free()
 	await get_tree().process_frame
 	await get_tree().process_frame
-	before = level._current_mission_index()
+	var unlocked_before = level.alive_scene_enemies_count() == 0 and level.is_north_transition_unlocked()
+	before = level.get_current_mission_index()
 	_try_transition(level)
 	await get_tree().process_frame
-	var after: int = int(level._current_mission_index())
+	var after: int = int(level.get_current_mission_index())
 	_t.check("Allowed after clear", after != before)
+	_t.check("Gate unlock condition is alive_scene_enemies_count == 0", unlocked_before)
 	_t.check("RuntimeState mission index synced", RuntimeState.mission_index == after)
 
 
@@ -76,9 +86,5 @@ func _try_transition(level: Node) -> void:
 	if not level.player:
 		return
 	var p: Vector2 = level.player.position
-	level._north_transition_enabled = true
-	level._north_transition_rect = Rect2(p.x - 12.0, p.y - 12.0, 24.0, 24.0)
-	level._north_transition_cooldown = 0.0
-	level._check_north_transition()
-
-
+	level.set_north_transition_probe(Rect2(p.x - 12.0, p.y - 12.0, 24.0, 24.0), true, 0.0)
+	level.check_north_transition_gate()

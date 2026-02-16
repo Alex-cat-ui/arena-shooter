@@ -18,6 +18,12 @@ script = ExtResource("1_enemy")
 texture_filter = 1
 texture = ExtResource("2_tex")
 
+[node name="AlertMarker" type="Sprite2D" parent="."]
+visible = false
+position = Vector2(0, -26)
+texture_filter = 1
+z_index = 10
+
 [node name="CollisionShape2D" type="CollisionShape2D" parent="."]
 shape = SubResource("CircleShape2D_body")
 

@@ -6,6 +6,8 @@ extends Node
 var layout = null
 var entities_container: Node2D = null
 var player_node: Node2D = null
+var alert_system: Node = null
+var squad_system: Node = null
 
 var _room_graph: Dictionary = {}      # room_id -> Array[int]
 var _pair_doors: Dictionary = {}      # "a|b" -> Array[Vector2]
@@ -22,6 +24,12 @@ func initialize(p_layout, p_entities_container: Node2D, p_player_node: Node2D) -
 	if entities_container and not entities_container.child_entered_tree.is_connected(_on_entity_child_entered):
 		entities_container.child_entered_tree.connect(_on_entity_child_entered)
 	rebuild_for_layout(layout)
+
+
+func bind_tactical_systems(p_alert_system: Node = null, p_squad_system: Node = null) -> void:
+	alert_system = p_alert_system
+	squad_system = p_squad_system
+	_configure_existing_enemies()
 
 
 func rebuild_for_layout(p_layout) -> void:
@@ -65,6 +73,8 @@ func rebuild_for_layout(p_layout) -> void:
 		if not ((_room_graph[b] as Array).has(a)):
 			(_room_graph[b] as Array).append(a)
 
+	if alert_system and alert_system.has_method("reset_all"):
+		alert_system.reset_all()
 	_configure_existing_enemies()
 
 
@@ -113,6 +123,33 @@ func get_neighbors(room_id: int) -> Array[int]:
 			result.append(rid)
 	result.sort()
 	return result
+
+
+func get_enemy_room_id_by_id(enemy_id: int) -> int:
+	if enemy_id <= 0 or not entities_container:
+		return -1
+	for child_variant in entities_container.get_children():
+		var enemy := child_variant as Node
+		if not enemy:
+			continue
+		if not enemy.is_in_group("enemies"):
+			continue
+		if not ("entity_id" in enemy):
+			continue
+		if int(enemy.entity_id) != enemy_id:
+			continue
+		return get_enemy_room_id(enemy)
+	return -1
+
+
+func get_alert_level(room_id: int) -> int:
+	if alert_system and alert_system.has_method("get_room_alert_level"):
+		return int(alert_system.get_room_alert_level(room_id))
+	return 0
+
+
+func get_alert_level_at_point(p: Vector2) -> int:
+	return get_alert_level(room_id_at_point(p))
 
 
 func get_adjacent_room_ids(room_id: int) -> Array[int]:
@@ -266,6 +303,8 @@ func _configure_enemy(node: Node) -> void:
 	enemy.set_meta("room_id", room_id)
 	if enemy.has_method("set_room_navigation"):
 		enemy.set_room_navigation(self, room_id)
+	if enemy.has_method("set_tactical_systems"):
+		enemy.set_tactical_systems(alert_system, squad_system)
 
 
 func _adjacent_room_ids_for_door(door: Rect2) -> Array:

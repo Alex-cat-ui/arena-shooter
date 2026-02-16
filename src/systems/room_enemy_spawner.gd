@@ -4,7 +4,6 @@ class_name RoomEnemySpawner
 extends Node
 
 const ENEMY_TYPE := "zombie"
-const STATIC_WAVE_ID := 0
 const EDGE_PADDING_PX := 24.0
 const MIN_ENEMY_SPACING_PX := 100.0
 const SAMPLE_ATTEMPTS_PER_ENEMY := 140
@@ -63,15 +62,10 @@ func clear_spawned() -> void:
 
 func _quota_for_room(layout, room_id: int) -> int:
 	var size_class := str(layout._room_size_class(room_id))
-	match size_class:
-		"LARGE":
-			return 3
-		"MEDIUM":
-			return 2
-		"SMALL":
-			return 1
-		_:
-			return 1
+	var quotas := _spawner_quota_by_size()
+	if quotas.has(size_class):
+		return int(quotas.get(size_class, 1))
+	return int(quotas.get("SMALL", 1))
 
 
 func _pick_spawn_points(room_rects: Array, target_count: int) -> Array:
@@ -83,7 +77,7 @@ func _pick_spawn_points(room_rects: Array, target_count: int) -> Array:
 	for _i in range(target_count):
 		var best := Vector2.ZERO
 		var best_dist := -1.0
-		for _attempt in range(SAMPLE_ATTEMPTS_PER_ENEMY):
+		for _attempt in range(_spawner_cfg_int("sample_attempts_per_enemy", SAMPLE_ATTEMPTS_PER_ENEMY)):
 			var candidate := _sample_point(safe_rects)
 			var nearest := _nearest_distance(candidate, points)
 			if nearest > best_dist:
@@ -92,7 +86,7 @@ func _pick_spawn_points(room_rects: Array, target_count: int) -> Array:
 		if points.is_empty():
 			points.append(best)
 			continue
-		if best_dist >= MIN_ENEMY_SPACING_PX - 0.5:
+		if best_dist >= _spawner_cfg_float("min_enemy_spacing_px", MIN_ENEMY_SPACING_PX) - 0.5:
 			points.append(best)
 			continue
 		var grid_pick := _best_grid_candidate(safe_rects, points)
@@ -105,12 +99,13 @@ func _safe_rects(room_rects: Array) -> Array:
 	var out: Array = []
 	for rect_variant in room_rects:
 		var r := rect_variant as Rect2
-		var safe := r.grow(-EDGE_PADDING_PX)
-		if safe.size.x >= 6.0 and safe.size.y >= 6.0:
+		var min_safe := _spawner_cfg_float("min_safe_rect_size_px", 6.0)
+		var safe := r.grow(-_spawner_cfg_float("edge_padding_px", EDGE_PADDING_PX))
+		if safe.size.x >= min_safe and safe.size.y >= min_safe:
 			out.append(safe)
 			continue
-		var soft := r.grow(-8.0)
-		if soft.size.x >= 6.0 and soft.size.y >= 6.0:
+		var soft := r.grow(-_spawner_cfg_float("safe_soft_padding_px", 8.0))
+		if soft.size.x >= min_safe and soft.size.y >= min_safe:
 			out.append(soft)
 	return out
 
@@ -167,9 +162,9 @@ func _best_grid_candidate(rects: Array, points: Array) -> Dictionary:
 				if nearest > best_dist:
 					best_dist = nearest
 					best = candidate
-				y += GRID_SEARCH_STEP_PX
-			x += GRID_SEARCH_STEP_PX
-	if best_dist >= MIN_ENEMY_SPACING_PX - 0.5:
+				y += _spawner_cfg_float("grid_search_step_px", GRID_SEARCH_STEP_PX)
+			x += _spawner_cfg_float("grid_search_step_px", GRID_SEARCH_STEP_PX)
+	if best_dist >= _spawner_cfg_float("min_enemy_spacing_px", MIN_ENEMY_SPACING_PX) - 0.5:
 		return {"ok": true, "pos": best}
 	return {"ok": false}
 
@@ -180,7 +175,7 @@ func _spawn_enemy(spawn_pos: Vector2, room_id: int) -> void:
 		return
 
 	if enemy.has_method("initialize"):
-		enemy.initialize(_next_enemy_id, ENEMY_TYPE, STATIC_WAVE_ID)
+		enemy.initialize(_next_enemy_id, _spawner_cfg_string("enemy_type", ENEMY_TYPE))
 
 	if "speed_tiles" in enemy:
 		enemy.speed_tiles = float(enemy.speed_tiles)
@@ -217,3 +212,31 @@ func _street_entry_room_id(layout) -> int:
 		return -1
 	var probe := gate.get_center() + Vector2(0.0, 24.0)
 	return int(layout._room_id_at_point(probe))
+
+
+func _spawner_section() -> Dictionary:
+	if GameConfig and GameConfig.ai_balance.has("spawner"):
+		return GameConfig.ai_balance["spawner"] as Dictionary
+	return {}
+
+
+func _spawner_quota_by_size() -> Dictionary:
+	var section := _spawner_section()
+	if section.has("room_quota_by_size"):
+		return section["room_quota_by_size"] as Dictionary
+	return {"LARGE": 3, "MEDIUM": 2, "SMALL": 1}
+
+
+func _spawner_cfg_float(key: String, fallback: float) -> float:
+	var section := _spawner_section()
+	return float(section.get(key, fallback))
+
+
+func _spawner_cfg_int(key: String, fallback: int) -> int:
+	var section := _spawner_section()
+	return int(section.get(key, fallback))
+
+
+func _spawner_cfg_string(key: String, fallback: String) -> String:
+	var section := _spawner_section()
+	return str(section.get(key, fallback))

@@ -1,122 +1,191 @@
-# Arena Shooter MVP
+# Arena Shooter
 
-2D top-down roguelike shooter (Crimsonland-like) built in Godot 4.
+2D top-down экшен-прототип на Godot 4 с тактическим AI-слоем.
 
-## Phase 1 - Core Gameplay Boot
+Текущий вектор: гибрид быстрого боевого темпа (в духе Hotline Miami) и комнатного напряжения/охоты (в духе Manhunt), с переходом к уровням существенно большего масштаба.
 
-This is the Phase 1 implementation containing:
-- Full gameplay loop: move, shoot, kill enemies
-- Wave system with spawning per ТЗ v1.13
-- Combat system with damage pipeline and i-frames
-- Projectile system with TTL and collisions
-- Enemy AI (move toward player)
-- Player death -> GAME_OVER
-- Victory condition (all waves cleared) -> LEVEL_COMPLETE
-- All UI screens functional
+## Статус Проекта
 
-## How to Run
+Проект уже играбелен и покрыт автотестами. В рабочем контуре есть:
 
-1. Open the project in Godot 4.2+
-2. Open `scenes/app_root.tscn`
-3. Press F5 or click Play
+- движение игрока, прицеливание, стрельба, переключение оружия;
+- процедурная генерация комнат и цикл миссий в одной сцене уровня;
+- room-based спавн врагов и тактическое поведение AI;
+- runtime budget scheduler для AI/pathing (bounded work per frame);
+- взаимодействие с дверями и выбивание дверей;
+- боевой пайплайн, VFX/SFX, музыкальные контексты;
+- headless тестовые suite.
 
-## Controls
+Кодовая база находится в активной миграции:
 
-### Menus
-- Click buttons to navigate
+- legacy-контуры ближнего боя удалены из рабочего runtime/UI и актуальной документации;
+- текущий фокус миграции: data-driven баланс и унификация AI-сигналов.
 
-### In-Game (PLAYING state)
-- **WASD** - Move player
-- **Mouse** - Aim direction (player sprite rotates)
-- **LMB** - Shoot (Pistol)
-- **ESC** - Pause/Resume
-- **F1** - Force Game Over (debug)
-- **F2** - Force Level Complete (debug)
+## Технологии
 
-## Gameplay
+- Engine: Godot 4.x (фичи проекта ориентированы на 4.6)
+- Язык: GDScript
+- Подход: autoload-синглтоны + системная оркестрация сцены
+- Тесты: headless scene-based suites
 
-1. **Start Delay**: After level starts, player can move but enemies don't spawn for `start_delay_sec` (1.5s default)
-2. **Waves**: Enemies spawn in waves. Wave size grows: `WaveSize = 12 + (WaveIndex-1)*3`
-3. **Combat**:
-   - Player shoots with LMB (Pistol: 10 dmg, 180 rpm)
-   - Enemies deal contact damage (global i-frames: 0.7s)
-   - Player HP: 100
-4. **Victory**: Clear all waves to win
-5. **Death**: HP reaches 0 -> GAME_OVER
+## Быстрый Старт
 
-## Project Structure
+### Запуск из редактора
 
-```
-arena-shooter/
-├── assets/
-│   ├── audio/music/{menu,level}/
-│   └── sprites/{player,floor,enemy,projectile}/
-├── scenes/
-│   ├── app_root.tscn          # Main scene
-│   ├── entities/              # Enemy, Projectile scenes
-│   ├── levels/level_mvp.tscn  # MVP level
-│   └── ui/*.tscn              # UI screens
-├── src/
-│   ├── core/                  # GameConfig, RuntimeState, StateManager
-│   ├── systems/               # WaveManager, CombatSystem, ProjectileSystem
-│   ├── entities/              # Player, Enemy, Projectile
-│   ├── levels/                # Level scripts
-│   └── ui/                    # UI scripts
-└── tests/
-    └── test_level_smoke.gd    # Integration tests
-```
+1. Открыть папку проекта в Godot.
+2. Главная сцена: `res://scenes/app_root.tscn`.
+3. Нажать `F5`.
 
-## Systems (Phase 1)
-
-| System | Purpose |
-|--------|---------|
-| WaveManager | Spawns enemies in waves per ТЗ v1.13 |
-| CombatSystem | Damage pipeline, i-frames, GodMode |
-| ProjectileSystem | Spawns/manages projectiles, TTL, collisions |
-| EventBus | System communication via signals |
-
-## Enemy Stats (ТЗ v1.13)
-
-| Type | HP | Damage | Speed |
-|------|-----|--------|-------|
-| Zombie | 30 | 10 | 2.0 |
-| Fast | 15 | 7 | 4.0 |
-| Tank | 80 | 15 | 1.5 |
-| Swarm | 5 | 5 | 3.0 |
-
-## Wave System (CANON)
-
-- `WaveSize = EnemiesPerWave + (WaveIndex-1) * WaveSizeGrowth`
-- Default: 12 + 3 per wave
-- Transition: when `AlivePrevWave <= max(2, ceil(PrevWavePeakCount * 0.2))`
-- MaxAliveEnemies: 64
-
-## CANON Rules
-
-- Camera: TOP-DOWN ORTHOGRAPHIC only, `rotation = 0` always
-- UI changes ONLY GameConfig
-- Positions: Vector3 (z=0) in RuntimeState
-- Systems: communicate via EventBus only
-- Pause: freezes all gameplay
-
-## Asset Attribution
-
-All external assets are CC0 (Public Domain) licensed. No attribution is legally required,
-but we credit authors as good practice.
-
-| Asset | Source | Author | License | Path in Repo |
-|-------|--------|--------|---------|--------------|
-| Ground 037 (dirt+grass floor texture) | [ambientCG](https://ambientcg.com/view?id=Ground037) | ambientCG | CC0 1.0 | `assets/textures/floor/dirt_grass_01.png` |
-| Top-down Shooter (player hitman) | [Kenney](https://kenney.nl/assets/top-down-shooter) | Kenney | CC0 1.0 | `assets/sprites/player/player_idle_0001.png` |
-| Top-down Shooter (zombie enemy) | [Kenney](https://kenney.nl/assets/top-down-shooter) | Kenney | CC0 1.0 | `assets/sprites/enemy/enemy_zombie_0001.png` |
-| Boss sprite (procedural, robot aesthetic) | — | Project | CC0 1.0 | `assets/sprites/boss/boss_0001.png` |
-
-## Running Tests
+### Запуск из CLI
 
 ```bash
-# Unit tests (62 tests, ~instant)
-godot --headless res://tests/test_runner.tscn
-
-# Smoke tests (level instantiation + spawn + boss, ~7 seconds)
-godot --headless res://tests/test_level_smoke.tscn
+godot --path . --scene res://scenes/app_root.tscn
 ```
+
+Если Godot установлен через snap, команда может выглядеть так:
+
+```bash
+/snap/godot-4/current/godot-4 --path . --scene res://scenes/app_root.tscn
+```
+
+## Управление
+
+### Базовое
+
+- `W A S D`: движение
+- `Mouse`: прицеливание
+- `LMB`: выстрел
+- `Mouse Wheel`: переключение оружия
+- `1..6`: прямой выбор слота оружия
+- `Esc`: пауза
+
+### Двери
+
+- `E`: interact (открыть/закрыть)
+- `Q`: kick
+
+### Debug / Runtime
+
+- `F1`: принудительный `GAME_OVER`
+- `F2`: принудительный `LEVEL_COMPLETE`
+- `F3`: debug overlay
+- `F4`: регенерация процедурного layout
+- `F7`: включение/выключение огнестрела у врагов
+- `F8`: загрузка `res://src/levels/stealth_test_room.tscn` (если `F8` не занят в `InputMap`)
+
+## Что Уже Есть В Геймплее
+
+- Свободное top-down перемещение с accel/decel.
+- Система оружия на 6 слотов:
+  - `pistol`
+  - `auto`
+  - `shotgun`
+  - `plasma`
+  - `rocket`
+  - `chain_lightning`
+- Боевой пайплайн и урон:
+  - TTL и жизненный цикл снарядов;
+  - агрегация дроби для shotgun;
+  - глобальные contact i-frames.
+- Процедурная генерация комнатного уровня (`ProceduralLayoutV2`).
+- Статический room-based спавн врагов (`RoomEnemySpawner`).
+- Граф комнат и room-aware навигация (`RoomNavSystem`).
+- Тактический AI-слой:
+  - room alert propagation/decay;
+  - роли отряда (pressure/hold/flank);
+  - utility intents + pursuit execution;
+  - визуальные alert-маркеры.
+- Runtime budgeting для больших карт:
+  - budget `ms/frame` для AI/pathing;
+  - квоты `enemy_ai`, `squad_rebuild`, `nav_tasks`;
+  - round-robin tick по врагам.
+- Переход по миссиям через северный триггер после зачистки.
+- Физические двери с anti-pinch поведением.
+- Визуально-аудио стек: combat feedback, atmosphere, shadows, music contexts, SFX routing.
+
+## Поток Состояний
+
+Состояния игры управляются через `StateManager` и `EventBus`:
+
+- `MAIN_MENU`
+- `SETTINGS`
+- `LEVEL_SETUP`
+- `PLAYING`
+- `PAUSED`
+- `GAME_OVER`
+- `LEVEL_COMPLETE`
+
+`app_root.gd` выступает composition root для UI и lifecycle уровня.
+
+## Структура Репозитория
+
+```text
+arena-shooter/
+|- assets/                  # спрайты, текстуры, аудио
+|- scenes/
+|  |- app_root.tscn
+|  |- entities/
+|  |- levels/level_mvp.tscn
+|  |- ui/
+|- src/
+|  |- core/                 # GameConfig, RuntimeState, StateManager, validators
+|  |- entities/             # player, enemy, projectile
+|  |- levels/               # оркестрация уровня
+|  |- systems/              # combat, AI, audio, VFX, doors, layout, nav
+|  |- ui/                   # скрипты меню и экранов
+|- tests/                   # headless suites и smoke тесты
+|- project.godot
+```
+
+## Конфигурация И Баланс
+
+Сейчас основной источник конфигурации - `GameConfig` (autoload) + системные дефолты в коде.
+
+План миграции: вынести combat/AI tuning в единый data-driven слой, чтобы убрать дубли и упростить баланс для больших уровней.
+
+Для runtime budgeting используется секция `GameConfig.ai_balance.runtime_budget`:
+
+- `frame_budget_ms`
+- `enemy_ai_quota`
+- `squad_rebuild_quota`
+- `nav_tasks_quota`
+
+## Тестирование
+
+Полный headless прогон:
+
+```bash
+godot --headless --path . --scene res://tests/test_runner.tscn
+```
+
+Smoke-тест:
+
+```bash
+godot --headless --path . --scene res://tests/test_level_smoke.tscn
+```
+
+Ключевые suite по AI/runtime budgeting:
+
+```bash
+godot --headless --path . --scene res://tests/test_enemy_runtime_budget_scheduler.tscn
+godot --headless --path . --scene res://tests/test_enemy_behavior_integration.tscn
+```
+
+Для snap-установки:
+
+```bash
+/snap/godot-4/current/godot-4 --headless --path . --scene res://tests/test_runner.tscn
+/snap/godot-4/current/godot-4 --headless --path . --scene res://tests/test_level_smoke.tscn
+```
+
+## Известный Техдолг
+
+- Часть баланса AI/combat все еще зашита в константах разных систем.
+- Alert/suspicion логика приводится к единому источнику истины.
+- Квота `nav_tasks` заведена в runtime scheduler, но очередь фоновых nav-задач в `RoomNavSystem` пока минимальная.
+
+## Ближайшее Направление
+
+1. Ввести единый data-driven баланс-конфиг.
+2. Финализировать single-source модель alert/suspicion.
+3. Подготовить AI/pathing/runtime budgeting к картам сильно большего размера.

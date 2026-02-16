@@ -1,6 +1,6 @@
 ## hud.gd
 ## Minimal HUD for Phase 0.
-## Shows HP, State, Wave, Time.
+## Shows HP, State, Time.
 extends CanvasLayer
 
 # HUD is controlled by level_mvp.gd

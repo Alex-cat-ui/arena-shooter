@@ -65,17 +65,9 @@ text = "HP: 100 / 100"
 layout_mode = 2
 text = "State: PLAYING"
 
-[node name="WaveLabel" type="Label" parent="HUD/HUDContainer"]
-layout_mode = 2
-text = "Wave: 0 / 3 (Alive: 0)"
-
 [node name="TimeLabel" type="Label" parent="HUD/HUDContainer"]
 layout_mode = 2
 text = "Time: 0.0 | Kills: 0"
-
-[node name="BossHPLabel" type="Label" parent="HUD/HUDContainer"]
-layout_mode = 2
-text = ""
 
 [node name="WeaponLabel" type="Label" parent="HUD/HUDContainer"]
 layout_mode = 2
@@ -92,6 +84,5 @@ offset_bottom = 100.0
 grow_horizontal = 0
 text = "ESC - Pause | F1 - Game Over
 F2 - Level Complete | F3 - Debug
-LMB - Shoot | 1-6 Weapons | Wheel
-Q - Katana | RMB - Heavy | Space - Dash"
+LMB - Shoot | 1-6 Weapons | Wheel"
 horizontal_alignment = 2

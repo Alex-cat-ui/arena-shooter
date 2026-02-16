@@ -1,0 +1,102 @@
+extends Node
+
+const TestHelpers = preload("res://tests/test_helpers.gd")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
+const ENEMY_UTILITY_BRAIN_SCRIPT := preload("res://src/systems/enemy_utility_brain.gd")
+
+var embedded_mode: bool = false
+var _t := TestHelpers.new()
+
+
+func _ready() -> void:
+	if embedded_mode:
+		return
+	var result := await run_suite()
+	get_tree().quit(0 if bool(result.get("ok", false)) else 1)
+
+
+func run_suite() -> Dictionary:
+	print("")
+	print("============================================================")
+	print("COMBAT UTILITY INTENT AGGRESSIVE TEST")
+	print("============================================================")
+
+	await _test_combat_intent_stays_aggressive_without_los()
+
+	_t.summary("COMBAT UTILITY INTENT AGGRESSIVE RESULTS")
+	return {
+		"ok": _t.quit_code() == 0,
+		"run": _t.tests_run,
+		"passed": _t.tests_passed,
+	}
+
+
+func _test_combat_intent_stays_aggressive_without_los() -> void:
+	var room := STEALTH_ROOM_SCENE.instantiate()
+	add_child(room)
+	await get_tree().process_frame
+	await get_tree().physics_frame
+
+	var controller := room.get_node_or_null("StealthTestController")
+	var player := room.get_node_or_null("Entities/Player") as CharacterBody2D
+	var enemy := _first_member_in_group_under("enemies", room) as Enemy
+
+	_t.run_test("combat intent: controller exists", controller != null)
+	_t.run_test("combat intent: player exists", player != null)
+	_t.run_test("combat intent: enemy exists", enemy != null)
+	if controller == null or player == null or enemy == null:
+		room.queue_free()
+		await get_tree().process_frame
+		return
+
+	if controller.has_method("_force_enemy_combat"):
+		controller.call("_force_enemy_combat")
+
+	enemy.set_physics_process(false)
+	enemy.runtime_budget_tick(0.1)
+
+	var had_player_group := player.is_in_group("player")
+	if had_player_group:
+		player.remove_from_group("player")
+
+	enemy.set("_last_seen_pos", enemy.global_position + Vector2(180.0, 0.0))
+	enemy.set("_last_seen_age", 0.1)
+	enemy.runtime_budget_tick(0.2)
+	var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
+	var intent_type := int(snapshot.get("intent_type", -1))
+
+	var is_aggressive := (
+		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
+	)
+	var is_soft := (
+		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME
+	)
+
+	_t.run_test(
+		"combat intent: awareness stays COMBAT after LOS break",
+		int(snapshot.get("state", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
+	)
+	_t.run_test("combat intent: intent remains aggressive in COMBAT", is_aggressive)
+	_t.run_test("combat intent: intent is not soft in COMBAT", not is_soft)
+
+	if had_player_group:
+		player.add_to_group("player")
+	room.queue_free()
+	await get_tree().process_frame
+
+
+func _first_member_in_group_under(group_name: String, ancestor: Node) -> Node:
+	for member_variant in get_tree().get_nodes_in_group(group_name):
+		var member := member_variant as Node
+		if member == null:
+			continue
+		if member == ancestor or ancestor.is_ancestor_of(member):
+			return member
+	return null

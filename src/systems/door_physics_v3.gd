@@ -80,6 +80,8 @@ var _door_visual: Sprite2D = null
 var _trigger_area: Area2D = null
 var _trigger_collision: CollisionShape2D = null
 var _trigger_shape: RectangleShape2D = null
+var _opening_rect_world: Rect2 = Rect2()
+var _opening_center_world: Vector2 = Vector2.ZERO
 
 
 # --- Config helpers (read from GameConfig singleton if available) ---
@@ -123,6 +125,8 @@ func _ready() -> void:
 func configure_from_opening(opening: Rect2, wall_thickness: float) -> void:
 	_ensure_nodes()
 	_rng.randomize()
+	_opening_rect_world = opening
+	_opening_center_world = opening.get_center()
 	is_vertical = opening.size.y > opening.size.x
 	var opening_span := maxf(opening.size.x, opening.size.y)
 	door_length = maxf(opening_span - LEAF_END_CLEARANCE_PX, 12.0)
@@ -269,6 +273,25 @@ func apply_kick_impulse(source_pos: Vector2 = Vector2.ZERO) -> void:
 func command_close() -> void:
 	close_intent = true
 	_hold_open_timer = 0.0
+
+
+func is_closed_or_nearly_closed(threshold_deg: float = 10.0) -> bool:
+	return absf(rad_to_deg(_angle_offset)) <= maxf(0.0, threshold_deg)
+
+
+func get_opening_center_world() -> Vector2:
+	if _opening_rect_world != Rect2():
+		return _opening_center_world
+	return global_position
+
+
+func get_opening_distance_px(point: Vector2) -> float:
+	if _opening_rect_world == Rect2():
+		return point.distance_to(global_position)
+	var rect := _opening_rect_world
+	var nearest_x := clampf(point.x, rect.position.x, rect.end.x)
+	var nearest_y := clampf(point.y, rect.position.y, rect.end.y)
+	return point.distance_to(Vector2(nearest_x, nearest_y))
 
 
 func _queue_open_impulse(source_pos: Vector2, impulse: float, hold_sec: float) -> void:

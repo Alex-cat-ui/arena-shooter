@@ -21,6 +21,15 @@ func get_player_position() -> Vector2:
 	return Vector2.ZERO
 
 
+func get_player_visibility_factor(origin: Vector2, max_distance: float) -> float:
+	var snapshot := get_player_visibility_snapshot(origin, max_distance)
+	return float(snapshot.get("visibility_factor", 0.0))
+
+
+func get_player_visibility_snapshot(origin: Vector2, max_distance: float) -> Dictionary:
+	return _compute_visibility_snapshot(origin, max_distance)
+
+
 func can_see_player(origin: Vector2, facing_dir: Vector2, fov_deg: float, max_distance: float, exclude: Array[RID]) -> bool:
 	if not _refresh_player_ref():
 		return false
@@ -101,3 +110,38 @@ func _refresh_player_ref() -> bool:
 		return false
 	_player_node = players[0] as Node2D
 	return _player_node != null
+
+
+func _compute_visibility_snapshot(origin: Vector2, max_distance: float) -> Dictionary:
+	var out := {
+		"distance_to_player": INF,
+		"distance_factor": 0.0,
+		"shadow_mul": 1.0,
+		"visibility_factor": 0.0,
+	}
+	if not _refresh_player_ref():
+		return out
+	if RuntimeState and RuntimeState.player_hp <= 0:
+		return out
+	if max_distance <= 0.001:
+		return out
+
+	var to_player := _player_node.global_position - origin
+	var distance_to_player := to_player.length()
+	var distance_factor := 0.0
+	if distance_to_player <= 0.001:
+		distance_factor = 1.0
+	elif distance_to_player >= max_distance:
+		distance_factor = 0.0
+	else:
+		distance_factor = 1.0 - (distance_to_player / max_distance)
+
+	var shadow_mul := 1.0
+	if RuntimeState:
+		shadow_mul = clampf(float(RuntimeState.player_visibility_mul), 0.0, 1.0)
+
+	out["distance_to_player"] = distance_to_player
+	out["distance_factor"] = clampf(distance_factor, 0.0, 1.0)
+	out["shadow_mul"] = shadow_mul
+	out["visibility_factor"] = clampf(distance_factor * shadow_mul, 0.0, 1.0)
+	return out

@@ -14,12 +14,10 @@ func _ready() -> void:
 func _show_stats() -> void:
 	if RuntimeState:
 		stats_label.text = """Time: %.1f sec
-Wave: %d
 Kills: %d
 Damage Dealt: %d
 Damage Received: %d""" % [
 			RuntimeState.time_elapsed,
-			RuntimeState.current_wave,
 			RuntimeState.kills,
 			RuntimeState.damage_dealt,
 			RuntimeState.damage_received

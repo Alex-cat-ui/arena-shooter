@@ -43,9 +43,6 @@ const SFX_FILES: Array[String] = [
 	"player_hit",
 	"player_death",
 	"weapon_switch",
-	"wave_start",
-	"boss_spawn",
-	"boss_death",
 ]
 
 
@@ -70,9 +67,6 @@ func _ready() -> void:
 		EventBus.player_died.connect(_on_player_died)
 		EventBus.rocket_exploded.connect(_on_rocket_exploded)
 		EventBus.weapon_changed.connect(_on_weapon_changed)
-		EventBus.wave_started.connect(_on_wave_started)
-		EventBus.boss_spawned.connect(_on_boss_spawned)
-		EventBus.boss_killed.connect(_on_boss_killed)
 
 	print("[SFXSystem] Initialized (%d streams loaded, pool size %d)" % [_streams.size(), POOL_SIZE])
 
@@ -147,7 +141,7 @@ func _play_shotgun_reload() -> void:
 	play(SHOTGUN_CUSTOM_RELOAD_KEY)
 
 
-func _on_enemy_killed(_enemy_id: int, _enemy_type: String, _wave_id: int) -> void:
+func _on_enemy_killed(_enemy_id: int, _enemy_type: String) -> void:
 	play("enemy_death")
 
 
@@ -165,15 +159,3 @@ func _on_rocket_exploded(_position: Vector3) -> void:
 
 func _on_weapon_changed(_weapon_name: String, _weapon_index: int) -> void:
 	play("weapon_switch")
-
-
-func _on_wave_started(_wave_index: int, _wave_size: int) -> void:
-	play("wave_start")
-
-
-func _on_boss_spawned(_boss_id: int, _position: Vector3) -> void:
-	play("boss_spawn")
-
-
-func _on_boss_killed(_boss_id: int) -> void:
-	play("boss_death")

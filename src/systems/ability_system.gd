@@ -177,7 +177,6 @@ func _find_chain_targets(origin: Vector2, direction: Vector2, max_chains: int, m
 		# Gather all potential targets
 		var candidates: Array[Node] = []
 		candidates.append_array(get_tree().get_nodes_in_group("enemies"))
-		candidates.append_array(get_tree().get_nodes_in_group("boss"))
 
 		for candidate in candidates:
 			if not candidate is Node2D or not is_instance_valid(candidate):

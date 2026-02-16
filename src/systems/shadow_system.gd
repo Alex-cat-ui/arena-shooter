@@ -63,9 +63,6 @@ func _draw() -> void:
 				continue
 
 			var radius := _enemy_radius * shadow_mult
-			# Boss has larger shadow
-			if child.is_in_group("boss"):
-				radius = 40.0 * shadow_mult
 
 			draw_circle(child.position + Vector2(1, 2), radius, shadow_color)
 

@@ -34,29 +34,8 @@ enum DirectionRenderMode {
 ## ============================================================================
 @export_group("Spawn")
 
-## Delay before first wave starts (seconds)
+## Delay before gameplay starts (seconds)
 @export_range(0.0, 10.0) var start_delay_sec: float = 1.5
-
-## Delay between waves (seconds)
-@export_range(0.0, 10.0) var inter_wave_delay_sec: float = 1.0
-
-## Base enemies per wave (WaveIndex=1)
-@export_range(1, 100) var enemies_per_wave: int = 12
-
-## Additional enemies per wave after first
-@export_range(0, 20) var wave_size_growth: int = 3
-
-## Time between spawn ticks (seconds)
-@export_range(0.1, 5.0) var spawn_tick_sec: float = 0.6
-
-## Enemies spawned per tick
-@export_range(1, 20) var spawn_batch_size: int = 6
-
-## Threshold for wave advance (0.0-1.0)
-@export_range(0.0, 1.0) var wave_advance_threshold: float = 0.2
-
-## Number of waves per level (Phase 0 addition for LEVEL_SETUP)
-@export_range(1, 200) var waves_per_level: int = 3
 
 ## ============================================================================
 ## SECTION: Combat
@@ -68,9 +47,6 @@ enum DirectionRenderMode {
 
 ## Global i-frame duration for contact damage (seconds)
 @export_range(0.1, 5.0) var contact_iframes_sec: float = 0.7
-
-## Boss contact damage i-frame duration (seconds)
-@export_range(0.1, 10.0) var boss_contact_iframes_sec: float = 3.0
 
 ## ============================================================================
 ## SECTION: Audio
@@ -160,53 +136,120 @@ var weapon_stats: Dictionary = {
 @export_range(0.0, 1.0) var rocket_shake_duration: float = 0.15
 
 ## ============================================================================
-## SECTION: Katana / Melee (Phase 4 - Patch 0.2)
+## SECTION: AI / Combat Balance (Data-Driven)
 ## ============================================================================
-@export_group("Katana")
+@export_group("AI Combat Balance")
 
-## Master toggle for katana system
-@export var katana_enabled: bool = true
+const DEFAULT_ENEMY_STATS := {
+	"zombie": {"hp": 100, "damage": 10, "speed": 2.0},
+	"fast": {"hp": 100, "damage": 7, "speed": 4.0},
+	"tank": {"hp": 100, "damage": 15, "speed": 1.5},
+	"swarm": {"hp": 100, "damage": 5, "speed": 3.0},
+}
 
-## Input buffer window for melee requests (seconds)
-@export_range(0.0, 0.5) var melee_input_buffer_sec: float = 0.12
+const DEFAULT_PROJECTILE_TTL := {
+	"bullet": 2.0,
+	"pellet": 2.0,
+	"plasma": 2.0,
+	"rocket": 3.0,
+	"piercing_bullet": 2.0,
+}
 
-## ---------- Light Slash ----------
-@export_range(0.0, 1.0) var katana_light_windup: float = 0.12
-@export_range(0.0, 1.0) var katana_light_active: float = 0.08
-@export_range(0.0, 1.0) var katana_light_recovery: float = 0.22
-@export var katana_light_damage: int = 50
-@export_range(1, 20) var katana_light_cleave_max: int = 3
-@export_range(10.0, 200.0) var katana_light_range_px: float = 55.0
-@export_range(10.0, 360.0) var katana_light_arc_deg: float = 120.0
-@export_range(0.0, 2000.0) var katana_light_knockback: float = 420.0
-@export_range(0.0, 2.0) var katana_light_stagger_sec: float = 0.15
-@export_range(0.0, 0.5) var katana_light_hitstop_sec: float = 0.07
+const DEFAULT_AI_BALANCE := {
+	"enemy_vision": {
+		"fov_deg": 180.0,
+		"max_distance_px": 1500.0,
+		"fire_attack_range_max_px": 600.0,
+		"fire_spawn_offset_px": 20.0,
+		"fire_ray_range_px": 2000.0,
+	},
+	"pursuit": {
+		"attack_range_max_px": 600.0,
+		"attack_range_pref_min_px": 500.0,
+		"last_seen_reached_px": 20.0,
+		"return_target_reached_px": 20.0,
+		"search_min_sec": 4.0,
+		"search_max_sec": 7.0,
+		"search_sweep_rad": 0.9,
+		"search_sweep_speed": 2.4,
+		"path_repath_interval_sec": 0.35,
+		"turn_speed_rad": 6.0,
+		"accel_time_sec": 1.0 / 3.0,
+		"decel_time_sec": 1.0 / 3.0,
+		"retreat_distance_px": 140.0,
+		"waypoint_reached_px": 12.0,
+	},
+	"utility": {
+		"decision_interval_sec": 0.25,
+		"min_action_hold_sec": 0.6,
+		"hold_range_min_px": 390.0,
+		"hold_range_max_px": 610.0,
+		"retreat_hp_ratio": 0.25,
+		"investigate_max_last_seen_age": 3.5,
+		"slot_reposition_threshold_px": 40.0,
+		"intent_target_delta_px": 8.0,
+	},
+	"alert": {
+		"suspicious_ttl_sec": 6.0,
+		"alert_ttl_sec": 8.0,
+		"combat_ttl_sec": 10.0,
+		"visibility_decay_sec": 2.0,
+	},
+	"squad": {
+		"rebuild_interval_sec": 0.35,
+		"slot_reservation_ttl_sec": 1.1,
+		"pressure_radius_px": 380.0,
+		"hold_radius_px": 520.0,
+		"flank_radius_px": 640.0,
+		"pressure_slot_count": 6,
+		"hold_slot_count": 8,
+		"flank_slot_count": 8,
+		"invalid_path_score_penalty": 100000.0,
+		"slot_path_tail_tolerance_px": 24.0,
+	},
+	"runtime_budget": {
+		"frame_budget_ms": 1.2,
+		"enemy_ai_quota": 6,
+		"squad_rebuild_quota": 1,
+		"nav_tasks_quota": 2,
+	},
+	"patrol": {
+		"point_reached_px": 14.0,
+		"speed_scale": 0.82,
+		"route_points_min": 3,
+		"route_points_max": 6,
+		"route_rebuild_min_sec": 7.0,
+		"route_rebuild_max_sec": 12.0,
+		"pause_min_sec": 0.30,
+		"pause_max_sec": 1.15,
+		"look_chance": 0.45,
+		"look_min_sec": 0.45,
+		"look_max_sec": 1.25,
+		"look_sweep_rad": 0.62,
+		"look_sweep_speed": 2.8,
+		"route_dedup_min_dist_px": 42.0,
+		"fallback_step_px": 24.0,
+	},
+	"spawner": {
+		"enemy_type": "zombie",
+		"edge_padding_px": 24.0,
+		"safe_soft_padding_px": 8.0,
+		"min_safe_rect_size_px": 6.0,
+		"min_enemy_spacing_px": 100.0,
+		"sample_attempts_per_enemy": 140,
+		"grid_search_step_px": 22.0,
+		"room_quota_by_size": {"LARGE": 3, "MEDIUM": 2, "SMALL": 1},
+	},
+}
 
-## ---------- Heavy Slash ----------
-@export_range(0.0, 1.0) var katana_heavy_windup: float = 0.24
-@export_range(0.0, 1.0) var katana_heavy_active: float = 0.10
-@export_range(0.0, 1.0) var katana_heavy_recovery: float = 0.38
-@export var katana_heavy_damage: int = 90
-@export_range(1, 20) var katana_heavy_cleave_max: int = 5
-@export_range(10.0, 200.0) var katana_heavy_range_px: float = 65.0
-@export_range(10.0, 360.0) var katana_heavy_arc_deg: float = 140.0
-@export_range(0.0, 2000.0) var katana_heavy_knockback: float = 680.0
-@export_range(0.0, 2.0) var katana_heavy_stagger_sec: float = 0.28
-@export_range(0.0, 0.5) var katana_heavy_hitstop_sec: float = 0.10
+## Enemy base stats by type (used by Enemy.initialize).
+var enemy_stats: Dictionary = DEFAULT_ENEMY_STATS.duplicate(true)
 
-## ---------- Dash Slash ----------
-@export_range(0.0, 1.0) var katana_dash_duration_sec: float = 0.15
-@export_range(10.0, 500.0) var katana_dash_distance_px: float = 110.0
-@export_range(0.0, 1.0) var katana_dash_iframes_sec: float = 0.12
-@export_range(0.0, 1.0) var katana_dash_active_sec: float = 0.08
-@export_range(0.0, 1.0) var katana_dash_recovery_sec: float = 0.25
-@export_range(0.0, 10.0) var katana_dash_cooldown_sec: float = 1.5
-@export var katana_dash_damage: int = 60
-@export_range(10.0, 200.0) var katana_dash_range_px: float = 60.0
-@export_range(10.0, 360.0) var katana_dash_arc_deg: float = 120.0
-@export_range(0.0, 2000.0) var katana_dash_knockback: float = 520.0
-@export_range(0.0, 2.0) var katana_dash_stagger_sec: float = 0.18
-@export_range(0.0, 0.5) var katana_dash_hitstop_sec: float = 0.07
+## Projectile TTL (seconds) by projectile type (used by Projectile).
+var projectile_ttl: Dictionary = DEFAULT_PROJECTILE_TTL.duplicate(true)
+
+## Central AI/combat tuning values consumed by enemy + tactical systems.
+var ai_balance: Dictionary = DEFAULT_AI_BALANCE.duplicate(true)
 
 ## ============================================================================
 ## SECTION: Visual Polish (Patch 0.2 Phase 2)
@@ -229,24 +272,6 @@ var weapon_stats: Dictionary = {
 @export_range(5.0, 100.0) var footprint_blood_detect_radius: float = 25.0
 @export_range(-180.0, 180.0) var footprint_rotation_offset_deg: float = 90.0
 @export_range(1, 30) var boots_blood_max_prints: int = 8
-
-## ---------- Melee Arc Visuals ----------
-@export_range(5.0, 60.0) var melee_arc_light_radius: float = 26.0
-@export_range(10.0, 180.0) var melee_arc_light_arc_deg: float = 80.0
-@export_range(1.0, 8.0) var melee_arc_light_thickness: float = 2.0
-@export_range(0.01, 1.0) var melee_arc_light_duration: float = 0.08
-@export_range(0.0, 1.0) var melee_arc_light_alpha: float = 0.6
-
-@export_range(5.0, 80.0) var melee_arc_heavy_radius: float = 30.0
-@export_range(10.0, 220.0) var melee_arc_heavy_arc_deg: float = 110.0
-@export_range(1.0, 8.0) var melee_arc_heavy_thickness: float = 3.0
-@export_range(0.01, 1.0) var melee_arc_heavy_duration: float = 0.12
-@export_range(0.0, 1.0) var melee_arc_heavy_alpha: float = 0.8
-
-@export_range(5.0, 60.0) var melee_arc_dash_length_min: float = 20.0
-@export_range(10.0, 60.0) var melee_arc_dash_length_max: float = 28.0
-@export_range(1, 6) var melee_arc_dash_afterimages: int = 3
-@export_range(0.0, 1.0) var melee_arc_dash_alpha: float = 0.6
 
 ## ---------- Shadows ----------
 @export_range(0.5, 3.0) var shadow_player_radius_mult: float = 1.2
@@ -287,9 +312,7 @@ var weapon_stats: Dictionary = {
 
 @export var procedural_layout_enabled: bool = true
 ## Runtime level generation always uses ProceduralLayoutV2.
-@export var waves_enabled: bool = false
 @export var spawn_enemies_enabled: bool = false
-@export var spawn_boss_enabled: bool = false
 
 @export var layout_seed: int = 1337
 
@@ -370,18 +393,10 @@ func reset_to_defaults() -> void:
 
 	# Spawn
 	start_delay_sec = 1.5
-	inter_wave_delay_sec = 1.0
-	enemies_per_wave = 12
-	wave_size_growth = 3
-	spawn_tick_sec = 0.6
-	spawn_batch_size = 6
-	wave_advance_threshold = 0.2
-	waves_per_level = 3
 
 	# Combat
 	player_max_hp = 100
 	contact_iframes_sec = 0.7
-	boss_contact_iframes_sec = 3.0
 
 	# Audio
 	music_volume = 0.7
@@ -404,41 +419,10 @@ func reset_to_defaults() -> void:
 	rocket_shake_amplitude = 3.0
 	rocket_shake_duration = 0.15
 
-	# Katana
-	katana_enabled = true
-	melee_input_buffer_sec = 0.12
-	katana_light_windup = 0.12
-	katana_light_active = 0.08
-	katana_light_recovery = 0.22
-	katana_light_damage = 50
-	katana_light_cleave_max = 3
-	katana_light_range_px = 55.0
-	katana_light_arc_deg = 120.0
-	katana_light_knockback = 420.0
-	katana_light_stagger_sec = 0.15
-	katana_light_hitstop_sec = 0.07
-	katana_heavy_windup = 0.24
-	katana_heavy_active = 0.10
-	katana_heavy_recovery = 0.38
-	katana_heavy_damage = 90
-	katana_heavy_cleave_max = 5
-	katana_heavy_range_px = 65.0
-	katana_heavy_arc_deg = 140.0
-	katana_heavy_knockback = 680.0
-	katana_heavy_stagger_sec = 0.28
-	katana_heavy_hitstop_sec = 0.10
-	katana_dash_duration_sec = 0.15
-	katana_dash_distance_px = 110.0
-	katana_dash_iframes_sec = 0.12
-	katana_dash_active_sec = 0.08
-	katana_dash_recovery_sec = 0.25
-	katana_dash_cooldown_sec = 1.5
-	katana_dash_damage = 60
-	katana_dash_range_px = 60.0
-	katana_dash_arc_deg = 120.0
-	katana_dash_knockback = 520.0
-	katana_dash_stagger_sec = 0.18
-	katana_dash_hitstop_sec = 0.07
+	# AI/combat balance
+	enemy_stats = DEFAULT_ENEMY_STATS.duplicate(true)
+	projectile_ttl = DEFAULT_PROJECTILE_TTL.duplicate(true)
+	ai_balance = DEFAULT_AI_BALANCE.duplicate(true)
 
 	# Visual Polish
 	footprints_enabled = true
@@ -456,20 +440,6 @@ func reset_to_defaults() -> void:
 	footprint_blood_detect_radius = 25.0
 	footprint_rotation_offset_deg = 90.0
 	boots_blood_max_prints = 8
-	melee_arc_light_radius = 26.0
-	melee_arc_light_arc_deg = 80.0
-	melee_arc_light_thickness = 2.0
-	melee_arc_light_duration = 0.08
-	melee_arc_light_alpha = 0.6
-	melee_arc_heavy_radius = 30.0
-	melee_arc_heavy_arc_deg = 110.0
-	melee_arc_heavy_thickness = 3.0
-	melee_arc_heavy_duration = 0.12
-	melee_arc_heavy_alpha = 0.8
-	melee_arc_dash_length_min = 20.0
-	melee_arc_dash_length_max = 28.0
-	melee_arc_dash_afterimages = 3
-	melee_arc_dash_alpha = 0.6
 	shadow_player_radius_mult = 1.2
 	shadow_player_alpha = 0.25
 	shadow_enemy_radius_mult = 1.1
@@ -495,9 +465,7 @@ func reset_to_defaults() -> void:
 
 	# Procedural Layout
 	procedural_layout_enabled = true
-	waves_enabled = false
 	spawn_enemies_enabled = false
-	spawn_boss_enabled = false
 	layout_seed = 1337
 	rooms_count_min = 9
 	rooms_count_max = 15
@@ -557,16 +525,13 @@ func get_snapshot() -> Dictionary:
 		"max_alive_enemies": max_alive_enemies,
 		"god_mode": god_mode,
 		"start_delay_sec": start_delay_sec,
-		"enemies_per_wave": enemies_per_wave,
-		"waves_per_level": waves_per_level,
 		"player_max_hp": player_max_hp,
 		"music_volume": music_volume,
 		"sfx_volume": sfx_volume,
 		"player_speed_tiles": player_speed_tiles,
 		"rocket_shake_amplitude": rocket_shake_amplitude,
 		"rocket_shake_duration": rocket_shake_duration,
-		"katana_enabled": katana_enabled,
-		"katana_light_damage": katana_light_damage,
-		"katana_heavy_damage": katana_heavy_damage,
-		"katana_dash_damage": katana_dash_damage,
+		"enemy_stats": enemy_stats.duplicate(true),
+		"projectile_ttl": projectile_ttl.duplicate(true),
+		"ai_balance": ai_balance.duplicate(true),
 	}

@@ -151,10 +151,10 @@ func _test_combat_reinforcement_max_two_neighbors_and_no_chain() -> void:
 
 	var last_targets := _last_reinforcement_targets.duplicate()
 	last_targets.sort()
-	_t.run_test("COMBAT emits exactly one reinforcement wave", _reinforcement_calls_counter == 1)
+	_t.run_test("COMBAT emits exactly one reinforcement call", _reinforcement_calls_counter == 1)
 	_t.run_test("Reinforcement targets max two rooms", last_targets.size() <= 2)
 	_t.run_test("Reinforcement picks nearest two neighbors with tie-break", last_targets == [12, 13])
-	_t.run_test("reason=reinforcement does not create secondary waves", _reinforcement_calls_counter == 1)
+	_t.run_test("reason=reinforcement does not create secondary fanout", _reinforcement_calls_counter == 1)
 
 	_cleanup_fixture(fixture)
 	await get_tree().process_frame
