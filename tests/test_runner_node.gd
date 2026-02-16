@@ -25,6 +25,7 @@ const ALERT_FLASHLIGHT_DETECTION_TEST_SCENE := "res://tests/test_alert_flashligh
 const STEALTH_ROOM_SMOKE_TEST_SCENE := "res://tests/test_stealth_room_smoke.tscn"
 const STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE := "res://tests/test_stealth_weapon_pipeline_equivalence.tscn"
 const STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE := "res://tests/test_stealth_room_alert_flashlight_integration.tscn"
+const RING_VISIBILITY_POLICY_TEST_SCENE := "res://tests/test_ring_visibility_policy.tscn"
 const SHADOW_ZONE_TEST_SCENE := "res://tests/test_shadow_zone.tscn"
 const LEVEL_RUNTIME_GUARD_TEST_SCENE := "res://tests/test_level_runtime_guard.tscn"
 const LEVEL_INPUT_CONTROLLER_TEST_SCENE := "res://tests/test_level_input_controller.tscn"
@@ -422,6 +423,9 @@ func _run_tests() -> void:
 	_test("Stealth room alert flashlight integration test scene exists", func():
 		return load(STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE) is PackedScene
 	)
+	_test("Ring visibility policy test scene exists", func():
+		return load(RING_VISIBILITY_POLICY_TEST_SCENE) is PackedScene
+	)
 	_test("Shadow zone test scene exists", func():
 		return load(SHADOW_ZONE_TEST_SCENE) is PackedScene
 	)
@@ -445,6 +449,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Stealth room smoke suite", STEALTH_ROOM_SMOKE_TEST_SCENE)
 	await _run_embedded_scene_suite("Stealth weapon pipeline equivalence suite", STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE)
 	await _run_embedded_scene_suite("Stealth room alert flashlight integration suite", STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE)
+	await _run_embedded_scene_suite("Ring visibility policy suite", RING_VISIBILITY_POLICY_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow zone suite", SHADOW_ZONE_TEST_SCENE)
 
 	print("\n--- SECTION 19: Level decomposition controller suites ---")
