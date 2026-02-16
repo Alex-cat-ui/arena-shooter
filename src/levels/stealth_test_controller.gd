@@ -391,14 +391,14 @@ func _set_overlay_visible(visible: bool) -> void:
 func _update_hint_text() -> void:
 	if not _hint_label:
 		return
-	_hint_label.text = "%s\nControls: 1 CALM | 2 ALERT | 3 COMBAT | F7 Enemy Guns | TAB Debug | R Reset\nA1/A2: CALM -> stand in shadow (slow suspicion), then behind box (LOS blocked, no gain).\nA3/A4: ALERT -> step into flashlight cone (fast gain), then behind box (flashlight blocked by LOS).\nA5/A6: break LOS and watch suspicion decay; after COMBAT verify normal escalation/combat flow.\nTuning: shadow %.2f | flash %.0fdeg / %.0fpx / x%.2f | enemy_guns=%s" % [
+	_hint_label.set_text("%s\nControls: 1 CALM | 2 ALERT | 3 COMBAT | F7 Enemy Guns | TAB Debug | R Reset\nA1/A2: CALM -> stand in shadow (slow suspicion), then behind box (LOS blocked, no gain).\nA3/A4: ALERT -> step into flashlight cone (fast gain), then behind box (flashlight blocked by LOS).\nA5/A6: break LOS and watch suspicion decay; after COMBAT verify normal escalation/combat flow.\nTuning: shadow %.2f | flash %.0fdeg / %.0fpx / x%.2f | enemy_guns=%s" % [
 		STEALTH_RUNTIME_MARKER,
 		_shadow_multiplier_default(),
 		_flashlight_angle_deg(),
 		_flashlight_distance_px(),
 		_flashlight_bonus(),
 		("ON" if bool(_test_state.get("weapons_enabled", false)) else "OFF"),
-	]
+	])
 
 
 func _refresh_debug_label(force: bool) -> void:
@@ -455,7 +455,7 @@ func _refresh_debug_label(force: bool) -> void:
 			weapons_enabled = bool(snapshot.get("weapons_enabled", false))
 
 	var visibility_mul := RuntimeState.player_visibility_mul if RuntimeState else 1.0
-	_debug_label.text = "state=%s | room_alert=%s | intent=%s | LOS=%s | suspicion=%.3f | vis=%.3f | dist=%.1f | last_seen_age=%.2f | weapons=%s\nbreakdown: distance_factor=%.3f | shadow_mul=%.3f | player_visibility_mul=%.3f | flashlight_active=%s | in_cone=%s | los_to_player=%s | flashlight_hit=%s | flashlight_bonus_raw=%.2f | effective_visibility_pre_clamp=%.3f | effective_visibility_post_clamp=%.3f | facing_used_for_flashlight=%s | facing_after_move=%s | confirmed=%s" % [
+	_debug_label.set_text("state=%s | room_alert=%s | intent=%s | LOS=%s | suspicion=%.3f | vis=%.3f | dist=%.1f | last_seen_age=%.2f | weapons=%s\nbreakdown: distance_factor=%.3f | shadow_mul=%.3f | player_visibility_mul=%.3f | flashlight_active=%s | in_cone=%s | los_to_player=%s | flashlight_hit=%s | flashlight_bonus_raw=%.2f | effective_visibility_pre_clamp=%.3f | effective_visibility_post_clamp=%.3f | facing_used_for_flashlight=%s | facing_after_move=%s | confirmed=%s" % [
 		enemy_state,
 		enemy_alert,
 		_intent_name(intent_type),
@@ -478,7 +478,7 @@ func _refresh_debug_label(force: bool) -> void:
 		_vec2_compact(facing_used_for_flashlight),
 		_vec2_compact(facing_after_move),
 		str(confirmed),
-	]
+	])
 
 
 func _enemy_weapons_enabled_on_start() -> bool:

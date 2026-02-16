@@ -23,6 +23,11 @@ const ENEMY_SUSPICION_TEST_SCENE := "res://tests/test_enemy_suspicion.tscn"
 const FLASHLIGHT_CONE_TEST_SCENE := "res://tests/test_flashlight_cone.tscn"
 const ALERT_FLASHLIGHT_DETECTION_TEST_SCENE := "res://tests/test_alert_flashlight_detection.tscn"
 const STEALTH_ROOM_SMOKE_TEST_SCENE := "res://tests/test_stealth_room_smoke.tscn"
+const FORCE_STATE_PATH_TEST_SCENE := "res://tests/test_force_state_path.tscn"
+const WEAPONS_TOGGLE_GATE_TEST_SCENE := "res://tests/test_weapons_toggle_gate_enemy_fire.tscn"
+const PLAYER_SCENE_IDENTITY_TEST_SCENE := "res://tests/test_player_scene_identity.tscn"
+const COMBAT_OBSTACLE_CHASE_BASIC_TEST_SCENE := "res://tests/test_combat_obstacle_chase_basic.tscn"
+const DEBUGUI_SINGLE_OWNER_TEST_SCENE := "res://tests/test_debugui_single_owner.tscn"
 const STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE := "res://tests/test_stealth_weapon_pipeline_equivalence.tscn"
 const STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE := "res://tests/test_stealth_room_alert_flashlight_integration.tscn"
 const RING_VISIBILITY_POLICY_TEST_SCENE := "res://tests/test_ring_visibility_policy.tscn"
@@ -417,6 +422,21 @@ func _run_tests() -> void:
 	_test("Stealth room smoke test scene exists", func():
 		return load(STEALTH_ROOM_SMOKE_TEST_SCENE) is PackedScene
 	)
+	_test("Force state path test scene exists", func():
+		return load(FORCE_STATE_PATH_TEST_SCENE) is PackedScene
+	)
+	_test("Weapons toggle gate test scene exists", func():
+		return load(WEAPONS_TOGGLE_GATE_TEST_SCENE) is PackedScene
+	)
+	_test("Player scene identity test scene exists", func():
+		return load(PLAYER_SCENE_IDENTITY_TEST_SCENE) is PackedScene
+	)
+	_test("Combat obstacle chase basic test scene exists", func():
+		return load(COMBAT_OBSTACLE_CHASE_BASIC_TEST_SCENE) is PackedScene
+	)
+	_test("DebugUI single owner test scene exists", func():
+		return load(DEBUGUI_SINGLE_OWNER_TEST_SCENE) is PackedScene
+	)
 	_test("Stealth weapon pipeline equivalence test scene exists", func():
 		return load(STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE) is PackedScene
 	)
@@ -447,6 +467,11 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Flashlight cone suite", FLASHLIGHT_CONE_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert flashlight detection suite", ALERT_FLASHLIGHT_DETECTION_TEST_SCENE)
 	await _run_embedded_scene_suite("Stealth room smoke suite", STEALTH_ROOM_SMOKE_TEST_SCENE)
+	await _run_embedded_scene_suite("Force state path suite", FORCE_STATE_PATH_TEST_SCENE)
+	await _run_embedded_scene_suite("Weapons toggle gate suite", WEAPONS_TOGGLE_GATE_TEST_SCENE)
+	await _run_embedded_scene_suite("Player scene identity suite", PLAYER_SCENE_IDENTITY_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat obstacle chase basic suite", COMBAT_OBSTACLE_CHASE_BASIC_TEST_SCENE)
+	await _run_embedded_scene_suite("DebugUI single owner suite", DEBUGUI_SINGLE_OWNER_TEST_SCENE)
 	await _run_embedded_scene_suite("Stealth weapon pipeline equivalence suite", STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE)
 	await _run_embedded_scene_suite("Stealth room alert flashlight integration suite", STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE)
 	await _run_embedded_scene_suite("Ring visibility policy suite", RING_VISIBILITY_POLICY_TEST_SCENE)
