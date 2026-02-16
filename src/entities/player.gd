@@ -26,6 +26,7 @@ var projectile_system: Node = null
 
 ## Reference to AbilitySystem (set by level, Phase 3)
 var ability_system: Node = null
+var _weapons_enabled_for_test: bool = true
 
 const PLAYER_ACCEL_TIME_SEC := 1.0 / 3.0
 const PLAYER_DECEL_TIME_SEC := 1.0 / 3.0
@@ -132,6 +133,8 @@ func _handle_shooting(delta: float) -> void:
 	if ability_system:
 		if ability_system.has_method("tick_cooldown"):
 			ability_system.tick_cooldown(delta)
+		if not _weapons_enabled_for_test:
+			return
 		if Input.is_action_pressed("shoot"):
 			var aim_dir := Vector2.ZERO
 			if RuntimeState:
@@ -140,6 +143,9 @@ func _handle_shooting(delta: float) -> void:
 				aim_dir = (get_global_mouse_position() - position).normalized()
 			var spawn_pos := position + aim_dir * 20
 			ability_system.try_fire(spawn_pos, aim_dir, 0.0)
+		return
+
+	if not _weapons_enabled_for_test:
 		return
 
 	# Legacy fallback (no ability system)
@@ -196,3 +202,11 @@ func take_damage(_amount: int) -> void:
 		sprite.modulate = Color.RED
 		var tween := create_tween()
 		tween.tween_property(sprite, "modulate", Color.WHITE, 0.15)
+
+
+func set_weapons_enabled_for_test(enabled: bool) -> void:
+	_weapons_enabled_for_test = bool(enabled)
+
+
+func is_weapons_enabled_for_test() -> bool:
+	return _weapons_enabled_for_test

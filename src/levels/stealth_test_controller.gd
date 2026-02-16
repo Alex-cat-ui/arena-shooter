@@ -26,6 +26,7 @@ var _enemy: Enemy = null
 var _enemy_id_counter: int = 9300
 var _test_config: Dictionary = {}
 var _suspicion_profile: Dictionary = {}
+var _test_state: Dictionary = {"weapons_enabled": false}
 
 var _room_nav_system: Node = null
 var _enemy_alert_system: Node = null
@@ -63,6 +64,7 @@ func _ready() -> void:
 
 	_test_config = STEALTH_TEST_CONFIG_SCRIPT.values()
 	_suspicion_profile = STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile()
+	_test_state["weapons_enabled"] = _enemy_weapons_enabled_on_start()
 	_layout_stub = STEALTH_TEST_LAYOUT_SCRIPT.new(room_rect)
 	_ensure_player_ready()
 	_ensure_combat_pipeline_ready()
@@ -105,6 +107,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_overlay_visible(not debug_overlay_enabled)
 		KEY_R:
 			_reset_positions()
+		KEY_F7:
+			_toggle_weapons_enabled()
 		_:
 			return
 	_refresh_debug_label(true)
@@ -147,6 +151,7 @@ func debug_get_combat_pipeline_summary() -> Dictionary:
 		"ability_projectile_wired": ability_has_projectile,
 		"ability_combat_wired": ability_has_combat,
 		"enemy_weapons_enabled_on_start": _enemy_weapons_enabled_on_start(),
+		"test_weapons_enabled": bool(_test_state.get("weapons_enabled", false)),
 	}
 
 
@@ -259,7 +264,7 @@ func _spawn_or_reset_enemy() -> void:
 		_enemy.set_flashlight_hit_for_detection(false)
 	if _enemy.has_method("set_stealth_test_debug_logging"):
 		_enemy.set_stealth_test_debug_logging(true)
-	_enemy.weapons_enabled = _enemy_weapons_enabled_on_start()
+	_apply_test_weapons_enabled()
 	_enemy.set_runtime_budget_scheduler_enabled(false)
 	if _enemy.has_method("set_physics_process"):
 		_enemy.set_physics_process(true)
@@ -276,6 +281,7 @@ func _ensure_player_ready() -> void:
 		_player.collision_mask |= 1
 	if RuntimeState:
 		RuntimeState.player_pos = Vector3(_player.global_position.x, _player.global_position.y, 0.0)
+	_apply_test_weapons_enabled()
 
 
 func _ensure_combat_pipeline_ready() -> void:
@@ -339,7 +345,7 @@ func _reset_positions() -> void:
 		_enemy.velocity = Vector2.ZERO
 		if _enemy.has_method("set_flashlight_hit_for_detection"):
 			_enemy.set_flashlight_hit_for_detection(false)
-		_enemy.weapons_enabled = _enemy_weapons_enabled_on_start()
+		_apply_test_weapons_enabled()
 	_force_enemy_calm()
 	if RuntimeState:
 		RuntimeState.player_visibility_mul = 1.0
@@ -385,12 +391,13 @@ func _set_overlay_visible(visible: bool) -> void:
 func _update_hint_text() -> void:
 	if not _hint_label:
 		return
-	_hint_label.text = "%s\nControls: 1 CALM | 2 ALERT | 3 COMBAT | TAB Debug | R Reset\nA1/A2: CALM -> stand in shadow (slow suspicion), then behind box (LOS blocked, no gain).\nA3/A4: ALERT -> step into flashlight cone (fast gain), then behind box (flashlight blocked by LOS).\nA5/A6: break LOS and watch suspicion decay; after COMBAT verify normal escalation/combat flow.\nTuning: shadow %.2f | flash %.0fdeg / %.0fpx / x%.2f" % [
+	_hint_label.text = "%s\nControls: 1 CALM | 2 ALERT | 3 COMBAT | F7 Enemy Guns | TAB Debug | R Reset\nA1/A2: CALM -> stand in shadow (slow suspicion), then behind box (LOS blocked, no gain).\nA3/A4: ALERT -> step into flashlight cone (fast gain), then behind box (flashlight blocked by LOS).\nA5/A6: break LOS and watch suspicion decay; after COMBAT verify normal escalation/combat flow.\nTuning: shadow %.2f | flash %.0fdeg / %.0fpx / x%.2f | enemy_guns=%s" % [
 		STEALTH_RUNTIME_MARKER,
 		_shadow_multiplier_default(),
 		_flashlight_angle_deg(),
 		_flashlight_distance_px(),
 		_flashlight_bonus(),
+		("ON" if bool(_test_state.get("weapons_enabled", false)) else "OFF"),
 	]
 
 
@@ -476,6 +483,29 @@ func _refresh_debug_label(force: bool) -> void:
 
 func _enemy_weapons_enabled_on_start() -> bool:
 	return bool(_test_config.get("enemy_weapons_enabled_on_start", false))
+
+
+func _toggle_weapons_enabled() -> void:
+	var current := bool(_test_state.get("weapons_enabled", false))
+	_set_test_weapons_enabled(not current)
+
+
+func _set_test_weapons_enabled(enabled: bool) -> void:
+	_test_state["weapons_enabled"] = bool(enabled)
+	_apply_test_weapons_enabled()
+	_update_hint_text()
+
+
+func _apply_test_weapons_enabled() -> void:
+	var enabled := bool(_test_state.get("weapons_enabled", false))
+	if _enemy and is_instance_valid(_enemy):
+		if _enemy.has_method("set_weapons_enabled_for_test"):
+			_enemy.set_weapons_enabled_for_test(enabled)
+		else:
+			_enemy.weapons_enabled = enabled
+	if _player and is_instance_valid(_player):
+		if _player.has_method("set_weapons_enabled_for_test"):
+			_player.set_weapons_enabled_for_test(enabled)
 
 
 func _intent_name(intent_type: int) -> String:

@@ -58,8 +58,13 @@ var max_hp: int = 30
 ## Contact damage (kept for compatibility)
 var contact_damage: int = 10
 
-## Runtime toggle from LevelMVP (F7).
-var weapons_enabled: bool = false
+## Runtime toggle from LevelMVP/F7 and stealth test room.
+var _weapons_enabled_internal: bool = false
+var weapons_enabled: bool:
+	get:
+		return _weapons_enabled_internal
+	set(value):
+		_set_weapons_enabled_internal(bool(value))
 
 ## Movement speed in tiles/sec
 var speed_tiles: float = 2.0
@@ -401,7 +406,7 @@ func runtime_budget_tick(delta: float) -> void:
 	var should_request_fire := bool(exec_result.get("request_fire", false))
 	var should_fire_by_intent := should_request_fire and _should_fire_player_target(player_visible, player_pos)
 	var should_fire_by_test_fallback := _suspicion_test_profile_enabled and _is_combat_awareness_active() and _should_fire_player_target(player_visible, player_pos)
-	if weapons_enabled and (should_fire_by_intent or should_fire_by_test_fallback):
+	if _weapons_enabled_internal and (should_fire_by_intent or should_fire_by_test_fallback):
 		_try_fire_at_player(player_pos)
 
 	_debug_last_has_los = player_visible
@@ -419,7 +424,7 @@ func runtime_budget_tick(delta: float) -> void:
 	_debug_last_intent_type = int(intent.get("type", -1))
 	_debug_last_intent_target = intent.get("target", Vector2.ZERO) as Vector2
 	_debug_last_last_seen_age = _last_seen_age
-	_debug_last_weapons_enabled = weapons_enabled
+	_debug_last_weapons_enabled = _weapons_enabled_internal
 	_debug_last_room_alert_level = _current_alert_level
 	_debug_last_facing_used_for_flashlight = flashlight_facing_used
 	_debug_last_facing_after_move = facing_after_move
@@ -501,6 +506,14 @@ func debug_force_awareness_state(target_state: String) -> void:
 			push_warning("[Enemy] debug_force_awareness_state: unknown target_state='%s'" % normalized_state)
 
 
+func set_weapons_enabled_for_test(enabled: bool) -> void:
+	_set_weapons_enabled_internal(enabled)
+
+
+func is_weapons_enabled_for_test() -> bool:
+	return _weapons_enabled_internal
+
+
 func _connect_event_bus_signals() -> void:
 	if not EventBus:
 		return
@@ -541,6 +554,11 @@ func _set_awareness_meta_from_system() -> void:
 	var state_name := String(_awareness.get_state_name())
 	set_meta("awareness_state", state_name)
 	_debug_last_state_name = state_name
+
+
+func _set_weapons_enabled_internal(enabled: bool) -> void:
+	_weapons_enabled_internal = enabled
+	_debug_last_weapons_enabled = _weapons_enabled_internal
 
 
 func _apply_alert_level(level: int) -> void:
@@ -744,7 +762,7 @@ func get_debug_detection_snapshot() -> Dictionary:
 		"flashlight_calc_tick_id": _debug_last_flashlight_calc_tick_id,
 		"last_seen_age": _debug_last_last_seen_age,
 		"room_alert_level": _debug_last_room_alert_level,
-		"weapons_enabled": _debug_last_weapons_enabled,
+		"weapons_enabled": _weapons_enabled_internal,
 		"suspicion_ring_progress": _suspicion_ring.call("get_progress") if _suspicion_ring and _suspicion_ring.has_method("get_progress") else suspicion,
 	}
 
