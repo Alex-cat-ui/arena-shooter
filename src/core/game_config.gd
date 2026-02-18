@@ -120,13 +120,13 @@ const DEFAULT_PROJECTILE_TTL := {
 }
 
 const DEFAULT_AI_BALANCE := {
-	"enemy_vision": {
-		"fov_deg": 180.0,
-		"max_distance_px": 1500.0,
-		"fire_attack_range_max_px": 600.0,
-		"fire_spawn_offset_px": 20.0,
-		"fire_ray_range_px": 2000.0,
-	},
+		"enemy_vision": {
+			"fov_deg": 120.0,
+			"max_distance_px": 600.0,
+			"fire_attack_range_max_px": 600.0,
+			"fire_spawn_offset_px": 20.0,
+			"fire_ray_range_px": 2000.0,
+		},
 	"pursuit": {
 		"attack_range_max_px": 600.0,
 		"attack_range_pref_min_px": 500.0,

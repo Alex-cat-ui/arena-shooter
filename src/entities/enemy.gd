@@ -15,8 +15,8 @@ const FLASHLIGHT_CONE_SCRIPT := preload("res://src/systems/stealth/flashlight_co
 const SUSPICION_RING_PRESENTER_SCRIPT := preload("res://src/systems/stealth/suspicion_ring_presenter.gd")
 const WEAPON_SHOTGUN := "shotgun"
 
-const DEFAULT_SIGHT_FOV_DEG := 180.0
-const DEFAULT_SIGHT_MAX_DISTANCE_PX := 1500.0
+const DEFAULT_SIGHT_FOV_DEG := 120.0
+const DEFAULT_SIGHT_MAX_DISTANCE_PX := 600.0
 const DEFAULT_FIRE_ATTACK_RANGE_MAX_PX := 600.0
 const DEFAULT_FIRE_SPAWN_OFFSET_PX := 20.0
 const DEFAULT_FIRE_RAY_RANGE_PX := 2000.0

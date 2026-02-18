@@ -13,6 +13,7 @@ const MAIN_MENU_SCENE_PATH := "res://scenes/ui/main_menu.tscn"
 const TEST_LEVEL_SCENE_PATH := "res://src/levels/stealth_3zone_test.tscn"
 
 const WALL_THICKNESS := 16.0
+const PROP_SIZE := Vector2(100.0, 100.0)
 
 const ROOM_A1 := Rect2(0.0, 0.0, 640.0, 480.0)
 const ROOM_A2 := Rect2(640.0, 0.0, 640.0, 480.0)
@@ -53,6 +54,7 @@ const FLASHLIGHT_BONUS := 2.5
 const DOOR_INTERACT_RADIUS_PX := 20.0
 const DOOR_KICK_RADIUS_PX := 40.0
 const GEOMETRY_COLOR := Color(0.24, 0.26, 0.30, 1.0)
+const PROP_COLOR := Color(0.72, 0.58, 0.38, 1.0)
 const FLOOR_COLORS := [
 	Color(0.11, 0.12, 0.15, 1.0),
 	Color(0.12, 0.13, 0.16, 1.0),
@@ -70,8 +72,15 @@ class ThreeZoneLayout:
 	var _door_map: Dictionary = {}
 	var _void_ids: Array = []
 	var player_room_id: int = 0
+	var _navigation_obstacle_rects: Array[Rect2] = []
 
-	func _init(room_rects: Array, door_a1a2: Rect2, choke_ab: Rect2, choke_bc: Rect2) -> void:
+	func _init(
+		room_rects: Array,
+		door_a1a2: Rect2,
+		choke_ab: Rect2,
+		choke_bc: Rect2,
+		navigation_obstacle_rects: Array[Rect2] = []
+	) -> void:
 		rooms = []
 		for room_id in range(room_rects.size()):
 			var rect := room_rects[room_id] as Rect2
@@ -95,6 +104,7 @@ class ThreeZoneLayout:
 		}
 		_void_ids = []
 		player_room_id = 0
+		_navigation_obstacle_rects = navigation_obstacle_rects.duplicate()
 
 	func _room_id_at_point(point: Vector2) -> int:
 		for room_id in range(rooms.size()):
@@ -113,6 +123,9 @@ class ThreeZoneLayout:
 
 	func _door_wall_thickness() -> float:
 		return WALL_THICKNESS
+
+	func _navigation_obstacles() -> Array[Rect2]:
+		return _navigation_obstacle_rects.duplicate()
 
 	func _rect_key(rect: Rect2) -> String:
 		return "%.2f:%.2f:%.2f:%.2f" % [
@@ -135,6 +148,7 @@ var _pause_menu: Control = null
 var _state_overlay: Control = null
 var _main_menu_transition_pending: bool = false
 var _level_restart_pending: bool = false
+var _prop_obstacle_rects: Array[Rect2] = []
 
 @onready var _level_root := get_parent() as Node2D
 @onready var _navigation_root := _level_root.get_node("Navigation") as Node2D
@@ -361,7 +375,8 @@ func _setup_layout_and_systems() -> void:
 		[ROOM_A1, ROOM_A2, ROOM_B, ROOM_C],
 		DOOR_A1A2_OPENING,
 		CHOKE_AB,
-		CHOKE_BC
+		CHOKE_BC,
+		_prop_obstacle_rects
 	)
 	if _door_system:
 		_layout.set_meta("door_system", _door_system)
@@ -529,6 +544,7 @@ func _build_shadows() -> void:
 
 func _build_geometry() -> void:
 	_clear_children(_geometry_root)
+	_prop_obstacle_rects.clear()
 
 	var floor_root := Node2D.new()
 	floor_root.name = "FloorVisual"
@@ -582,6 +598,8 @@ func _build_geometry() -> void:
 		_h_segment(CHOKE_BC.position.x, CHOKE_BC.end.x, CHOKE_BC.end.y),
 	])
 
+	_prop_obstacle_rects = _build_props(_geometry_root)
+
 
 func _build_wall_body(parent: Node, name: String, segments: Array[Rect2]) -> void:
 	var body := StaticBody2D.new()
@@ -608,6 +626,50 @@ func _build_wall_body(parent: Node, name: String, segments: Array[Rect2]) -> voi
 		visual.color = GEOMETRY_COLOR
 		visual.polygon = _rect_polygon(rect.size)
 		body.add_child(visual)
+
+
+func _build_props(parent: Node) -> Array[Rect2]:
+	var props_root := Node2D.new()
+	props_root.name = "Props"
+	parent.add_child(props_root)
+
+	var rects := _shadow_prop_rects()
+	for i in range(rects.size()):
+		var rect := rects[i] as Rect2
+		_build_prop_body(props_root, "ShadowProp_%d" % i, rect)
+	return rects
+
+
+func _build_prop_body(parent: Node, name: String, rect: Rect2) -> void:
+	var body := StaticBody2D.new()
+	body.name = name
+	body.collision_layer = 1
+	body.collision_mask = 1
+	parent.add_child(body)
+
+	var shape_node := CollisionShape2D.new()
+	shape_node.name = "CollisionShape2D"
+	var shape := RectangleShape2D.new()
+	shape.size = rect.size
+	shape_node.shape = shape
+	shape_node.position = rect.get_center()
+	body.add_child(shape_node)
+
+	var visual := Polygon2D.new()
+	visual.name = "PropVisual"
+	visual.position = rect.get_center()
+	visual.color = PROP_COLOR
+	visual.polygon = _rect_polygon(rect.size)
+	body.add_child(visual)
+
+
+func _shadow_prop_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	for shadow_variant in SHADOW_DEFS:
+		var shadow := shadow_variant as Dictionary
+		var center := shadow.get("pos", Vector2.ZERO) as Vector2
+		rects.append(Rect2(center - PROP_SIZE * 0.5, PROP_SIZE))
+	return rects
 
 
 func _add_floor(parent: Node, rect: Rect2, color: Color, name: String) -> void:

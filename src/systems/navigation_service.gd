@@ -15,6 +15,7 @@ var _room_graph: Dictionary = {}      # room_id -> Array[int]
 var _pair_doors: Dictionary = {}      # "a|b" -> Array[Vector2]
 var _rng := RandomNumberGenerator.new()
 const DOOR_NAV_OVERLAP_PX := 16.0
+const NAV_CARVE_EPSILON := 0.5
 var _nav_regions: Array[NavigationRegion2D] = []
 var _room_to_region: Dictionary = {} # room_id -> NavigationRegion2D
 
@@ -138,13 +139,18 @@ func build_from_layout(p_layout, parent: Node2D) -> void:
 					door_overlaps_per_room[room_id] = []
 				door_overlaps_per_room[room_id].append(overlap_rect)
 
+	var nav_obstacles := _extract_navigation_obstacles(layout)
+
 	for i in range(layout.rooms.size()):
 		if i in void_ids:
 			continue
 		var room := layout.rooms[i] as Dictionary
 		var rects := room.get("rects", []) as Array
+		var carved_rects := _subtract_obstacles_from_rects(rects, nav_obstacles)
+		if carved_rects.is_empty():
+			carved_rects = rects
 		var door_overlaps: Array = door_overlaps_per_room.get(i, [])
-		_create_region_for_room(i, rects, door_overlaps, parent)
+		_create_region_for_room(i, carved_rects, door_overlaps, parent)
 
 
 func get_navigation_map_rid() -> RID:
@@ -580,6 +586,96 @@ func _create_region_for_room(room_id: int, rects: Array, door_overlaps: Array, p
 	parent.add_child(region)
 	_nav_regions.append(region)
 	_room_to_region[room_id] = region
+
+
+func _extract_navigation_obstacles(p_layout) -> Array[Rect2]:
+	var obstacles: Array[Rect2] = []
+	if p_layout == null:
+		return obstacles
+	if not (p_layout is Object):
+		return obstacles
+	if not p_layout.has_method("_navigation_obstacles"):
+		return obstacles
+
+	var raw_variant: Variant = p_layout.call("_navigation_obstacles")
+	if not (raw_variant is Array):
+		return obstacles
+
+	for obstacle_variant in (raw_variant as Array):
+		var obstacle := obstacle_variant as Rect2
+		if obstacle.size.x <= NAV_CARVE_EPSILON or obstacle.size.y <= NAV_CARVE_EPSILON:
+			continue
+		obstacles.append(obstacle)
+	return obstacles
+
+
+func _subtract_obstacles_from_rects(rects: Array, obstacles: Array[Rect2]) -> Array:
+	if rects.is_empty() or obstacles.is_empty():
+		return rects.duplicate()
+
+	var carved: Array[Rect2] = []
+	for rect_variant in rects:
+		var source := rect_variant as Rect2
+		if source.size.x <= NAV_CARVE_EPSILON or source.size.y <= NAV_CARVE_EPSILON:
+			continue
+		var fragments: Array[Rect2] = [source]
+		for obstacle in obstacles:
+			var next_fragments: Array[Rect2] = []
+			for fragment_variant in fragments:
+				var fragment := fragment_variant as Rect2
+				next_fragments.append_array(_subtract_rect(fragment, obstacle))
+			fragments = next_fragments
+			if fragments.is_empty():
+				break
+		for fragment in fragments:
+			if fragment.size.x <= NAV_CARVE_EPSILON or fragment.size.y <= NAV_CARVE_EPSILON:
+				continue
+			carved.append(fragment)
+	return carved
+
+
+func _subtract_rect(source: Rect2, obstacle: Rect2) -> Array[Rect2]:
+	var intersection := source.intersection(obstacle)
+	if intersection.size.x <= NAV_CARVE_EPSILON or intersection.size.y <= NAV_CARVE_EPSILON:
+		return [source]
+
+	var out: Array[Rect2] = []
+	var top_h := intersection.position.y - source.position.y
+	if top_h > NAV_CARVE_EPSILON:
+		out.append(Rect2(
+			source.position.x,
+			source.position.y,
+			source.size.x,
+			top_h
+		))
+
+	var bottom_h := source.end.y - intersection.end.y
+	if bottom_h > NAV_CARVE_EPSILON:
+		out.append(Rect2(
+			source.position.x,
+			intersection.end.y,
+			source.size.x,
+			bottom_h
+		))
+
+	var left_w := intersection.position.x - source.position.x
+	if left_w > NAV_CARVE_EPSILON:
+		out.append(Rect2(
+			source.position.x,
+			intersection.position.y,
+			left_w,
+			intersection.size.y
+		))
+
+	var right_w := source.end.x - intersection.end.x
+	if right_w > NAV_CARVE_EPSILON:
+		out.append(Rect2(
+			intersection.end.x,
+			intersection.position.y,
+			right_w,
+			intersection.size.y
+		))
+	return out
 
 
 func _connect_regions_at_door(door_rect: Rect2, p_layout) -> void:
