@@ -2,12 +2,16 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const COMBAT_FIRST_ATTACK_DELAY_MIN_FRAMES := 72 # 1.2s @ 60 FPS
+const COMBAT_FIRST_ATTACK_DELAY_MAX_FRAMES := 132 # 2.2s @ 60 FPS (queue/frame tolerance)
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
 var _shot_count: int = 0
 var _shotgun_shot_count: int = 0
 var _player_damaged_count: int = 0
+var _first_fire_frame: int = -1
+var _damage_amounts: Array[int] = []
 
 
 func _ready() -> void:
@@ -37,6 +41,8 @@ func _test_player_loadout_and_enemy_fire() -> void:
 	_shot_count = 0
 	_shotgun_shot_count = 0
 	_player_damaged_count = 0
+	_first_fire_frame = -1
+	_damage_amounts.clear()
 	if EventBus and EventBus.has_signal("enemy_shot") and not EventBus.enemy_shot.is_connected(_on_enemy_shot):
 		EventBus.enemy_shot.connect(_on_enemy_shot)
 	if EventBus and EventBus.has_signal("player_damaged") and not EventBus.player_damaged.is_connected(_on_player_damaged):
@@ -83,9 +89,14 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		controller.call("_force_enemy_combat")
 	if enemy.has_method("disable_suspicion_test_profile"):
 		enemy.disable_suspicion_test_profile()
+	var armed_delay_sec := float(enemy.get("_combat_first_attack_delay_timer"))
 	_t.run_test(
 		"stealth fire: fallback profile is disabled before firing",
 		not bool(enemy.get("_suspicion_test_profile_enabled"))
+	)
+	_t.run_test(
+		"stealth fire: combat first-attack delay armed in 1.2-2.0s range",
+		armed_delay_sec >= 1.2 and armed_delay_sec <= 2.0
 	)
 
 	# Face enemy toward player (player is to the LEFT at x=-240, enemy at x=260).
@@ -100,9 +111,14 @@ func _test_player_loadout_and_enemy_fire() -> void:
 	var old_squad_system = enemy.squad_system
 	enemy.squad_system = null
 
-	for _i in range(300):
+	var fired_too_early := false
+	for i in range(300):
 		await get_tree().physics_frame
 		await get_tree().process_frame
+		if _first_fire_frame < 0 and float(enemy.get("_shot_cooldown")) > 0.0:
+			_first_fire_frame = i + 1
+		if _first_fire_frame > 0 and _first_fire_frame < COMBAT_FIRST_ATTACK_DELAY_MIN_FRAMES:
+			fired_too_early = true
 		if _shot_count > 0 and _player_damaged_count > 0:
 			break
 
@@ -119,6 +135,19 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		"stealth fire: enemy can fire without fallback profile",
 		_shot_count >= 1 and not bool(enemy.get("_suspicion_test_profile_enabled"))
 	)
+	_t.run_test(
+		"stealth fire: first combat shot occurs after min delay and within expected window",
+		not fired_too_early
+		and _first_fire_frame >= COMBAT_FIRST_ATTACK_DELAY_MIN_FRAMES
+		and _first_fire_frame <= COMBAT_FIRST_ATTACK_DELAY_MAX_FRAMES
+	)
+	var damage_all_one := _damage_amounts.size() >= 1
+	for amount in _damage_amounts:
+		damage_all_one = damage_all_one and amount == 1
+	_t.run_test(
+		"stealth fire: each enemy damage tick is exactly 1 hp",
+		damage_all_one
+	)
 
 	room.queue_free()
 	await get_tree().process_frame
@@ -134,8 +163,9 @@ func _on_enemy_shot(_enemy_id: int, weapon: String, _position: Vector3, _directi
 		_shotgun_shot_count += 1
 
 
-func _on_player_damaged(_amount: int, _new_hp: int, _source: String) -> void:
+func _on_player_damaged(amount: int, _new_hp: int, _source: String) -> void:
 	_player_damaged_count += 1
+	_damage_amounts.append(amount)
 
 
 func _first_member_in_group_under(group_name: String, ancestor: Node) -> Node:

@@ -43,6 +43,7 @@ func run_suite() -> Dictionary:
 		RuntimeState.player_visibility_mul = 1.0
 
 	await _test_enter_exit_changes_visibility_multiplier()
+	await _test_player_starts_inside_shadow_zone_applies_multiplier()
 	_test_runtime_reset_restores_default_visibility()
 	await _test_navigation_service_shadow_walk_rule()
 	await _test_calm_shadow_blocks_spotted_and_los()
@@ -83,6 +84,58 @@ func _test_enter_exit_changes_visibility_multiplier() -> void:
 	player.queue_free()
 	zone.queue_free()
 	await get_tree().process_frame
+
+
+func _test_player_starts_inside_shadow_zone_applies_multiplier() -> void:
+	if RuntimeState:
+		RuntimeState.player_visibility_mul = 1.0
+
+	var world := Node2D.new()
+	add_child(world)
+
+	var player := CharacterBody2D.new()
+	player.add_to_group("player")
+	player.global_position = Vector2(160.0, 120.0)
+	player.collision_layer = 1
+	player.collision_mask = 1
+	var player_shape_node := CollisionShape2D.new()
+	var player_shape := CircleShape2D.new()
+	player_shape.radius = 10.0
+	player_shape_node.shape = player_shape
+	player.add_child(player_shape_node)
+	world.add_child(player)
+
+	var zone := SHADOW_ZONE_SCRIPT.new()
+	zone.position = Vector2(160.0, 120.0)
+	zone.shadow_multiplier = 0.35
+	zone.collision_layer = 0
+	zone.collision_mask = 1
+	var shape_node := CollisionShape2D.new()
+	var shape := RectangleShape2D.new()
+	shape.size = Vector2(160.0, 120.0)
+	shape_node.shape = shape
+	zone.add_child(shape_node)
+	world.add_child(zone)
+
+	var expected_multiplier := 0.35
+	if GameConfig and GameConfig.stealth_canon is Dictionary and bool(GameConfig.stealth_canon.get("shadow_is_binary", true)):
+		expected_multiplier = 0.0
+	var applied := false
+	for _i in range(8):
+		await get_tree().physics_frame
+		await get_tree().process_frame
+		if RuntimeState and is_equal_approx(RuntimeState.player_visibility_mul, expected_multiplier):
+			applied = true
+			break
+	_t.run_test(
+		"player already in shadow on spawn applies visibility multiplier",
+		applied
+	)
+
+	world.queue_free()
+	await get_tree().process_frame
+	if RuntimeState:
+		RuntimeState.player_visibility_mul = 1.0
 
 
 func _test_runtime_reset_restores_default_visibility() -> void:

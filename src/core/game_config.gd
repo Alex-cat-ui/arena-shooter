@@ -315,18 +315,11 @@ var zone_system := {
 @export_range(0.0, 100.0) var door_from_corner_min: float = 56.0
 @export_range(1, 5) var max_doors_per_room: int = 3
 
-## ---------- Door Physics ----------
-@export_range(0.5, 10.0) var door_close_stiffness_idle: float = 2.8
-@export_range(0.1, 5.0) var door_close_stiffness_pushed: float = 0.3
-@export_range(0.5, 8.0) var door_angular_damping: float = 1.6
-@export_range(0.0, 5.0) var door_dry_friction: float = 0.8
-@export_range(5.0, 40.0) var door_max_angular_speed: float = 24.0
-@export_range(0.05, 1.0) var door_limit_bounce: float = 0.15
-@export_range(0.5, 40.0) var door_push_torque_min: float = 4.0
-@export_range(1.0, 60.0) var door_push_torque_max: float = 32.0
-@export_range(50.0, 800.0) var door_push_speed_ref: float = 280.0
-@export_range(0.0, 2.0) var door_reverse_impulse_mult: float = 0.0
-@export var door_debug_draw: bool = false
+## ---------- Door Animation (non-physics, 2-state) ----------
+@export_range(1.0, 179.0) var door_open_angle_deg: float = 90.0
+@export_range(0.01, 2.0) var door_open_duration_sec: float = 0.16
+@export_range(0.01, 2.0) var door_close_duration_sec: float = 0.16
+@export_range(0.0, 2.0) var door_close_clear_confirm_sec: float = 0.45
 @export var door_hinge_notch_enabled: bool = true
 @export_range(2.0, 64.0) var door_hinge_notch_depth_px: float = 16.0
 @export_range(0.2, 1.5) var door_hinge_notch_span_ratio: float = 0.7
@@ -473,17 +466,10 @@ func reset_to_defaults() -> void:
 	door_opening_max = 75.0
 	door_from_corner_min = 56.0
 	max_doors_per_room = 3
-	door_close_stiffness_idle = 2.8
-	door_close_stiffness_pushed = 0.3
-	door_angular_damping = 1.6
-	door_dry_friction = 0.8
-	door_max_angular_speed = 24.0
-	door_limit_bounce = 0.15
-	door_push_torque_min = 4.0
-	door_push_torque_max = 32.0
-	door_push_speed_ref = 280.0
-	door_reverse_impulse_mult = 0.0
-	door_debug_draw = false
+	door_open_angle_deg = 90.0
+	door_open_duration_sec = 0.16
+	door_close_duration_sec = 0.16
+	door_close_clear_confirm_sec = 0.45
 	door_hinge_notch_enabled = true
 	door_hinge_notch_depth_px = 16.0
 	door_hinge_notch_span_ratio = 0.7

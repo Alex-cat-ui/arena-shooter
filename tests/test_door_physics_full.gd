@@ -17,7 +17,7 @@ func _ready() -> void:
 func run_suite() -> Dictionary:
 	print("")
 	print("============================================================")
-	print("DOOR PHYSICS FULL TEST (UPDATED)")
+	print("DOOR CONTROLLER FULL TEST (UPDATED)")
 	print("============================================================")
 
 	await _test_closed_door_ignores_body_contact_open()
@@ -25,7 +25,7 @@ func run_suite() -> Dictionary:
 	await _test_safe_close_with_blocker_and_auto_finish()
 	await _test_door_does_not_push_character()
 
-	_t.summary("DOOR PHYSICS FULL RESULTS")
+	_t.summary("DOOR CONTROLLER FULL RESULTS")
 	return {
 		"ok": _t.quit_code() == 0,
 		"run": _t.tests_run,

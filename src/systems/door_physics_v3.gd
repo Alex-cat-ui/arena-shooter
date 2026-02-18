@@ -1,19 +1,21 @@
 ## door_physics_v3.gd
 ## Deterministic door controller with two animations: open and close.
-## Public API is kept compatible with previous DoorPhysicsV3 usage.
+## Public API stays backward-compatible with existing DoorPhysicsV3 call sites.
 class_name DoorPhysicsV3
 extends Node2D
 
 const DOOR_COLOR := Color(0.92, 0.18, 0.18, 1.0)
 const DOOR_Z_INDEX := 25
-const OPEN_ANGLE_DEG := 90.0
-const OPEN_DURATION_SEC := 0.16
-const CLOSE_DURATION_SEC := 0.16
-const CLOSE_CLEAR_CONFIRM_SEC := 0.45
+const DEFAULT_OPEN_ANGLE_DEG := 90.0
+const DEFAULT_OPEN_DURATION_SEC := 0.16
+const DEFAULT_CLOSE_DURATION_SEC := 0.16
+const DEFAULT_CLOSE_CLEAR_CONFIRM_SEC := 0.45
 const HINGE_INSET_PX := 2.0
 const LEAF_END_CLEARANCE_PX := 4.0
 const SENSOR_PADDING := 20.0
 const SENSOR_THICKNESS := 40.0
+const BLOCKED_REOPEN_MIN_RATIO := 0.25
+const BLOCKED_REOPEN_NUDGE_RATIO := 0.10
 
 enum DoorState {
 	CLOSED,
@@ -90,7 +92,7 @@ func _physics_process(delta: float) -> void:
 			_clear_open_elapsed = 0.0
 		else:
 			_clear_open_elapsed += delta
-			if _clear_open_elapsed >= CLOSE_CLEAR_CONFIRM_SEC:
+			if _clear_open_elapsed >= _close_clear_confirm_sec():
 				_play_close_animation()
 
 
@@ -202,7 +204,7 @@ func _play_open_animation() -> void:
 	_clear_open_elapsed = 0.0
 	_set_collision_enabled(false)
 	_anim_tween = create_tween()
-	_anim_tween.tween_method(_set_open_ratio, _open_ratio, 1.0, OPEN_DURATION_SEC)
+	_anim_tween.tween_method(_set_open_ratio, _open_ratio, 1.0, _open_duration_sec())
 	_anim_tween.finished.connect(func() -> void:
 		if not is_inside_tree():
 			return
@@ -217,7 +219,7 @@ func _play_close_animation() -> void:
 	_state = DoorState.CLOSING
 	_clear_open_elapsed = 0.0
 	_anim_tween = create_tween()
-	_anim_tween.tween_method(_set_open_ratio, _open_ratio, 0.0, CLOSE_DURATION_SEC)
+	_anim_tween.tween_method(_set_open_ratio, _open_ratio, 0.0, _close_duration_sec())
 	_anim_tween.finished.connect(func() -> void:
 		if not is_inside_tree():
 			return
@@ -226,7 +228,7 @@ func _play_close_animation() -> void:
 			_state = DoorState.HOLD
 			close_intent = true
 			_clear_open_elapsed = 0.0
-			_set_open_ratio(minf(1.0, maxf(_open_ratio, 0.25) + 0.10))
+			_set_open_ratio(minf(1.0, maxf(_open_ratio, BLOCKED_REOPEN_MIN_RATIO) + BLOCKED_REOPEN_NUDGE_RATIO))
 			_set_collision_enabled(false)
 			return
 		_set_open_ratio(0.0)
@@ -246,7 +248,7 @@ func _cancel_animation() -> void:
 
 func _set_open_ratio(value: float) -> void:
 	_open_ratio = clampf(value, 0.0, 1.0)
-	_angle_offset = deg_to_rad(OPEN_ANGLE_DEG) * _open_sign * _open_ratio
+	_angle_offset = deg_to_rad(_open_angle_deg()) * _open_sign * _open_ratio
 	_apply_pose()
 	if _open_ratio <= 0.001:
 		_set_collision_enabled(true)
@@ -378,3 +380,31 @@ func _white_pixel() -> ImageTexture:
 	img.set_pixel(0, 0, Color.WHITE)
 	_cached_white_tex = ImageTexture.create_from_image(img)
 	return _cached_white_tex
+
+
+func _open_angle_deg() -> float:
+	if GameConfig and ("door_open_angle_deg" in GameConfig):
+		var value := float(GameConfig.door_open_angle_deg)
+		return clampf(value, 1.0, 179.0)
+	return DEFAULT_OPEN_ANGLE_DEG
+
+
+func _open_duration_sec() -> float:
+	if GameConfig and ("door_open_duration_sec" in GameConfig):
+		var value := float(GameConfig.door_open_duration_sec)
+		return maxf(value, 0.01)
+	return DEFAULT_OPEN_DURATION_SEC
+
+
+func _close_duration_sec() -> float:
+	if GameConfig and ("door_close_duration_sec" in GameConfig):
+		var value := float(GameConfig.door_close_duration_sec)
+		return maxf(value, 0.01)
+	return DEFAULT_CLOSE_DURATION_SEC
+
+
+func _close_clear_confirm_sec() -> float:
+	if GameConfig and ("door_close_clear_confirm_sec" in GameConfig):
+		var value := float(GameConfig.door_close_clear_confirm_sec)
+		return maxf(value, 0.0)
+	return DEFAULT_CLOSE_CLEAR_CONFIRM_SEC

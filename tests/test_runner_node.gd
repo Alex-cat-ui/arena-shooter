@@ -9,7 +9,7 @@ var _tests_passed := 0
 const AWARENESS_TEST_SCENE := "res://tests/test_enemy_awareness_system.tscn"
 const AGGRO_TEST_SCENE := "res://tests/test_enemy_aggro_coordinator.tscn"
 const NOISE_FLOW_TEST_SCENE := "res://tests/test_enemy_noise_alert_flow.tscn"
-const DOOR_TEST_SCENE := "res://tests/test_door_physics_full.tscn"
+const DOOR_CONTROLLER_TEST_SCENE := "res://tests/test_door_physics_full.tscn"
 const DOOR_INTERACTION_FLOW_SCENE := "res://tests/test_door_interaction_flow.tscn"
 const DOOR_SELECTION_METRIC_SCENE := "res://tests/test_layout_door_selection_metric.tscn"
 const ALERT_MARKER_TEST_SCENE := "res://tests/test_enemy_alert_marker.tscn"
@@ -63,6 +63,8 @@ const LEVEL_ENEMY_RUNTIME_CONTROLLER_TEST_SCENE := "res://tests/test_level_enemy
 const LEVEL_EVENTS_CONTROLLER_TEST_SCENE := "res://tests/test_level_events_controller.tscn"
 const LEVEL_BOOTSTRAP_CONTROLLER_TEST_SCENE := "res://tests/test_level_bootstrap_controller.tscn"
 const MISSION_TRANSITION_GATE_TEST_SCENE := "res://tests/test_mission_transition_gate.tscn"
+const EVENT_BUS_BACKPRESSURE_TEST_SCENE := "res://tests/test_event_bus_backpressure.tscn"
+const COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE := "res://tests/test_3zone_combat_transition_stress.tscn"
 
 func _ready() -> void:
 	print("=" .repeat(60))
@@ -424,8 +426,8 @@ func _run_tests() -> void:
 	_test("Noise alert flow test scene exists", func():
 		return load(NOISE_FLOW_TEST_SCENE) is PackedScene
 	)
-	_test("Door physics test scene exists", func():
-		return load(DOOR_TEST_SCENE) is PackedScene
+	_test("Door controller test scene exists", func():
+		return load(DOOR_CONTROLLER_TEST_SCENE) is PackedScene
 	)
 	_test("Door interaction flow test scene exists", func():
 		return load(DOOR_INTERACTION_FLOW_SCENE) is PackedScene
@@ -505,12 +507,18 @@ func _run_tests() -> void:
 	_test("DebugUI layout no overlap test scene exists", func():
 		return load(DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE) is PackedScene
 	)
+	_test("EventBus backpressure test scene exists", func():
+		return load(EVENT_BUS_BACKPRESSURE_TEST_SCENE) is PackedScene
+	)
+	_test("3zone combat transition stress test scene exists", func():
+		return load(COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE) is PackedScene
+	)
 
 	await _run_embedded_scene_suite("Config validator AI balance suite", CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy awareness suite", AWARENESS_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy aggro coordinator suite", AGGRO_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy noise alert flow suite", NOISE_FLOW_TEST_SCENE)
-	await _run_embedded_scene_suite("Door physics full suite", DOOR_TEST_SCENE)
+	await _run_embedded_scene_suite("Door controller full suite", DOOR_CONTROLLER_TEST_SCENE)
 	await _run_embedded_scene_suite("Door interaction flow suite", DOOR_INTERACTION_FLOW_SCENE)
 	await _run_embedded_scene_suite("Door selection metric suite", DOOR_SELECTION_METRIC_SCENE)
 	await _run_embedded_scene_suite("Enemy alert marker suite", ALERT_MARKER_TEST_SCENE)
@@ -536,6 +544,8 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Ring visible during decay suite", RING_VISIBLE_DURING_DECAY_TEST_SCENE)
 	await _run_embedded_scene_suite("Weapons startup policy ON suite", WEAPONS_STARTUP_POLICY_ON_TEST_SCENE)
 	await _run_embedded_scene_suite("DebugUI layout no overlap suite", DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE)
+	await _run_embedded_scene_suite("EventBus backpressure suite", EVENT_BUS_BACKPRESSURE_TEST_SCENE)
+	await _run_embedded_scene_suite("3zone combat transition stress suite", COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE)
 
 	print("\n--- SECTION 18b: Stealth phases 1-7 suites ---")
 

@@ -256,7 +256,7 @@ static func create_layout(parent: Node, seed_value: int, arena: Rect2, mission: 
 
 
 # ---------------------------------------------------------------------------
-# Door physics helpers
+# Door helpers
 # ---------------------------------------------------------------------------
 
 static func add_wall(parent: Node2D, center: Vector2, size: Vector2) -> void:

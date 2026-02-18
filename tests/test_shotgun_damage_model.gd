@@ -6,7 +6,7 @@ const TestHelpers = preload("res://tests/test_helpers.gd")
 
 const SHOTGUN_DAMAGE_MODEL_SCRIPT := preload("res://src/systems/shotgun_damage_model.gd")
 const PROJECTILE_SCENE := preload("res://scenes/entities/projectile.tscn")
-const PHYSICAL_DOOR_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
+const DOOR_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
 
 var _t := TestHelpers.new()
 
@@ -72,7 +72,7 @@ func _test_pellet_blocked_by_door() -> void:
 	world.name = "ShotgunDoorWorld"
 	add_child(world)
 
-	var door := PHYSICAL_DOOR_SCRIPT.new()
+	var door := DOOR_SCRIPT.new()
 	world.add_child(door)
 	door.configure_from_opening(Rect2(100.0, 0.0, 60.0, 16.0), 16.0)
 	await get_tree().process_frame
@@ -87,10 +87,9 @@ func _test_pellet_blocked_by_door() -> void:
 			break
 
 	var blocked := not is_instance_valid(projectile)
-	_t.check("Pellet is destroyed by physical door collision", blocked)
+	_t.check("Pellet is destroyed by door collision", blocked)
 
 	if is_instance_valid(projectile):
 		projectile.queue_free()
 	world.queue_free()
-
 

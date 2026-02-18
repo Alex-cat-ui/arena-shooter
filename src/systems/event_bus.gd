@@ -6,6 +6,9 @@
 extends Node
 
 const GAME_STATE_SCRIPT := preload("res://src/core/game_state.gd")
+const MAX_EVENTS_PER_FRAME := 512
+const EVENT_QUEUE_WARN_THRESHOLD := 2048
+const EVENT_QUEUE_WARN_COOLDOWN_SEC := 1.0
 
 ## Event priorities
 enum Priority {
@@ -138,6 +141,8 @@ var _event_queue: Array[Dictionary] = []
 
 ## Is currently processing queue (prevent recursion)
 var _is_processing: bool = false
+var _event_order_counter: int = 0
+var _event_queue_warn_cooldown: float = 0.0
 
 
 ## ============================================================================
@@ -259,12 +264,15 @@ func _queue_event(event_name: String, args: Array, priority: Priority = Priority
 		"name": event_name,
 		"args": args,
 		"priority": priority,
-		"order": _event_queue.size()
+		"order": _event_order_counter
 	})
+	_event_order_counter += 1
 
 
 ## Process queued events (called each frame)
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _event_queue_warn_cooldown > 0.0:
+		_event_queue_warn_cooldown = maxf(0.0, _event_queue_warn_cooldown - maxf(delta, 0.0))
 	if _is_processing or _event_queue.is_empty():
 		return
 
@@ -276,9 +284,14 @@ func _process(_delta: float) -> void:
 	# Process all queued events
 	var events_to_process := _event_queue.duplicate()
 	_event_queue.clear()
-
-	for event in events_to_process:
-		_dispatch_event(event)
+	var total_events := events_to_process.size()
+	var process_limit := mini(total_events, MAX_EVENTS_PER_FRAME)
+	for i in range(process_limit):
+		_dispatch_event(events_to_process[i] as Dictionary)
+	if process_limit < total_events:
+		for i in range(process_limit, total_events):
+			_event_queue.append(events_to_process[i] as Dictionary)
+		_warn_if_queue_backlogged(total_events, _event_queue.size())
 
 	_is_processing = false
 
@@ -356,3 +369,27 @@ func _dispatch_event(event: Dictionary) -> void:
 			chain_lightning_hit.emit(event.args[0], event.args[1])
 		_:
 			push_warning("Unknown event: %s" % event.name)
+
+
+func _warn_if_queue_backlogged(total_events_before_dispatch: int, pending_after_dispatch: int) -> void:
+	if pending_after_dispatch < EVENT_QUEUE_WARN_THRESHOLD:
+		return
+	if _event_queue_warn_cooldown > 0.0:
+		return
+	push_warning("EventBus backlog: queued=%d pending=%d cap_per_frame=%d" % [
+		total_events_before_dispatch,
+		pending_after_dispatch,
+		MAX_EVENTS_PER_FRAME
+	])
+	_event_queue_warn_cooldown = EVENT_QUEUE_WARN_COOLDOWN_SEC
+
+
+func debug_get_pending_event_count() -> int:
+	return _event_queue.size()
+
+
+func debug_reset_queue_for_tests() -> void:
+	_event_queue.clear()
+	_is_processing = false
+	_event_order_counter = 0
+	_event_queue_warn_cooldown = 0.0

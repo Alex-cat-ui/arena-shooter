@@ -1,5 +1,5 @@
 ## layout_door_system.gd
-## Builds physical doors for ProceduralLayoutV2 openings.
+## Builds runtime doors for ProceduralLayoutV2 openings.
 class_name LayoutDoorSystem
 extends Node
 
@@ -103,7 +103,7 @@ func _spawn_door(opening: Rect2, wall_thickness: float) -> void:
 	if opening.size.x <= 1.0 or opening.size.y <= 1.0:
 		return
 	var door: Node2D = DOOR_PHYSICS_V3_SCRIPT.new()
-	door.name = "PhysicalDoor_%d" % doors_parent.get_child_count()
+	door.name = "Door_%d" % doors_parent.get_child_count()
 	doors_parent.add_child(door)
 	door.configure_from_opening(opening, wall_thickness)
 	door.reset_to_closed()

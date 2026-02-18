@@ -47,6 +47,7 @@ func run_suite() -> Dictionary:
 	_test_five_enemies_spawned(level)
 	_test_three_zones_calm(zone_director)
 	_test_player_in_room_a1(nav, player)
+	await _test_3zone_spawn_shadow_blocks_calm_detection(level)
 	_test_door_a1a2_starts_closed(door)
 	_test_shadow_areas_present(shadow_root)
 	_test_all_spawns_inside_rooms(level, nav)
@@ -56,6 +57,7 @@ func run_suite() -> Dictionary:
 	await _test_3zone_enemy_combat_fire(level)
 	await _test_3zone_door_input_routes(level)
 	await _test_3zone_pause_menu_on_esc(level)
+	await _test_3zone_game_over_runtime_debug(level)
 
 	await _cleanup_fixture(fixture)
 
@@ -107,6 +109,54 @@ func _test_player_in_room_a1(nav: Node, player: Node2D) -> void:
 		return
 	var room_id := int(nav.room_id_at_point(player.global_position))
 	_t.run_test("player_in_room_a1", room_id == 0)
+
+
+func _test_3zone_spawn_shadow_blocks_calm_detection(level: Node2D) -> void:
+	var player := level.get_node_or_null("Entities/Player") as CharacterBody2D
+	var shadow_a1 := level.get_node_or_null("ShadowAreas/ShadowA1") as Area2D
+	var enemies := _members_in_group_under("enemies", level)
+	if player == null or shadow_a1 == null or enemies.is_empty():
+		_t.run_test("3zone spawn shadow setup is valid", false)
+		_t.run_test("3zone CALM in shadow keeps enemies calm", false)
+		_t.run_test("3zone CALM in shadow keeps confirm near zero", false)
+		return
+
+	var player_start := player.global_position
+	player.global_position = shadow_a1.global_position
+	player.velocity = Vector2.ZERO
+	for _i in range(8):
+		await get_tree().physics_frame
+		await get_tree().process_frame
+
+	var visibility_mul := float(RuntimeState.player_visibility_mul) if RuntimeState else 1.0
+	_t.run_test("3zone spawn shadow setup is valid", visibility_mul < 0.999)
+
+	var stayed_calm := true
+	var max_confirm := 0.0
+	for _frame in range(180):
+		await get_tree().physics_frame
+		await get_tree().process_frame
+		for enemy_variant in enemies:
+			var enemy := enemy_variant as Enemy
+			if enemy == null or not is_instance_valid(enemy):
+				continue
+			if not enemy.has_method("get_ui_awareness_snapshot"):
+				continue
+			var snap := enemy.get_ui_awareness_snapshot() as Dictionary
+			var state := int(snap.get("state", 0))
+			var confirm01 := float(snap.get("confirm01", 0.0))
+			if state != 0:
+				stayed_calm = false
+			max_confirm = maxf(max_confirm, confirm01)
+
+	_t.run_test("3zone CALM in shadow keeps enemies calm", stayed_calm)
+	_t.run_test("3zone CALM in shadow keeps confirm near zero", max_confirm <= 0.05)
+
+	player.global_position = player_start
+	player.velocity = Vector2.ZERO
+	for _i in range(4):
+		await get_tree().physics_frame
+		await get_tree().process_frame
 
 
 func _test_door_a1a2_starts_closed(door: Node) -> void:
@@ -338,6 +388,33 @@ func _wait_door_closed(door: Node, frames: int) -> bool:
 	return false
 
 
+func _pick_clear_combat_target(level: Node2D, nav: Node, shooter_pos: Vector2) -> Dictionary:
+	var offsets := [
+		Vector2(140.0, 0.0),
+		Vector2(-140.0, 0.0),
+		Vector2(0.0, 140.0),
+		Vector2(0.0, -140.0),
+		Vector2(180.0, 120.0),
+		Vector2(-180.0, 120.0),
+		Vector2(180.0, -120.0),
+		Vector2(-180.0, -120.0),
+		Vector2(220.0, 0.0),
+		Vector2(0.0, 220.0),
+	]
+	for offset_variant in offsets:
+		var offset := offset_variant as Vector2
+		var candidate := shooter_pos + offset
+		if nav != null and nav.has_method("room_id_at_point"):
+			if int(nav.call("room_id_at_point", candidate)) < 0:
+				continue
+		if nav != null and nav.has_method("is_point_in_shadow"):
+			if bool(nav.call("is_point_in_shadow", candidate)):
+				continue
+		if _raycast(level, shooter_pos, candidate, true).is_empty():
+			return {"ok": true, "pos": candidate}
+	return {"ok": false, "pos": shooter_pos}
+
+
 func _test_3zone_enemy_combat_fire(level: Node2D) -> void:
 	var player := level.get_node_or_null("Entities/Player") as CharacterBody2D
 	var nav := level.get_node_or_null("Systems/NavigationService")
@@ -378,11 +455,21 @@ func _test_3zone_enemy_combat_fire(level: Node2D) -> void:
 		enemy.global_position = Vector2(-20000.0, -20000.0)
 		enemy.set_meta("room_id", -1)
 
+	shooter.global_position = Vector2(320.0, 240.0)
+	shooter.set_meta("room_id", 0)
 	var player_start := player.global_position
-	player.global_position = shooter.global_position + Vector2(220.0, 0.0)
+	var target_pick := _pick_clear_combat_target(level, nav, shooter.global_position)
+	var setup_ok := bool(target_pick.get("ok", false))
+	if not setup_ok:
+		if GameConfig:
+			GameConfig.god_mode = prev_god_mode
+		_t.run_test("3zone enemy fires in COMBAT", false)
+		return
+	player.global_position = target_pick.get("pos", shooter.global_position + Vector2(140.0, 0.0)) as Vector2
 	player.velocity = Vector2.ZERO
-	for _settle in range(3):
+	for _settle in range(4):
 		await get_tree().physics_frame
+		await get_tree().process_frame
 
 	_observed_enemy_id = shooter_id
 	_observed_enemy_shots = 0
@@ -402,8 +489,9 @@ func _test_3zone_enemy_combat_fire(level: Node2D) -> void:
 		shooter.call("debug_force_awareness_state", "COMBAT")
 
 	var fired := false
-	for _i in range(240):
+	for _i in range(360):
 		await get_tree().physics_frame
+		await get_tree().process_frame
 		if _observed_enemy_shots > 0:
 			fired = true
 			break
@@ -449,6 +537,108 @@ func _test_3zone_pause_menu_on_esc(level: Node2D) -> void:
 	var closed := pause_menu_closed == null
 	var resumed_ok := StateManager == null or StateManager.is_playing()
 	_t.run_test("3zone ESC closes pause menu", closed and resumed_ok)
+
+
+func _test_3zone_game_over_runtime_debug(level: Node2D) -> void:
+	var controller := level.get_node_or_null("Stealth3ZoneTestController")
+	var label := level.get_node_or_null("DebugUI/DebugLabel") as Label
+	var player := level.get_node_or_null("Entities/Player") as CharacterBody2D
+	var nav := level.get_node_or_null("Systems/NavigationService")
+	var enemies := _members_in_group_under("enemies", level)
+	if controller == null or label == null or player == null or enemies.is_empty():
+		_t.run_test("3zone reaches GAME_OVER in forced combat", false)
+		_t.run_test("3zone debug label shows GAME_OVER freeze + hp", false)
+		_t.run_test("3zone shows GameOver menu on GAME_OVER", false)
+		return
+
+	var prev_god_mode := false
+	if GameConfig:
+		prev_god_mode = bool(GameConfig.god_mode)
+		GameConfig.god_mode = false
+
+	if RuntimeState:
+		RuntimeState.is_frozen = false
+		RuntimeState.player_hp = 1
+		RuntimeState.player_visibility_mul = 1.0
+
+	var shooter: Node2D = null
+	for enemy_variant in enemies:
+		var enemy := enemy_variant as Node2D
+		if enemy == null:
+			continue
+		if nav and nav.has_method("room_id_at_point"):
+			if int(nav.room_id_at_point(enemy.global_position)) == 0:
+				shooter = enemy
+				break
+		if shooter == null:
+			shooter = enemy
+	if shooter == null:
+		_t.run_test("3zone reaches GAME_OVER in forced combat", false)
+		_t.run_test("3zone debug label shows GAME_OVER freeze + hp", false)
+		_t.run_test("3zone shows GameOver menu on GAME_OVER", false)
+		if GameConfig:
+			GameConfig.god_mode = prev_god_mode
+		return
+
+	for enemy_variant in enemies:
+		var enemy := enemy_variant as Node2D
+		if enemy == null or enemy == shooter:
+			continue
+		enemy.global_position = Vector2(-20000.0, -20000.0)
+		enemy.set_meta("room_id", -1)
+
+	shooter.global_position = Vector2(320.0, 240.0)
+	shooter.set_meta("room_id", 0)
+	var target_pick := _pick_clear_combat_target(level, nav, shooter.global_position)
+	if not bool(target_pick.get("ok", false)):
+		_t.run_test("3zone reaches GAME_OVER in forced combat", false)
+		_t.run_test("3zone debug label shows GAME_OVER freeze + hp", false)
+		_t.run_test("3zone shows GameOver menu on GAME_OVER", false)
+		if GameConfig:
+			GameConfig.god_mode = prev_god_mode
+		return
+	player.global_position = target_pick.get("pos", shooter.global_position + Vector2(140.0, 0.0)) as Vector2
+	player.velocity = Vector2.ZERO
+	for _settle in range(4):
+		await get_tree().physics_frame
+		await get_tree().process_frame
+
+	var facing_dir := (player.global_position - shooter.global_position).normalized()
+	if facing_dir.length_squared() > 0.0001:
+		var pursuit_variant: Variant = shooter.get("_pursuit")
+		if pursuit_variant != null:
+			var pursuit_obj := pursuit_variant as Object
+			if pursuit_obj:
+				pursuit_obj.set("facing_dir", facing_dir)
+				pursuit_obj.set("_target_facing_dir", facing_dir)
+
+	if shooter.has_method("debug_force_awareness_state"):
+		shooter.call("debug_force_awareness_state", "COMBAT")
+
+	var reached_game_over := false
+	var label_has_runtime_game_over := false
+	var game_over_menu_visible := false
+	for _i in range(540):
+		await get_tree().physics_frame
+		await get_tree().process_frame
+		controller.call("_refresh_debug_label", true)
+		var label_text := label.text
+		if label_text.find("runtime state=GAME_OVER") >= 0 and label_text.find("frozen=true") >= 0 and label_text.find("player_hp=0") >= 0:
+			label_has_runtime_game_over = true
+		var game_over_menu := level.find_child("GameOver", true, false)
+		if game_over_menu != null and bool(game_over_menu.get("visible")):
+			game_over_menu_visible = true
+		if StateManager and StateManager.current_state == GameState.State.GAME_OVER:
+			reached_game_over = true
+		if reached_game_over and label_has_runtime_game_over and game_over_menu_visible:
+			break
+
+	_t.run_test("3zone reaches GAME_OVER in forced combat", reached_game_over)
+	_t.run_test("3zone debug label shows GAME_OVER freeze + hp", label_has_runtime_game_over)
+	_t.run_test("3zone shows GameOver menu on GAME_OVER", game_over_menu_visible)
+
+	if GameConfig:
+		GameConfig.god_mode = prev_god_mode
 
 
 func _raycast(level: Node2D, from: Vector2, to: Vector2, exclude_dynamic: bool) -> Dictionary:

@@ -7,7 +7,10 @@ const DOOR_PHYSICS_V3_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
 const LAYOUT_DOOR_SYSTEM_SCRIPT := preload("res://src/systems/layout_door_system.gd")
 const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 const PAUSE_MENU_SCENE := preload("res://scenes/ui/pause_menu.tscn")
+const GAME_OVER_SCENE := preload("res://scenes/ui/game_over.tscn")
+const LEVEL_COMPLETE_SCENE := preload("res://scenes/ui/level_complete.tscn")
 const MAIN_MENU_SCENE_PATH := "res://scenes/ui/main_menu.tscn"
+const TEST_LEVEL_SCENE_PATH := "res://src/levels/stealth_3zone_test.tscn"
 
 const WALL_THICKNESS := 16.0
 
@@ -129,7 +132,9 @@ var _door_a1a2: DoorPhysicsV3 = null
 var _door_system: Node = null
 var _debug_accum: float = 0.0
 var _pause_menu: Control = null
+var _state_overlay: Control = null
 var _main_menu_transition_pending: bool = false
+var _level_restart_pending: bool = false
 
 @onready var _level_root := get_parent() as Node2D
 @onready var _navigation_root := _level_root.get_node("Navigation") as Node2D
@@ -179,7 +184,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event == null:
 		return
 	if event.is_action_pressed("pause", true):
-		_toggle_pause_state()
+		if StateManager and StateManager.current_state in [GameState.State.GAME_OVER, GameState.State.LEVEL_COMPLETE]:
+			StateManager.change_state(GameState.State.MAIN_MENU)
+		else:
+			_toggle_pause_state()
 		return
 	if _door_system == null or _player == null:
 		return
@@ -195,6 +203,9 @@ func _process(delta: float) -> void:
 	_sync_pause_menu_from_state()
 	if _main_menu_transition_pending:
 		_try_open_main_menu_scene()
+		return
+	if _level_restart_pending:
+		_try_restart_test_scene()
 		return
 	if RuntimeState and RuntimeState.is_frozen:
 		return
@@ -234,10 +245,29 @@ func _toggle_pause_state() -> void:
 func _sync_pause_menu_from_state() -> void:
 	if StateManager == null:
 		return
-	if StateManager.current_state == GameState.State.MAIN_MENU:
+	var state := StateManager.current_state
+	if state == GameState.State.MAIN_MENU:
 		_main_menu_transition_pending = true
+		_level_restart_pending = false
+		_hide_pause_menu()
+		_hide_state_overlay()
+		return
+	if state == GameState.State.LEVEL_SETUP:
+		_main_menu_transition_pending = false
+		_level_restart_pending = true
+		_hide_pause_menu()
+		_hide_state_overlay()
+		return
+	_level_restart_pending = false
+	if state == GameState.State.GAME_OVER:
+		_show_state_overlay(GAME_OVER_SCENE, "GameOver")
 		_hide_pause_menu()
 		return
+	if state == GameState.State.LEVEL_COMPLETE:
+		_show_state_overlay(LEVEL_COMPLETE_SCENE, "LevelComplete")
+		_hide_pause_menu()
+		return
+	_hide_state_overlay()
 	var should_show := StateManager.is_paused()
 	if should_show:
 		_show_pause_menu()
@@ -265,6 +295,29 @@ func _hide_pause_menu() -> void:
 	_pause_menu = null
 
 
+func _show_state_overlay(scene: PackedScene, node_name: String) -> void:
+	if scene == null:
+		return
+	if _state_overlay and is_instance_valid(_state_overlay):
+		if _state_overlay.name == node_name:
+			_state_overlay.visible = true
+			return
+		_state_overlay.queue_free()
+		_state_overlay = null
+	var menu := scene.instantiate() as Control
+	if menu == null:
+		return
+	menu.name = node_name
+	_level_root.add_child(menu)
+	_state_overlay = menu
+
+
+func _hide_state_overlay() -> void:
+	if _state_overlay and is_instance_valid(_state_overlay):
+		_state_overlay.queue_free()
+	_state_overlay = null
+
+
 func _try_open_main_menu_scene() -> void:
 	_main_menu_transition_pending = false
 	if not ResourceLoader.exists(MAIN_MENU_SCENE_PATH):
@@ -273,6 +326,16 @@ func _try_open_main_menu_scene() -> void:
 	if tree == null:
 		return
 	tree.change_scene_to_file(MAIN_MENU_SCENE_PATH)
+
+
+func _try_restart_test_scene() -> void:
+	_level_restart_pending = false
+	if not ResourceLoader.exists(TEST_LEVEL_SCENE_PATH):
+		return
+	var tree := get_tree()
+	if tree == null:
+		return
+	tree.change_scene_to_file(TEST_LEVEL_SCENE_PATH)
 
 
 func debug_get_room_rects() -> Array[Rect2]:
@@ -593,6 +656,7 @@ func _refresh_debug_label(force: bool) -> void:
 	var lines: Array[String] = []
 	lines.append("zones: A=%s B=%s C=%s" % [zone_a, zone_b, zone_c])
 	lines.append("door_a1a2_closed=%s enemies=%d" % [str(_door_closed()), _spawned_enemies.size()])
+	lines.append(_runtime_debug_line())
 
 	for enemy in _spawned_enemies:
 		if enemy == null or not is_instance_valid(enemy):
@@ -633,6 +697,18 @@ func _zone_state_name(state: int) -> String:
 			return "LOCKDOWN"
 		_:
 			return "NONE"
+
+
+func _runtime_debug_line() -> String:
+	var state_name := "NONE"
+	var frozen := false
+	var player_hp := -1
+	if StateManager:
+		state_name = GameState.state_to_string(int(StateManager.current_state))
+	if RuntimeState:
+		frozen = bool(RuntimeState.is_frozen)
+		player_hp = int(RuntimeState.player_hp)
+	return "runtime state=%s frozen=%s player_hp=%d" % [state_name, str(frozen), player_hp]
 
 
 func _clear_children(node: Node) -> void:

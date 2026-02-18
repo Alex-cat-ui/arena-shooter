@@ -5,7 +5,6 @@ class_name Enemy
 extends CharacterBody2D
 
 const SHOTGUN_SPREAD_SCRIPT := preload("res://src/systems/shotgun_spread.gd")
-const SHOTGUN_DAMAGE_MODEL_SCRIPT := preload("res://src/systems/shotgun_damage_model.gd")
 const ENEMY_PERCEPTION_SYSTEM_SCRIPT := preload("res://src/systems/enemy_perception_system.gd")
 const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
@@ -36,6 +35,9 @@ const TEST_ACTIVE_SUSPICION_MIN := 0.05
 const TEST_FACING_LOG_DELTA_RAD := 0.35
 const COMBAT_LAST_SEEN_GRACE_SEC := 1.5
 const COMBAT_ROOM_MIGRATION_HYSTERESIS_SEC := 0.2
+const COMBAT_FIRST_ATTACK_DELAY_MIN_SEC := 1.2
+const COMBAT_FIRST_ATTACK_DELAY_MAX_SEC := 2.0
+const ENEMY_CONTACT_DAMAGE_PER_TICK := 1
 const ZONE_STATE_LOCKDOWN := 2
 
 ## Enemy stats fallback (canonical values live in GameConfig.enemy_stats).
@@ -155,6 +157,7 @@ var _combat_latched: bool = false
 var _combat_latched_room_id: int = -1
 var _combat_migration_candidate_room_id: int = -1
 var _combat_migration_candidate_elapsed: float = 0.0
+var _combat_first_attack_delay_timer: float = 0.0
 
 
 func _ready() -> void:
@@ -237,6 +240,7 @@ func initialize(id: int, type: String) -> void:
 	_debug_last_flashlight_inactive_reason = "profile_off"
 	_combat_latched = false
 	_combat_latched_room_id = -1
+	_combat_first_attack_delay_timer = 0.0
 	set_meta("flashlight_active", false)
 	_reset_combat_migration_candidate()
 	_update_suspicion_ring(0.0)
@@ -254,6 +258,8 @@ func _physics_process(delta: float) -> void:
 
 	if _shot_cooldown > 0.0:
 		_shot_cooldown = maxf(0.0, _shot_cooldown - delta)
+	if _combat_first_attack_delay_timer > 0.0:
+		_combat_first_attack_delay_timer = maxf(0.0, _combat_first_attack_delay_timer - delta)
 
 	# Handle stagger (blocks normal movement)
 	if stagger_timer > 0:
@@ -623,14 +629,26 @@ func debug_force_awareness_state(target_state: String) -> void:
 				_awareness.set_suspicion_profile_enabled(false)
 			var combat_transitions: Array[Dictionary] = _awareness.register_reinforcement()
 			_apply_awareness_transitions(combat_transitions)
-			if _awareness.has_method("get_state_name") and String(_awareness.get_state_name()) != AWARENESS_COMBAT and _awareness.has_method("process_confirm"):
+			var forced_to_combat: bool = _awareness.has_method("get_state_name") and String(_awareness.get_state_name()) == AWARENESS_COMBAT
+			if not forced_to_combat and _awareness.has_method("process_confirm"):
+				var forced_confirm_config := _confirm_config_with_defaults()
+				forced_confirm_config["confirm_time_to_engage"] = 0.001
 				_apply_awareness_transitions(_awareness.process_confirm(
-					0.0,
+					0.05,
 					true,
 					false,
-					false,
-					_confirm_config_with_defaults()
+					true,
+					forced_confirm_config
 				))
+				forced_to_combat = _awareness.has_method("get_state_name") and String(_awareness.get_state_name()) == AWARENESS_COMBAT
+			if not forced_to_combat and _awareness.has_method("_transition_to_combat_from_damage"):
+				var damage_transitions_variant: Variant = _awareness.call("_transition_to_combat_from_damage")
+				if damage_transitions_variant is Array:
+					var damage_transitions: Array[Dictionary] = []
+					for transition_variant in (damage_transitions_variant as Array):
+						if transition_variant is Dictionary:
+							damage_transitions.append(transition_variant as Dictionary)
+					_apply_awareness_transitions(damage_transitions)
 			if _awareness.has_method("set_suspicion_profile_enabled"):
 				_awareness.set_suspicion_profile_enabled(suspicion_profile_enabled_before)
 			_set_awareness_meta_from_system()
@@ -638,6 +656,8 @@ func debug_force_awareness_state(target_state: String) -> void:
 				_awareness.hostile_contact = true
 				_raise_room_alert_for_combat_same_tick()
 				_apply_alert_level(maxi(_resolve_room_alert_level(), ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
+			else:
+				push_warning("[Enemy] debug_force_awareness_state: failed to force COMBAT")
 		_:
 			push_warning("[Enemy] debug_force_awareness_state: unknown target_state='%s'" % normalized_state)
 
@@ -695,6 +715,7 @@ func _apply_awareness_transitions(transitions: Array[Dictionary]) -> void:
 			set_meta("awareness_state", to_state)
 			_sync_combat_latch_with_awareness_state(to_state)
 			if to_state == AWARENESS_COMBAT:
+				_arm_first_combat_attack_delay()
 				_raise_room_alert_for_combat_same_tick()
 				if _zone_director and _zone_director.has_method("get_zone_for_room") and _zone_director.has_method("trigger_lockdown"):
 					var room_id := int(get_meta("room_id", -1))
@@ -1139,6 +1160,8 @@ func _register_to_squad_system() -> void:
 
 
 func _try_fire_at_player(player_pos: Vector2) -> void:
+	if _combat_first_attack_delay_timer > 0.0:
+		return
 	if _shot_cooldown > 0.0:
 		return
 	if not _is_combat_awareness_active():
@@ -1212,6 +1235,7 @@ func _sync_combat_latch_with_awareness_state(state_name: String) -> void:
 		_seed_last_seen_from_player_if_missing()
 		_ensure_combat_latch_registered()
 		return
+	_combat_first_attack_delay_timer = 0.0
 	if _combat_latched:
 		_unregister_combat_latch()
 	else:
@@ -1243,6 +1267,7 @@ func _ensure_combat_latch_registered() -> void:
 
 func _unregister_combat_latch() -> void:
 	_reset_combat_migration_candidate()
+	_combat_first_attack_delay_timer = 0.0
 	if entity_id > 0 and alert_system and alert_system.has_method("unregister_enemy_combat") and _combat_latched:
 		alert_system.unregister_enemy_combat(entity_id)
 	_combat_latched = false
@@ -1295,6 +1320,16 @@ func _combat_last_seen_grace_sec() -> float:
 	if _suspicion_test_profile_enabled and not _suspicion_test_profile.is_empty():
 		return maxf(float(_suspicion_test_profile.get("combat_last_seen_grace_sec", COMBAT_LAST_SEEN_GRACE_SEC)), 0.0)
 	return COMBAT_LAST_SEEN_GRACE_SEC
+
+
+func _arm_first_combat_attack_delay() -> void:
+	var min_delay := COMBAT_FIRST_ATTACK_DELAY_MIN_SEC
+	var max_delay := COMBAT_FIRST_ATTACK_DELAY_MAX_SEC
+	if max_delay < min_delay:
+		var tmp := min_delay
+		min_delay = max_delay
+		max_delay = tmp
+	_combat_first_attack_delay_timer = _shot_rng.randf_range(min_delay, max_delay)
 
 
 func _is_last_seen_grace_active() -> bool:
@@ -1356,12 +1391,7 @@ func _fire_enemy_shotgun(origin: Vector2, aim_dir: Vector2) -> void:
 	if hits <= 0 or not EventBus:
 		return
 
-	var shot_total_damage := maxf(float(stats.get("shot_damage_total", 25.0)), 0.0)
-	var applied_damage := 0
-	if SHOTGUN_DAMAGE_MODEL_SCRIPT.is_lethal_hits(hits, pellets):
-		applied_damage = _player_lethal_damage()
-	else:
-		applied_damage = SHOTGUN_DAMAGE_MODEL_SCRIPT.damage_for_hits(hits, pellets, shot_total_damage)
+	var applied_damage := ENEMY_CONTACT_DAMAGE_PER_TICK
 
 	if applied_damage > 0:
 		EventBus.emit_enemy_contact(entity_id, "enemy_shotgun", applied_damage)
@@ -1537,12 +1567,6 @@ func _shotgun_cooldown_sec() -> float:
 		return cooldown_sec
 	var rpm := maxf(float(stats.get("rpm", 60.0)), 1.0)
 	return 60.0 / rpm
-
-
-func _player_lethal_damage() -> int:
-	if RuntimeState:
-		return maxi(int(RuntimeState.player_hp), 1)
-	return GameConfig.player_max_hp if GameConfig else 100
 
 
 ## Apply damage from any source (projectile, explosion, etc.)
