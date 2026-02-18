@@ -3,7 +3,7 @@
 class_name LayoutDoorSystem
 extends Node
 
-const DOOR_CONTROLLER_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
+const DOOR_CONTROLLER_SCRIPT := preload("res://src/systems/door_controller_v3.gd")
 const DEFAULT_INTERACT_RADIUS_PX := 20.0
 const DEFAULT_KICK_RADIUS_PX := 40.0
 const ENEMY_DOOR_INTERACT_RADIUS_PX := 30.0

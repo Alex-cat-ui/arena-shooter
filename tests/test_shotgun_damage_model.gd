@@ -6,7 +6,7 @@ const TestHelpers = preload("res://tests/test_helpers.gd")
 
 const SHOTGUN_DAMAGE_MODEL_SCRIPT := preload("res://src/systems/shotgun_damage_model.gd")
 const PROJECTILE_SCENE := preload("res://scenes/entities/projectile.tscn")
-const DOOR_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
+const DOOR_SCRIPT := preload("res://src/systems/door_controller_v3.gd")
 
 var _t := TestHelpers.new()
 
@@ -92,4 +92,3 @@ func _test_pellet_blocked_by_door() -> void:
 	if is_instance_valid(projectile):
 		projectile.queue_free()
 	world.queue_free()
-

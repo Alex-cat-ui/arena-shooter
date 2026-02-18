@@ -3,7 +3,7 @@ extends Node
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
 const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_config.gd")
 const SHADOW_ZONE_SCRIPT := preload("res://src/systems/stealth/shadow_zone.gd")
-const DOOR_CONTROLLER_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
+const DOOR_CONTROLLER_SCRIPT := preload("res://src/systems/door_controller_v3.gd")
 const LAYOUT_DOOR_SYSTEM_SCRIPT := preload("res://src/systems/layout_door_system.gd")
 const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 const PAUSE_MENU_SCENE := preload("res://scenes/ui/pause_menu.tscn")
@@ -128,7 +128,7 @@ var _suspicion_profile: Dictionary = {}
 var _test_values: Dictionary = {}
 var _enemy_id_counter: int = 15000
 var _spawned_enemies: Array[Enemy] = []
-var _door_a1a2: DoorPhysicsV3 = null
+var _door_a1a2: Node2D = null
 var _door_system: Node = null
 var _debug_accum: float = 0.0
 var _pause_menu: Control = null

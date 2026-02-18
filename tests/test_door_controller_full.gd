@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const DOOR_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
+const DOOR_SCRIPT := preload("res://src/systems/door_controller_v3.gd")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()

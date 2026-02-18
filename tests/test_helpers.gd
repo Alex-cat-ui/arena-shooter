@@ -4,7 +4,7 @@ class_name TestHelpers
 extends RefCounted
 
 const LAYOUT_SCRIPT := preload("res://src/systems/procedural_layout_v2.gd")
-const DOOR_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
+const DOOR_SCRIPT := preload("res://src/systems/door_controller_v3.gd")
 
 var tests_run := 0
 var tests_passed := 0
