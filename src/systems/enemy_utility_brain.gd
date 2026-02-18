@@ -68,9 +68,10 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var slot_pos := ctx.get("slot_position", Vector2.ZERO) as Vector2
 	var has_slot := bool(ctx.get("has_slot", false))
 	var combat_lock := bool(ctx.get("combat_lock", false))
-	var player_pos := ctx.get("player_pos", Vector2.ZERO) as Vector2
+	var known_target_pos := ctx.get("known_target_pos", ctx.get("player_pos", Vector2.ZERO)) as Vector2
 	var last_seen_pos := ctx.get("last_seen_pos", Vector2.ZERO) as Vector2
-	var has_last_seen := bool(ctx.get("has_last_seen", last_seen_pos != Vector2.ZERO))
+	var target_is_last_seen := bool(ctx.get("target_is_last_seen", false))
+	var has_last_seen := bool(ctx.get("has_last_seen", target_is_last_seen or last_seen_pos != Vector2.ZERO))
 	var dist_to_last_seen := float(ctx.get("dist_to_last_seen", dist))
 	var home_pos := ctx.get("home_position", Vector2.ZERO) as Vector2
 
@@ -84,13 +85,13 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var search_target := last_seen_pos if has_last_seen else home_pos
 	var has_search_anchor := has_last_seen and last_seen_age <= search_max_last_seen_age
 
-	if combat_lock:
-		return _combat_lock_intent(dist, player_pos, last_seen_pos, home_pos, hold_range_max)
+	if combat_lock and not has_los:
+		return _combat_no_los_grace_intent(known_target_pos, last_seen_pos, home_pos)
 
 	if hp_ratio <= retreat_hp_ratio and has_los and dist < hold_range_min:
 		return {
 			"type": IntentType.RETREAT,
-			"target": player_pos,
+			"target": known_target_pos,
 		}
 
 	if alert_level <= ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS and not has_los:
@@ -122,7 +123,7 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 			"target": home_pos,
 		}
 
-	if has_los or alert_level == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT:
+	if has_los:
 		if has_slot and path_ok and slot_pos != Vector2.ZERO:
 			var dist_to_slot := float(ctx.get("dist_to_slot", INF))
 			if dist_to_slot > slot_reposition_threshold:
@@ -134,12 +135,12 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 		if dist > hold_range_max:
 			return {
 				"type": IntentType.PUSH,
-				"target": player_pos,
+				"target": known_target_pos,
 			}
 		if dist < hold_range_min:
 			return {
 				"type": IntentType.RETREAT,
-				"target": player_pos,
+				"target": known_target_pos,
 			}
 
 		if role == ENEMY_SQUAD_SYSTEM_SCRIPT.Role.FLANK and has_slot and slot_pos != Vector2.ZERO:
@@ -149,7 +150,7 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 			}
 		return {
 			"type": IntentType.HOLD_RANGE,
-			"target": slot_pos if has_slot and slot_pos != Vector2.ZERO else player_pos,
+			"target": slot_pos if has_slot and slot_pos != Vector2.ZERO else known_target_pos,
 		}
 
 	return {
@@ -158,15 +159,10 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	}
 
 
-func _combat_lock_intent(dist: float, player_pos: Vector2, last_seen_pos: Vector2, home_pos: Vector2, hold_range_max: float) -> Dictionary:
-	var target := player_pos
+func _combat_no_los_grace_intent(known_target_pos: Vector2, last_seen_pos: Vector2, home_pos: Vector2) -> Dictionary:
+	var target := known_target_pos
 	if target == Vector2.ZERO:
 		target = last_seen_pos if last_seen_pos != Vector2.ZERO else home_pos
-	if is_finite(dist) and dist <= hold_range_max:
-		return {
-			"type": IntentType.HOLD_RANGE,
-			"target": target,
-		}
 	return {
 		"type": IntentType.PUSH,
 		"target": target,

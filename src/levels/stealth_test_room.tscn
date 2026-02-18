@@ -166,19 +166,19 @@ layer = 8
 
 [node name="DebugLabel" type="Label" parent="DebugUI"]
 offset_left = 12.0
-offset_top = 12.0
-offset_right = 760.0
-offset_bottom = 122.0
+offset_top = 8.0
+offset_right = 1100.0
+offset_bottom = 68.0
 autowrap_mode = 2
-text = "EnemyState: CALM | RoomAlert: CALM | player_visibility_mul: 1.00"
+text = "state=CALM | room_eff=CALM room_trans=CALM latch=0 | intent=PATROL | fire_gate=ON"
 
 [node name="HintLabel" type="Label" parent="DebugUI"]
 offset_left = 12.0
-offset_top = 132.0
-offset_right = 760.0
-offset_bottom = 292.0
+offset_top = 74.0
+offset_right = 1100.0
+offset_bottom = 160.0
 autowrap_mode = 2
-text = "Controls: 1 CALM | 2 ALERT | 3 COMBAT | F7 Enemy Guns | TAB Debug | R Reset"
+text = "Controls: 1 CALM | 2 ALERT | 3 COMBAT | TAB Debug | R Reset"
 
 [node name="StealthTestController" type="Node" parent="."]
 script = ExtResource("1_controller")

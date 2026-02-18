@@ -6,6 +6,7 @@ extends Node
 const DOOR_PHYSICS_V3_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
 const DEFAULT_INTERACT_RADIUS_PX := 20.0
 const DEFAULT_KICK_RADIUS_PX := 40.0
+const ENEMY_DOOR_INTERACT_RADIUS_PX := 30.0
 const INTERACT_OPEN_THRESHOLD_DEG := 10.0
 
 var doors_parent: Node2D = null
@@ -52,6 +53,20 @@ func kick(source_pos: Vector2, max_distance_px: float = DEFAULT_KICK_RADIUS_PX) 
 	if not door:
 		return false
 	door.command_open_kick(source_pos)
+	return true
+
+
+func try_enemy_open_nearest(source_pos: Vector2, max_distance: float = ENEMY_DOOR_INTERACT_RADIUS_PX) -> bool:
+	var door = find_nearest_door(source_pos, max_distance)
+	if door == null:
+		return false
+	if not door.has_method("is_closed_or_nearly_closed"):
+		return false
+	if not door.is_closed_or_nearly_closed(15.0):
+		return false # already open enough
+	if not door.has_method("command_open_enemy"):
+		return false
+	door.command_open_enemy(source_pos)
 	return true
 
 

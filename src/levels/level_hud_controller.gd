@@ -1,7 +1,7 @@
 extends RefCounted
 class_name LevelHUDController
 
-const RIGHT_DEBUG_HINT_BASE = "ESC - Pause | F1 - Game Over\nF2 - Level Complete | F3 - Debug\nF4 - Regenerate | F7 - Enemy Guns | F8 - Test Scene\nLMB - Shoot | 1-6 Weapons | Wheel\nE/У - Door Interact | Q - Door Kick"
+const RIGHT_DEBUG_HINT_BASE = "ESC - Pause | F1 - Game Over\nF2 - Level Complete | F3 - Debug\nF4 - Regenerate | F8 - Test Scene\nLMB - Shoot | 1-2 Weapons | Wheel\nE/У - Door Interact | Q - Door Kick"
 const OVERLAY_META_KEY := "overlay_type"
 const OVERLAY_VIGNETTE := "vignette"
 const OVERLAY_DEBUG := "debug_overlay"
@@ -150,9 +150,14 @@ func update_hud(ctx) -> void:
 		ctx.time_label.text = "Time: %.1f | Kills: %d" % [RuntimeState.time_elapsed, RuntimeState.kills]
 
 	if ctx.weapon_label and ctx.ability_system:
-		ctx.weapon_label.text = "GUN %s [%d/6]" % [
+		var weapon_count := 0
+		if ctx.ability_system.has_method("get_weapon_list"):
+			weapon_count = (ctx.ability_system.get_weapon_list() as Array).size()
+		weapon_count = maxi(weapon_count, 1)
+		ctx.weapon_label.text = "GUN %s [%d/%d]" % [
 			ctx.ability_system.get_current_weapon().to_upper(),
-			ctx.ability_system.current_weapon_index + 1
+			ctx.ability_system.current_weapon_index + 1,
+			weapon_count
 		]
 
 
@@ -214,12 +219,11 @@ func update_debug_overlay(ctx) -> void:
 
 	var room_types_label = ctx.debug_container.get_node_or_null("RoomTypesLabel") as Label
 	if room_types_label:
-		room_types_label.text = "RoomTypes: corr=%d | inner=%d | outer=%d | closet=%d | enemy_guns=%s" % [
+		room_types_label.text = "RoomTypes: corr=%d | inner=%d | outer=%d | closet=%d" % [
 			int(ctx.layout_room_stats["corridors"]),
 			int(ctx.layout_room_stats["interior_rooms"]),
 			int(ctx.layout_room_stats["exterior_rooms"]),
 			int(ctx.layout_room_stats["closets"]),
-			("ON" if ctx.enemy_weapons_enabled else "OFF"),
 		]
 
 	var music_label = ctx.debug_container.get_node_or_null("MusicLabel") as Label
@@ -237,9 +241,8 @@ func update_debug_overlay(ctx) -> void:
 func refresh_right_debug_hint(ctx) -> void:
 	if not ctx.debug_hint_label:
 		return
-	ctx.debug_hint_label.text = "%s\nEnemy Guns: %s\nGod Mode: %s" % [
+	ctx.debug_hint_label.text = "%s\nGod Mode: %s" % [
 		RIGHT_DEBUG_HINT_BASE,
-		("ON" if ctx.enemy_weapons_enabled else "OFF"),
 		("ON" if GameConfig and GameConfig.god_mode else "OFF"),
 	]
 

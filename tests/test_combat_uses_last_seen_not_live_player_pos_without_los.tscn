@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_combat_uses_last_seen_not_live_player_pos_without_los.gd" id="1_script"]
+
+[node name="TestCombatUsesLastSeenNoLos" type="Node"]
+script = ExtResource("1_script")

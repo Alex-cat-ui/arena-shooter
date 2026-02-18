@@ -55,27 +55,52 @@ func _test_force_combat_escalates_room_alert_same_tick() -> void:
 	var room_id := int(enemy.get_meta("room_id", -1))
 	if room_id < 0 and enemy.has_method("_resolve_room_id_for_events"):
 		room_id = int(enemy.call("_resolve_room_id_for_events"))
-	var room_alert_level := ENEMY_ALERT_LEVELS_SCRIPT.CALM
-	if alert_system.has_method("get_room_alert_level") and room_id >= 0:
-		room_alert_level = int(alert_system.get_room_alert_level(room_id))
+	var room_alert_effective := ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	var room_alert_transient := ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	if room_id >= 0:
+		if alert_system.has_method("get_room_effective_level"):
+			room_alert_effective = int(alert_system.get_room_effective_level(room_id))
+		elif alert_system.has_method("get_room_alert_level"):
+			room_alert_effective = int(alert_system.get_room_alert_level(room_id))
+		if alert_system.has_method("get_room_transient_level"):
+			room_alert_transient = int(alert_system.get_room_transient_level(room_id))
+		else:
+			room_alert_transient = room_alert_effective
 
 	_t.run_test(
 		"combat sync: enemy awareness switched to COMBAT",
 		String(enemy.get_meta("awareness_state", "CALM")) == "COMBAT"
 	)
 	_t.run_test(
-		"combat sync: room_alert >= ALERT same tick",
-		room_alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.ALERT
+		"combat sync: room effective is COMBAT same tick",
+		room_alert_effective == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
+	)
+	_t.run_test(
+		"combat sync: room transient >= ALERT same tick",
+		room_alert_transient >= ENEMY_ALERT_LEVELS_SCRIPT.ALERT
 	)
 
 	enemy.runtime_budget_tick(0.1)
 	var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test(
-		"combat sync: snapshot has no COMBAT|CALM mismatch",
+		"combat sync: snapshot has no COMBAT|CALM effective mismatch",
 		not (
 			int(snapshot.get("state", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
-			and int(snapshot.get("room_alert_level", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.CALM
+			and int(snapshot.get("room_alert_effective", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.CALM
 		)
+	)
+	_t.run_test(
+		"combat sync: snapshot reports transient/effective/latch fields",
+		snapshot.has("room_alert_effective")
+		and snapshot.has("room_alert_transient")
+		and snapshot.has("room_latch_count")
+		and snapshot.has("latched")
+	)
+	_t.run_test(
+		"combat sync: snapshot marks enemy as latched in COMBAT",
+		bool(snapshot.get("latched", false))
+		and int(snapshot.get("room_latch_count", 0)) > 0
+		and int(snapshot.get("room_alert_effective", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
 	)
 
 	room.queue_free()

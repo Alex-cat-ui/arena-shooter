@@ -20,7 +20,7 @@ const FLANK_SLOT_COUNT := 8
 const INVALID_PATH_SCORE_PENALTY := 100000.0
 
 var player_node: Node2D = null
-var room_nav_system: Node = null
+var navigation_service: Node = null
 var entities_container: Node = null
 
 var _members: Dictionary = {}           # enemy_id -> {"enemy_ref": WeakRef, "role": int, "assignment": Dictionary}
@@ -29,9 +29,9 @@ var _clock_sec: float = 0.0
 var runtime_budget_scheduler_enabled: bool = false
 
 
-func initialize(p_player_node: Node2D, p_room_nav_system: Node, p_entities_container: Node = null) -> void:
+func initialize(p_player_node: Node2D, p_navigation_service: Node, p_entities_container: Node = null) -> void:
 	player_node = p_player_node
-	room_nav_system = p_room_nav_system
+	navigation_service = p_navigation_service
 	bind_entities_container(p_entities_container)
 	_recompute_assignments()
 
@@ -179,14 +179,14 @@ func _pick_slot_for_enemy(enemy: Node2D, preferred_role: int, slots_by_role: Dic
 
 
 func _is_slot_path_ok(enemy: Node2D, slot_pos: Vector2) -> bool:
-	if room_nav_system == null:
+	if navigation_service == null:
 		return true
-	if room_nav_system.has_method("room_id_at_point"):
-		var slot_room := int(room_nav_system.room_id_at_point(slot_pos))
+	if navigation_service.has_method("room_id_at_point"):
+		var slot_room := int(navigation_service.room_id_at_point(slot_pos))
 		if slot_room < 0:
 			return false
-	if room_nav_system.has_method("build_path_points"):
-			var path := room_nav_system.build_path_points(enemy.global_position, slot_pos) as Array
+	if navigation_service.has_method("build_path_points"):
+			var path := navigation_service.build_path_points(enemy.global_position, slot_pos) as Array
 			if path.is_empty():
 				return false
 			var tail := path[path.size() - 1] as Vector2

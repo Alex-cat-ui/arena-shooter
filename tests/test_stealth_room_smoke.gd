@@ -2,7 +2,7 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
-const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/room_nav_system.gd")
+const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/navigation_service.gd")
 const ENEMY_ALERT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_alert_system.gd")
 const ENEMY_SQUAD_SYSTEM_SCRIPT := preload("res://src/systems/enemy_squad_system.gd")
 const ENEMY_AGGRO_COORDINATOR_SCRIPT := preload("res://src/systems/enemy_aggro_coordinator.gd")
@@ -64,16 +64,20 @@ func _test_scene_bootstrap_and_entities() -> void:
 			and text.find("suspicion=") >= 0
 			and text.find("vis=") >= 0
 			and text.find("dist=") >= 0
-			and text.find("last_seen_age=") >= 0
-			and text.find("weapons=") >= 0
-			and text.find("flashlight_active=") >= 0
-			and text.find("in_cone=") >= 0
-			and text.find("los_to_player=") >= 0
-			and text.find("flashlight_hit=") >= 0
-			and text.find("flashlight_bonus_raw=") >= 0
-			and text.find("effective_visibility_pre_clamp=") >= 0
-			and text.find("effective_visibility_post_clamp=") >= 0
-			and text.find("facing_used_for_flashlight=") >= 0
+			and text.find("last_seen=") >= 0
+			and text.find("fire_gate=") >= 0
+			and text.find("active=") >= 0
+			and text.find("cone=") >= 0
+			and text.find("hit=") >= 0
+			and text.find("bonus=") >= 0
+			and text.find("vis_pre=") >= 0
+			and text.find("vis_post=") >= 0
+			and text.find("room_eff=") >= 0
+			and text.find("room_trans=") >= 0
+			and text.find("latch=") >= 0
+			and text.find("grace=") >= 0
+			and text.find("target_lkp=") >= 0
+			and text.find("reason=") >= 0
 		)
 		_t.run_test("stealth overlay exposes required telemetry fields", has_required_fields)
 
@@ -83,7 +87,7 @@ func _test_scene_bootstrap_and_entities() -> void:
 
 func _test_autoload_reuse_without_local_duplicates() -> void:
 	var created_nodes: Array[Node] = []
-	_ensure_root_system("RoomNavSystem", ROOM_NAV_SYSTEM_SCRIPT, created_nodes)
+	_ensure_root_system("NavigationService", ROOM_NAV_SYSTEM_SCRIPT, created_nodes)
 	_ensure_root_system("EnemyAlertSystem", ENEMY_ALERT_SYSTEM_SCRIPT, created_nodes)
 	_ensure_root_system("EnemySquadSystem", ENEMY_SQUAD_SYSTEM_SCRIPT, created_nodes)
 	_ensure_root_system("EnemyAggroCoordinator", ENEMY_AGGRO_COORDINATOR_SCRIPT, created_nodes)
@@ -97,11 +101,11 @@ func _test_autoload_reuse_without_local_duplicates() -> void:
 	_t.run_test("controller available in autoload reuse case", controller != null)
 	if controller and controller.has_method("debug_get_system_summary"):
 		var summary := controller.call("debug_get_system_summary") as Dictionary
-		_t.run_test("room nav reuses root singleton", bool(summary.get("room_nav_from_autoload", false)))
+		_t.run_test("room nav reuses root singleton", bool(summary.get("navigation_service_from_autoload", false)))
 		_t.run_test("alert reuses root singleton", bool(summary.get("enemy_alert_from_autoload", false)))
 		_t.run_test("squad reuses root singleton", bool(summary.get("enemy_squad_from_autoload", false)))
 		_t.run_test("aggro reuses root singleton", bool(summary.get("enemy_aggro_from_autoload", false)))
-		_t.run_test("no local RoomNavSystem duplicate", not bool(summary.get("local_room_nav_exists", true)))
+		_t.run_test("no local NavigationService duplicate", not bool(summary.get("local_navigation_service_exists", true)))
 		_t.run_test("no local EnemyAlertSystem duplicate", not bool(summary.get("local_enemy_alert_exists", true)))
 		_t.run_test("no local EnemySquadSystem duplicate", not bool(summary.get("local_enemy_squad_exists", true)))
 		_t.run_test("no local EnemyAggroCoordinator duplicate", not bool(summary.get("local_enemy_aggro_exists", true)))

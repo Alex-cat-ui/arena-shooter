@@ -19,6 +19,7 @@ extends Node2D
 var _runtime_active: bool = false
 var _runtime_hit: bool = false
 var _runtime_facing: Vector2 = Vector2.RIGHT
+var _runtime_inactive_reason: String = ""
 
 
 func set_flashlight_visibility_bonus(value: float) -> void:
@@ -43,17 +44,26 @@ func is_point_in_cone(origin: Vector2, forward: Vector2, point: Vector2) -> bool
 
 
 func is_player_hit(origin: Vector2, forward: Vector2, player_position: Vector2, has_los: bool, active: bool) -> bool:
+	var evaluation := evaluate_hit(origin, forward, player_position, has_los, active)
+	return bool(evaluation.get("hit", false))
+
+
+func evaluate_hit(origin: Vector2, forward: Vector2, player_position: Vector2, has_los: bool, active: bool) -> Dictionary:
+	var in_cone := is_point_in_cone(origin, forward, player_position)
 	if not active:
-		return false
+		return {"hit": false, "in_cone": in_cone, "inactive_reason": "state_blocked"}
 	if not has_los:
-		return false
-	return is_point_in_cone(origin, forward, player_position)
+		return {"hit": false, "in_cone": in_cone, "inactive_reason": "los_blocked"}
+	if not in_cone:
+		return {"hit": false, "in_cone": false, "inactive_reason": "cone_miss"}
+	return {"hit": true, "in_cone": true, "inactive_reason": ""}
 
 
-func update_runtime_debug(forward: Vector2, active: bool, hit: bool) -> void:
+func update_runtime_debug(forward: Vector2, active: bool, hit: bool, inactive_reason: String = "") -> void:
 	_runtime_facing = _safe_forward(forward)
 	_runtime_active = active
 	_runtime_hit = hit and active
+	_runtime_inactive_reason = inactive_reason
 	queue_redraw()
 
 

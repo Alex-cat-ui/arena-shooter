@@ -1,0 +1,99 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://src/levels/stealth_3zone_test_controller.gd" id="1_controller"]
+[ext_resource type="PackedScene" path="res://scenes/entities/player.tscn" id="2_player_scene"]
+[ext_resource type="Script" path="res://src/systems/zone_director.gd" id="3_zone_director_script"]
+[ext_resource type="Script" path="res://src/systems/navigation_service.gd" id="4_navigation_service_script"]
+[ext_resource type="Script" path="res://src/systems/enemy_alert_system.gd" id="5_enemy_alert_system_script"]
+[ext_resource type="Script" path="res://src/systems/enemy_squad_system.gd" id="6_enemy_squad_system_script"]
+[ext_resource type="Script" path="res://src/systems/enemy_aggro_coordinator.gd" id="7_enemy_aggro_coordinator_script"]
+[ext_resource type="Script" path="res://src/systems/combat_system.gd" id="8_combat_system_script"]
+[ext_resource type="Script" path="res://src/systems/projectile_system.gd" id="9_projectile_system_script"]
+
+[node name="Stealth3ZoneTest" type="Node2D"]
+
+[node name="Navigation" type="Node2D" parent="."]
+
+[node name="Geometry" type="Node2D" parent="."]
+
+[node name="Doors" type="Node2D" parent="."]
+
+[node name="ShadowAreas" type="Node2D" parent="."]
+
+[node name="Entities" type="Node2D" parent="."]
+
+[node name="Player" parent="Entities" instance=ExtResource("2_player_scene")]
+collision_mask = 3
+
+[node name="Spawns" type="Node2D" parent="."]
+
+[node name="PlayerSpawn" type="Node2D" parent="Spawns"]
+position = Vector2(100, 240)
+
+[node name="SpawnA1" type="Node2D" parent="Spawns"]
+position = Vector2(320, 240)
+
+[node name="SpawnA2" type="Node2D" parent="Spawns"]
+position = Vector2(960, 240)
+
+[node name="SpawnB" type="Node2D" parent="Spawns"]
+position = Vector2(400, 820)
+
+[node name="SpawnC1" type="Node2D" parent="Spawns"]
+position = Vector2(1300, 780)
+
+[node name="SpawnC2" type="Node2D" parent="Spawns"]
+position = Vector2(1300, 1000)
+
+[node name="Systems" type="Node2D" parent="."]
+
+[node name="ZoneDirector" type="Node" parent="Systems"]
+script = ExtResource("3_zone_director_script")
+
+[node name="NavigationService" type="Node" parent="Systems"]
+script = ExtResource("4_navigation_service_script")
+
+[node name="EnemyAlertSystem" type="Node" parent="Systems"]
+script = ExtResource("5_enemy_alert_system_script")
+
+[node name="EnemySquadSystem" type="Node" parent="Systems"]
+script = ExtResource("6_enemy_squad_system_script")
+
+[node name="EnemyAggroCoordinator" type="Node" parent="Systems"]
+script = ExtResource("7_enemy_aggro_coordinator_script")
+
+[node name="CombatSystem" type="Node" parent="Systems"]
+script = ExtResource("8_combat_system_script")
+
+[node name="ProjectileSystem" type="Node" parent="Systems"]
+script = ExtResource("9_projectile_system_script")
+
+[node name="Projectiles" type="Node2D" parent="."]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+zoom = Vector2(1, 1)
+position_smoothing_enabled = true
+position_smoothing_speed = 8.0
+enabled = true
+
+[node name="DebugUI" type="CanvasLayer" parent="."]
+layer = 8
+
+[node name="DebugLabel" type="Label" parent="DebugUI"]
+offset_left = 12.0
+offset_top = 8.0
+offset_right = 1120.0
+offset_bottom = 220.0
+autowrap_mode = 2
+text = "zones: A=CALM B=CALM C=CALM"
+
+[node name="HintLabel" type="Label" parent="DebugUI"]
+offset_left = 12.0
+offset_top = 228.0
+offset_right = 1120.0
+offset_bottom = 312.0
+autowrap_mode = 2
+text = "Phase 5: 3-zone deterministic test level"
+
+[node name="Stealth3ZoneTestController" type="Node" parent="."]
+script = ExtResource("1_controller")

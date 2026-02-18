@@ -3,7 +3,7 @@ class_name LevelBootstrapController
 
 const ENEMY_SCENE = preload("res://scenes/entities/enemy.tscn")
 const ROOM_ENEMY_SPAWNER_SCRIPT = preload("res://src/systems/room_enemy_spawner.gd")
-const ROOM_NAV_SYSTEM_SCRIPT = preload("res://src/systems/room_nav_system.gd")
+const NAVIGATION_SERVICE_SCRIPT = preload("res://src/systems/navigation_service.gd")
 const ENEMY_AGGRO_COORDINATOR_SCRIPT = preload("res://src/systems/enemy_aggro_coordinator.gd")
 const ENEMY_ALERT_SYSTEM_SCRIPT = preload("res://src/systems/enemy_alert_system.gd")
 const ENEMY_SQUAD_SYSTEM_SCRIPT = preload("res://src/systems/enemy_squad_system.gd")
@@ -107,32 +107,34 @@ func init_systems(
 	ctx.room_enemy_spawner.initialize(ENEMY_SCENE, ctx.entities_container)
 	ctx.room_enemy_spawner.rebuild_for_layout(ctx.layout)
 
-	ctx.room_nav_system = ROOM_NAV_SYSTEM_SCRIPT.new()
-	ctx.room_nav_system.name = "RoomNavSystem"
-	ctx.level.add_child(ctx.room_nav_system)
-	if ctx.room_nav_system and ctx.room_nav_system.has_method("initialize"):
-		ctx.room_nav_system.initialize(ctx.layout, ctx.entities_container, ctx.player)
+	ctx.navigation_service = NAVIGATION_SERVICE_SCRIPT.new()
+	ctx.navigation_service.name = "NavigationService"
+	ctx.level.add_child(ctx.navigation_service)
+	if ctx.navigation_service and ctx.navigation_service.has_method("initialize"):
+		ctx.navigation_service.initialize(ctx.layout, ctx.entities_container, ctx.player)
+	if ctx.navigation_service and ctx.navigation_service.has_method("build_from_layout"):
+		ctx.navigation_service.build_from_layout(ctx.layout, ctx.level)
 
 	ctx.enemy_alert_system = ENEMY_ALERT_SYSTEM_SCRIPT.new()
 	ctx.enemy_alert_system.name = "EnemyAlertSystem"
 	ctx.level.add_child(ctx.enemy_alert_system)
 	if ctx.enemy_alert_system and ctx.enemy_alert_system.has_method("initialize"):
-		ctx.enemy_alert_system.initialize(ctx.room_nav_system)
+		ctx.enemy_alert_system.initialize(ctx.navigation_service)
 
 	ctx.enemy_squad_system = ENEMY_SQUAD_SYSTEM_SCRIPT.new()
 	ctx.enemy_squad_system.name = "EnemySquadSystem"
 	ctx.level.add_child(ctx.enemy_squad_system)
 	if ctx.enemy_squad_system and ctx.enemy_squad_system.has_method("initialize"):
-		ctx.enemy_squad_system.initialize(ctx.player, ctx.room_nav_system, ctx.entities_container)
+		ctx.enemy_squad_system.initialize(ctx.player, ctx.navigation_service, ctx.entities_container)
 
-	if ctx.room_nav_system and ctx.room_nav_system.has_method("bind_tactical_systems"):
-		ctx.room_nav_system.bind_tactical_systems(ctx.enemy_alert_system, ctx.enemy_squad_system)
+	if ctx.navigation_service and ctx.navigation_service.has_method("bind_tactical_systems"):
+		ctx.navigation_service.bind_tactical_systems(ctx.enemy_alert_system, ctx.enemy_squad_system)
 
 	ctx.enemy_aggro_coordinator = ENEMY_AGGRO_COORDINATOR_SCRIPT.new()
 	ctx.enemy_aggro_coordinator.name = "EnemyAggroCoordinator"
 	ctx.level.add_child(ctx.enemy_aggro_coordinator)
 	if ctx.enemy_aggro_coordinator and ctx.enemy_aggro_coordinator.has_method("initialize"):
-		ctx.enemy_aggro_coordinator.initialize(ctx.entities_container, ctx.room_nav_system, ctx.player)
+		ctx.enemy_aggro_coordinator.initialize(ctx.entities_container, ctx.navigation_service, ctx.player)
 
 	ctx.runtime_budget_controller = LEVEL_RUNTIME_BUDGET_CONTROLLER_SCRIPT.new()
 	if ctx.runtime_budget_controller and ctx.runtime_budget_controller.has_method("bind"):

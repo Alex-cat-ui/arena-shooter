@@ -34,6 +34,9 @@ const TEST_LOOK_LOS_GRACE_SEC := 0.25
 const TEST_INTENT_POLICY_LOCK_SEC := 0.45
 const TEST_ACTIVE_SUSPICION_MIN := 0.05
 const TEST_FACING_LOG_DELTA_RAD := 0.35
+const COMBAT_LAST_SEEN_GRACE_SEC := 1.5
+const COMBAT_ROOM_MIGRATION_HYSTERESIS_SEC := 0.2
+const ZONE_STATE_LOCKDOWN := 2
 
 ## Enemy stats fallback (canonical values live in GameConfig.enemy_stats).
 const DEFAULT_ENEMY_STATS := {
@@ -58,14 +61,6 @@ var max_hp: int = 30
 ## Contact damage (kept for compatibility)
 var contact_damage: int = 10
 
-## Runtime toggle from LevelMVP/F7 and stealth test room.
-var _weapons_enabled_internal: bool = false
-var weapons_enabled: bool:
-	get:
-		return _weapons_enabled_internal
-	set(value):
-		_set_weapons_enabled_internal(bool(value))
-
 ## Movement speed in tiles/sec
 var speed_tiles: float = 2.0
 
@@ -85,11 +80,12 @@ var knockback_vel: Vector2 = Vector2.ZERO
 ## Reference to collision shape
 @onready var collision: CollisionShape2D = $CollisionShape2D
 
-## Room/nav wiring (kept for compatibility with RoomNavSystem)
+## Room/nav wiring (kept for compatibility with NavigationService)
 var nav_system: Node = null
 var home_room_id: int = -1
 var alert_system: Node = null
 var squad_system: Node = null
+var _zone_director: Node = null
 
 ## Weapon timing
 var _shot_cooldown: float = 0.0
@@ -98,6 +94,7 @@ var _confirmed_visual_prev: bool = false
 var _shot_rng := RandomNumberGenerator.new()
 var _last_seen_pos: Vector2 = Vector2.ZERO
 var _last_seen_age: float = INF
+var _last_seen_grace_timer: float = 0.0
 var _current_alert_level: int = ENEMY_ALERT_LEVELS_SCRIPT.CALM
 var _suspicion_test_profile_enabled: bool = false
 var _suspicion_test_profile: Dictionary = {}
@@ -122,8 +119,13 @@ var _debug_last_facing_used_for_flashlight: Vector2 = Vector2.RIGHT
 var _debug_last_facing_after_move: Vector2 = Vector2.RIGHT
 var _debug_last_state_name: String = "CALM"
 var _debug_last_last_seen_age: float = INF
-var _debug_last_weapons_enabled: bool = false
 var _debug_last_room_alert_level: int = ENEMY_ALERT_LEVELS_SCRIPT.CALM
+var _debug_last_room_alert_effective: int = ENEMY_ALERT_LEVELS_SCRIPT.CALM
+var _debug_last_room_alert_transient: int = ENEMY_ALERT_LEVELS_SCRIPT.CALM
+var _debug_last_room_latch_count: int = 0
+var _debug_last_latched: bool = false
+var _debug_last_target_is_last_seen: bool = false
+var _debug_last_flashlight_inactive_reason: String = "profile_off"
 var _debug_tick_id: int = 0
 var _debug_last_flashlight_calc_tick_id: int = -1
 var _stealth_test_debug_logging_enabled: bool = false
@@ -149,6 +151,10 @@ var _vision_right_line: Line2D = null
 var _runtime_budget_scheduler_enabled: bool = false
 var _runtime_budget_tick_pending: bool = false
 var _runtime_budget_tick_delta: float = 0.0
+var _combat_latched: bool = false
+var _combat_latched_room_id: int = -1
+var _combat_migration_candidate_room_id: int = -1
+var _combat_migration_candidate_elapsed: float = 0.0
 
 
 func _ready() -> void:
@@ -157,6 +163,9 @@ func _ready() -> void:
 	_shot_rng.randomize()
 	_perception = ENEMY_PERCEPTION_SYSTEM_SCRIPT.new(self)
 	_pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(self, sprite, speed_tiles)
+	var nav_agent := $NavAgent as NavigationAgent2D
+	if nav_agent and _pursuit and _pursuit.has_method("configure_nav_agent"):
+		_pursuit.configure_nav_agent(nav_agent)
 	_awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	_utility_brain = ENEMY_UTILITY_BRAIN_SCRIPT.new()
 	_alert_marker_presenter = ENEMY_ALERT_MARKER_PRESENTER_SCRIPT.new()
@@ -166,6 +175,7 @@ func _ready() -> void:
 		_awareness.set_suspicion_profile_enabled(_suspicion_test_profile_enabled)
 	_utility_brain.reset()
 	set_meta("awareness_state", _awareness.get_state_name())
+	set_meta("flashlight_active", false)
 	_apply_alert_level(ENEMY_ALERT_LEVELS_SCRIPT.CALM)
 	_connect_event_bus_signals()
 	_setup_flashlight_cone()
@@ -199,6 +209,7 @@ func initialize(id: int, type: String) -> void:
 		_utility_brain.reset()
 	_last_seen_pos = Vector2.ZERO
 	_last_seen_age = INF
+	_last_seen_grace_timer = 0.0
 	_player_visible_prev = false
 	_confirmed_visual_prev = false
 	_test_los_look_grace_timer = 0.0
@@ -219,6 +230,15 @@ func initialize(id: int, type: String) -> void:
 	_debug_tick_id = 0
 	_debug_last_flashlight_calc_tick_id = -1
 	_debug_last_state_name = _awareness.get_state_name() if _awareness else "CALM"
+	_debug_last_room_alert_effective = ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	_debug_last_room_alert_transient = ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	_debug_last_room_latch_count = 0
+	_debug_last_latched = false
+	_debug_last_flashlight_inactive_reason = "profile_off"
+	_combat_latched = false
+	_combat_latched_room_id = -1
+	set_meta("flashlight_active", false)
+	_reset_combat_migration_candidate()
 	_update_suspicion_ring(0.0)
 	_sync_suspicion_ring_visibility()
 	_apply_alert_level(ENEMY_ALERT_LEVELS_SCRIPT.CALM)
@@ -288,7 +308,7 @@ func runtime_budget_tick(delta: float) -> void:
 	var flashlight_facing_used: Vector2 = facing_dir
 	var sight_fov_deg := _enemy_vision_cfg_float("fov_deg", DEFAULT_SIGHT_FOV_DEG)
 	var sight_max_distance_px := _enemy_vision_cfg_float("max_distance_px", DEFAULT_SIGHT_MAX_DISTANCE_PX)
-	var player_visible: bool = bool(_perception.can_see_player(
+	var raw_player_visible: bool = bool(_perception.can_see_player(
 		global_position,
 		flashlight_facing_used,
 		sight_fov_deg,
@@ -310,11 +330,23 @@ func runtime_budget_tick(delta: float) -> void:
 	var distance_factor := float(visibility_snapshot.get("distance_factor", 0.0))
 	var shadow_mul := float(visibility_snapshot.get("shadow_mul", 1.0))
 	var distance_to_player := float(visibility_snapshot.get("distance_to_player", INF))
+	var in_shadow := shadow_mul < 0.999
+	var using_canon_confirm := _is_canon_confirm_mode()
 
 	var awareness_state_before := ENEMY_ALERT_LEVELS_SCRIPT.CALM
 	if _awareness and _awareness.has_method("get_awareness_state"):
 		awareness_state_before = int(_awareness.get_awareness_state())
-	var flashlight_active := _suspicion_test_profile_enabled and awareness_state_before == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
+	var flashlight_active := false
+	var flashlight_inactive_reason := "profile_off"
+	if _suspicion_test_profile_enabled:
+		var state_is_alert := awareness_state_before == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
+		var state_is_combat := awareness_state_before == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT or _combat_latched
+		var alert_allowed := state_is_alert and _flashlight_policy_active_in_alert()
+		var combat_allowed := state_is_combat and _flashlight_policy_active_in_combat()
+		var lockdown_allowed := _is_zone_lockdown() and _flashlight_policy_active_in_combat()
+		flashlight_active = alert_allowed or combat_allowed or lockdown_allowed
+		if not flashlight_active:
+			flashlight_inactive_reason = "state_blocked"
 	var flashlight_in_cone := false
 	var flashlight_hit := false
 	var flashlight_bonus_raw := 1.0
@@ -322,14 +354,42 @@ func runtime_budget_tick(delta: float) -> void:
 		if _suspicion_test_profile_enabled:
 			_flashlight_cone.set_flashlight_visibility_bonus(float(_suspicion_test_profile.get("flashlight_bonus", _flashlight_cone.get_flashlight_visibility_bonus())))
 		flashlight_bonus_raw = _flashlight_cone.get_flashlight_visibility_bonus()
-		flashlight_in_cone = _flashlight_cone.is_point_in_cone(global_position, flashlight_facing_used, player_pos)
-		flashlight_hit = _flashlight_cone.is_player_hit(global_position, flashlight_facing_used, player_pos, player_visible, flashlight_active)
+		if _flashlight_cone.has_method("evaluate_hit"):
+			var flashlight_eval := _flashlight_cone.evaluate_hit(global_position, flashlight_facing_used, player_pos, raw_player_visible, flashlight_active) as Dictionary
+			flashlight_in_cone = bool(flashlight_eval.get("in_cone", false))
+			flashlight_hit = bool(flashlight_eval.get("hit", false))
+			if _suspicion_test_profile_enabled:
+				var eval_reason := String(flashlight_eval.get("inactive_reason", ""))
+				if eval_reason != "":
+					flashlight_inactive_reason = eval_reason
+		else:
+			flashlight_in_cone = _flashlight_cone.is_point_in_cone(global_position, flashlight_facing_used, player_pos)
+			flashlight_hit = _flashlight_cone.is_player_hit(global_position, flashlight_facing_used, player_pos, raw_player_visible, flashlight_active)
+			if _suspicion_test_profile_enabled:
+				if not flashlight_active:
+					flashlight_inactive_reason = "state_blocked"
+				elif not raw_player_visible:
+					flashlight_inactive_reason = "los_blocked"
+				elif not flashlight_in_cone:
+					flashlight_inactive_reason = "cone_miss"
+				else:
+					flashlight_inactive_reason = ""
 	var force_flashlight_hit := _flashlight_hit_override and _suspicion_test_profile_enabled
-	if force_flashlight_hit and player_visible:
+	if force_flashlight_hit and raw_player_visible:
 		flashlight_hit = true
+	if flashlight_hit:
+		flashlight_inactive_reason = ""
+	elif _suspicion_test_profile_enabled and flashlight_active and flashlight_inactive_reason == "":
+		flashlight_inactive_reason = "los_blocked" if not raw_player_visible else "cone_miss"
 	if _flashlight_cone:
-		_flashlight_cone.update_runtime_debug(flashlight_facing_used, flashlight_active, flashlight_hit)
-	if player_visible and player_valid:
+		_flashlight_cone.update_runtime_debug(flashlight_facing_used, flashlight_active, flashlight_hit, flashlight_inactive_reason)
+
+	var confirm_channel_open := raw_player_visible and (not in_shadow or flashlight_hit)
+	var behavior_visible := raw_player_visible
+	if using_canon_confirm:
+		behavior_visible = confirm_channel_open
+
+	if behavior_visible and player_valid:
 		var look_dir := (player_pos - global_position).normalized()
 		if look_dir.length_squared() > 0.0001:
 			_test_last_stable_look_dir = look_dir
@@ -338,23 +398,63 @@ func runtime_budget_tick(delta: float) -> void:
 		_test_los_look_grace_timer = maxf(0.0, _test_los_look_grace_timer - maxf(delta, 0.0))
 
 	if _awareness:
-		if _suspicion_test_profile_enabled and _awareness.has_method("process_suspicion"):
-			var suspicion_profile: Dictionary = _suspicion_test_profile
-			if _flashlight_cone and not _suspicion_test_profile.is_empty():
-				suspicion_profile = _suspicion_test_profile.duplicate(true)
+		if using_canon_confirm and _awareness.has_method("process_confirm"):
+			var canon_config := _stealth_canon_config()
+			_apply_awareness_transitions(_awareness.process_confirm(
+				delta,
+				raw_player_visible,
+				in_shadow,
+				flashlight_hit,
+				canon_config
+			))
+		elif _suspicion_test_profile_enabled and _awareness.has_method("process_suspicion"):
+			var suspicion_profile: Dictionary = _suspicion_test_profile.duplicate(true)
+			if _flashlight_cone:
 				suspicion_profile["flashlight_bonus"] = _flashlight_cone.get_flashlight_visibility_bonus()
+			suspicion_profile["flashlight_bonus_in_alert"] = _flashlight_policy_bonus_in_alert()
+			suspicion_profile["flashlight_bonus_in_combat"] = _flashlight_policy_bonus_in_combat()
 			_apply_awareness_transitions(_awareness.process_suspicion(
 				delta,
-				player_visible,
+				raw_player_visible,
 				visibility_factor,
 				flashlight_hit,
 				suspicion_profile
 			))
-		else:
-			_apply_awareness_transitions(_awareness.process(delta, player_visible))
+		elif _awareness.has_method("process_confirm"):
+			_apply_awareness_transitions(_awareness.process_confirm(
+				delta,
+				raw_player_visible,
+				in_shadow,
+				flashlight_hit,
+				_confirm_config_with_defaults()
+			))
+	_sync_combat_latch_with_awareness_state(_awareness.get_state_name() if _awareness else AWARENESS_CALM)
 	var effective_visibility_pre_clamp := maxf(visibility_factor, 0.0)
 	var effective_visibility_post_clamp := clampf(effective_visibility_pre_clamp, 0.0, 1.0)
-	if _suspicion_test_profile_enabled and _awareness and _awareness.has_method("get_last_suspicion_debug"):
+	if _suspicion_test_profile_enabled:
+		var awareness_state_for_bonus := awareness_state_before
+		if _awareness and _awareness.has_method("get_awareness_state"):
+			awareness_state_for_bonus = int(_awareness.get_awareness_state())
+		var bonus_allowed_in_alert := (
+			awareness_state_for_bonus == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
+			and _flashlight_policy_bonus_in_alert()
+		)
+		var bonus_allowed_in_combat := (
+			(
+				awareness_state_for_bonus == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
+				or _combat_latched
+				or _is_zone_lockdown()
+			)
+			and _flashlight_policy_bonus_in_combat()
+		)
+		var bonus_applied := flashlight_hit and (bonus_allowed_in_alert or bonus_allowed_in_combat)
+		if bonus_applied:
+			flashlight_bonus_raw = maxf(flashlight_bonus_raw, 1.0)
+			effective_visibility_pre_clamp *= flashlight_bonus_raw
+			effective_visibility_post_clamp = clampf(effective_visibility_pre_clamp, 0.0, 1.0)
+		else:
+			flashlight_bonus_raw = 1.0
+	if _suspicion_test_profile_enabled and not using_canon_confirm and _awareness and _awareness.has_method("get_last_suspicion_debug"):
 		var suspicion_debug := _awareness.get_last_suspicion_debug() as Dictionary
 		if not suspicion_debug.is_empty():
 			flashlight_bonus_raw = float(suspicion_debug.get("flashlight_bonus_raw", flashlight_bonus_raw))
@@ -363,39 +463,44 @@ func runtime_budget_tick(delta: float) -> void:
 	var suspicion_now := 0.0
 	if _awareness and _awareness.has_method("get_suspicion"):
 		suspicion_now = float(_awareness.get_suspicion())
-	_update_suspicion_ring(suspicion_now)
 
-	if _suspicion_test_profile_enabled and _awareness and _awareness.has_method("has_confirmed_visual"):
+	if using_canon_confirm and _awareness and _awareness.has_method("has_confirmed_visual"):
 		var confirmed_now := bool(_awareness.has_confirmed_visual())
-		if confirmed_now and not _confirmed_visual_prev and EventBus:
-			EventBus.emit_enemy_player_spotted(entity_id, Vector3(player_pos.x, player_pos.y, 0.0))
+		if confirmed_now and not _confirmed_visual_prev:
+			_handle_confirmed_player_spotted(player_pos, true)
 		_confirmed_visual_prev = confirmed_now if player_valid else false
 	else:
-		if player_visible and not _player_visible_prev:
-			if EventBus:
-				EventBus.emit_enemy_player_spotted(entity_id, Vector3(player_pos.x, player_pos.y, 0.0))
+		if behavior_visible and not _player_visible_prev:
+			_handle_confirmed_player_spotted(player_pos, true)
 
-	if player_visible:
+	if behavior_visible:
 		_last_seen_pos = player_pos
 		_last_seen_age = 0.0
+		_last_seen_grace_timer = _combat_last_seen_grace_sec()
 	else:
 		if is_finite(_last_seen_age):
 			_last_seen_age = minf(_last_seen_age + delta, 999.0)
-		if _is_combat_lock_active() and player_valid:
-			_last_seen_pos = player_pos
-			_last_seen_age = 0.0
-	_player_visible_prev = player_visible if player_valid else false
+		_last_seen_grace_timer = maxf(0.0, _last_seen_grace_timer - maxf(delta, 0.0))
+	_player_visible_prev = behavior_visible if player_valid else false
 
-	_current_alert_level = _resolve_room_alert_level()
-	_apply_alert_level(_current_alert_level)
+	var room_alert_snapshot := _resolve_room_alert_snapshot()
+	_current_alert_level = int(room_alert_snapshot.get("effective", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
+	_debug_last_room_alert_effective = _current_alert_level
+	_debug_last_room_alert_transient = int(room_alert_snapshot.get("transient", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
+	_debug_last_room_latch_count = int(room_alert_snapshot.get("latch_count", 0))
+	_debug_last_latched = _combat_latched
+	var visual_alert_level := maxi(_current_alert_level, _resolve_awareness_alert_level())
+	_current_alert_level = visual_alert_level
 
 	var assignment := _resolve_squad_assignment()
-	var context := _build_utility_context(player_valid, player_pos, player_visible, assignment)
+	var target_context := _resolve_known_target_context(player_valid, player_pos, behavior_visible)
+	var context := _build_utility_context(player_valid, behavior_visible, assignment, target_context)
+	_debug_last_target_is_last_seen = bool(context.get("target_is_last_seen", false))
 	var intent: Dictionary = _utility_brain.update(delta, context) if _utility_brain else {}
 	if _suspicion_test_profile_enabled:
 		intent = _apply_test_profile_intent_policy(intent, context, suspicion_now, delta)
 	var exec_result: Dictionary = _pursuit.execute_intent(delta, intent, context) if _pursuit and _pursuit.has_method("execute_intent") else {}
-	if _suspicion_test_profile_enabled and not player_visible and _test_los_look_grace_timer > 0.0 and _pursuit and _pursuit.has_method("set_external_look_dir"):
+	if _suspicion_test_profile_enabled and not behavior_visible and _test_los_look_grace_timer > 0.0 and _pursuit and _pursuit.has_method("set_external_look_dir"):
 		_pursuit.set_external_look_dir(_test_last_stable_look_dir, true)
 	var facing_after_move: Vector2 = _pursuit.get_facing_dir() as Vector2
 	if facing_after_move.length_squared() <= 0.0001:
@@ -404,28 +509,41 @@ func runtime_budget_tick(delta: float) -> void:
 	if _pursuit and _pursuit.has_method("get_target_facing_dir"):
 		target_facing_after_move = _pursuit.get_target_facing_dir() as Vector2
 	var should_request_fire := bool(exec_result.get("request_fire", false))
-	var should_fire_by_intent := should_request_fire and _should_fire_player_target(player_visible, player_pos)
-	var should_fire_by_test_fallback := _suspicion_test_profile_enabled and _is_combat_awareness_active() and _should_fire_player_target(player_visible, player_pos)
-	if _weapons_enabled_internal and (should_fire_by_intent or should_fire_by_test_fallback):
+	if should_request_fire and _should_fire_player_target(behavior_visible, player_pos):
 		_try_fire_at_player(player_pos)
+	_update_combat_latch_migration(delta)
+	room_alert_snapshot = _resolve_room_alert_snapshot()
+	_current_alert_level = int(room_alert_snapshot.get("effective", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
+	_debug_last_room_alert_effective = _current_alert_level
+	_debug_last_room_alert_transient = int(room_alert_snapshot.get("transient", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
+	_debug_last_room_latch_count = int(room_alert_snapshot.get("latch_count", 0))
+	_debug_last_latched = _combat_latched
+	visual_alert_level = maxi(_current_alert_level, _resolve_awareness_alert_level())
+	_current_alert_level = visual_alert_level
+	var ui_snap := get_ui_awareness_snapshot()
+	if _suspicion_ring and _suspicion_ring.has_method("update_from_snapshot"):
+		_suspicion_ring.call("update_from_snapshot", ui_snap)
+	if _alert_marker_presenter and _alert_marker_presenter.has_method("update_from_snapshot"):
+		_alert_marker_presenter.update_from_snapshot(ui_snap, alert_marker)
 
-	_debug_last_has_los = player_visible
+	_debug_last_has_los = behavior_visible
 	_debug_last_visibility_factor = visibility_factor
 	_debug_last_distance_factor = distance_factor
 	_debug_last_shadow_mul = shadow_mul
 	_debug_last_distance_to_player = distance_to_player
 	_debug_last_flashlight_active = flashlight_active
+	set_meta("flashlight_active", flashlight_active)
 	_debug_last_flashlight_hit = flashlight_hit
 	_debug_last_flashlight_in_cone = flashlight_in_cone
-	_debug_last_flashlight_los_to_player = player_visible
+	_debug_last_flashlight_los_to_player = raw_player_visible
 	_debug_last_flashlight_bonus_raw = flashlight_bonus_raw
+	_debug_last_flashlight_inactive_reason = flashlight_inactive_reason
 	_debug_last_effective_visibility_pre_clamp = effective_visibility_pre_clamp
 	_debug_last_effective_visibility_post_clamp = effective_visibility_post_clamp
 	_debug_last_intent_type = int(intent.get("type", -1))
 	_debug_last_intent_target = intent.get("target", Vector2.ZERO) as Vector2
 	_debug_last_last_seen_age = _last_seen_age
-	_debug_last_weapons_enabled = _weapons_enabled_internal
-	_debug_last_room_alert_level = _current_alert_level
+	_debug_last_room_alert_level = _debug_last_room_alert_effective
 	_debug_last_facing_used_for_flashlight = flashlight_facing_used
 	_debug_last_facing_after_move = facing_after_move
 	_debug_last_flashlight_calc_tick_id = _debug_tick_id
@@ -436,22 +554,33 @@ func runtime_budget_tick(delta: float) -> void:
 	_emit_stealth_debug_trace_if_needed(context, suspicion_now)
 	if _alert_marker_presenter:
 		_alert_marker_presenter.update(delta)
-	_update_vision_debug_lines(player_valid, player_pos, player_visible)
+	_update_vision_debug_lines(player_valid, player_pos, raw_player_visible)
 
 
 func set_room_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	nav_system = p_nav_system
 	home_room_id = p_home_room_id
+	_resolve_room_id_for_events()
 	if _pursuit:
 		_pursuit.configure_navigation(p_nav_system, p_home_room_id)
 
 
 func set_tactical_systems(p_alert_system: Node = null, p_squad_system: Node = null) -> void:
+	if alert_system != p_alert_system and _combat_latched and alert_system and alert_system.has_method("unregister_enemy_combat") and entity_id > 0:
+		alert_system.unregister_enemy_combat(entity_id)
+		_combat_latched = false
+		_combat_latched_room_id = -1
+		_reset_combat_migration_candidate()
 	alert_system = p_alert_system
 	if squad_system != p_squad_system and squad_system and squad_system.has_method("deregister_enemy") and entity_id > 0:
 		squad_system.deregister_enemy(entity_id)
 	squad_system = p_squad_system
 	_register_to_squad_system()
+	_sync_combat_latch_with_awareness_state(_awareness.get_state_name() if _awareness else AWARENESS_CALM)
+
+
+func set_zone_director(director: Node) -> void:
+	_zone_director = director
 
 
 func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
@@ -494,31 +623,44 @@ func debug_force_awareness_state(target_state: String) -> void:
 				_awareness.set_suspicion_profile_enabled(false)
 			var combat_transitions: Array[Dictionary] = _awareness.register_reinforcement()
 			_apply_awareness_transitions(combat_transitions)
-			if _awareness.has_method("get_state_name") and String(_awareness.get_state_name()) != AWARENESS_COMBAT:
-				_apply_awareness_transitions(_awareness.process(0.0, true))
+			if _awareness.has_method("get_state_name") and String(_awareness.get_state_name()) != AWARENESS_COMBAT and _awareness.has_method("process_confirm"):
+				_apply_awareness_transitions(_awareness.process_confirm(
+					0.0,
+					true,
+					false,
+					false,
+					_confirm_config_with_defaults()
+				))
 			if _awareness.has_method("set_suspicion_profile_enabled"):
 				_awareness.set_suspicion_profile_enabled(suspicion_profile_enabled_before)
 			_set_awareness_meta_from_system()
 			if _awareness.has_method("get_state_name") and String(_awareness.get_state_name()) == AWARENESS_COMBAT:
+				_awareness.hostile_contact = true
 				_raise_room_alert_for_combat_same_tick()
 				_apply_alert_level(maxi(_resolve_room_alert_level(), ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
 		_:
 			push_warning("[Enemy] debug_force_awareness_state: unknown target_state='%s'" % normalized_state)
 
 
-func set_weapons_enabled_for_test(enabled: bool) -> void:
-	_set_weapons_enabled_internal(enabled)
-
-
-func is_weapons_enabled_for_test() -> bool:
-	return _weapons_enabled_internal
-
-
 func _connect_event_bus_signals() -> void:
 	if not EventBus:
 		return
+	if EventBus.has_signal("enemy_player_spotted") and not EventBus.enemy_player_spotted.is_connected(_on_enemy_player_spotted):
+		EventBus.enemy_player_spotted.connect(_on_enemy_player_spotted)
 	if EventBus.has_signal("enemy_reinforcement_called") and not EventBus.enemy_reinforcement_called.is_connected(_on_enemy_reinforcement_called):
 		EventBus.enemy_reinforcement_called.connect(_on_enemy_reinforcement_called)
+
+
+func _on_enemy_player_spotted(source_enemy_id: int, position: Vector3) -> void:
+	if is_dead:
+		return
+	if source_enemy_id != entity_id:
+		return
+	if _awareness and _awareness.has_method("get_state_name"):
+		var state_name := String(_awareness.get_state_name())
+		if state_name == AWARENESS_COMBAT and _combat_latched:
+			return
+	_handle_confirmed_player_spotted(Vector2(position.x, position.y), false)
 
 
 func _on_enemy_reinforcement_called(source_enemy_id: int, _source_room_id: int, target_room_ids: Array) -> void:
@@ -535,6 +677,13 @@ func _on_enemy_reinforcement_called(source_enemy_id: int, _source_room_id: int, 
 		_apply_awareness_transitions(_awareness.register_reinforcement())
 
 
+func _handle_confirmed_player_spotted(player_pos: Vector2, broadcast_event: bool = true) -> void:
+	if _awareness:
+		_apply_awareness_transitions(_awareness.register_reinforcement())
+	if broadcast_event and EventBus:
+		EventBus.emit_enemy_player_spotted(entity_id, Vector3(player_pos.x, player_pos.y, 0.0))
+
+
 func _apply_awareness_transitions(transitions: Array[Dictionary]) -> void:
 	for transition_variant in transitions:
 		var transition := transition_variant as Dictionary
@@ -544,8 +693,13 @@ func _apply_awareness_transitions(transitions: Array[Dictionary]) -> void:
 		if transition.has("to_state"):
 			var to_state := String(transition.get("to_state", ""))
 			set_meta("awareness_state", to_state)
+			_sync_combat_latch_with_awareness_state(to_state)
 			if to_state == AWARENESS_COMBAT:
 				_raise_room_alert_for_combat_same_tick()
+				if _zone_director and _zone_director.has_method("get_zone_for_room") and _zone_director.has_method("trigger_lockdown"):
+					var room_id := int(get_meta("room_id", -1))
+					var zone_id := int(_zone_director.get_zone_for_room(room_id))
+					_zone_director.trigger_lockdown(zone_id)
 
 
 func _set_awareness_meta_from_system() -> void:
@@ -554,11 +708,7 @@ func _set_awareness_meta_from_system() -> void:
 	var state_name := String(_awareness.get_state_name())
 	set_meta("awareness_state", state_name)
 	_debug_last_state_name = state_name
-
-
-func _set_weapons_enabled_internal(enabled: bool) -> void:
-	_weapons_enabled_internal = enabled
-	_debug_last_weapons_enabled = _weapons_enabled_internal
+	_sync_combat_latch_with_awareness_state(state_name)
 
 
 func _apply_alert_level(level: int) -> void:
@@ -568,11 +718,8 @@ func _apply_alert_level(level: int) -> void:
 
 
 func _resolve_room_alert_level() -> int:
-	if alert_system and alert_system.has_method("get_room_alert_level"):
-		return int(alert_system.get_room_alert_level(_resolve_room_id_for_events()))
-	if nav_system and nav_system.has_method("get_alert_level"):
-		return int(nav_system.get_alert_level(_resolve_room_id_for_events()))
-	return ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	var room_alert_snapshot := _resolve_room_alert_snapshot()
+	return int(room_alert_snapshot.get("effective", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
 
 
 func _resolve_squad_assignment() -> Dictionary:
@@ -586,20 +733,27 @@ func _resolve_squad_assignment() -> Dictionary:
 	}
 
 
-func _build_utility_context(player_valid: bool, player_pos: Vector2, player_visible: bool, assignment: Dictionary) -> Dictionary:
+func _build_utility_context(player_valid: bool, player_visible: bool, assignment: Dictionary, target_context: Dictionary) -> Dictionary:
 	var slot_pos := assignment.get("slot_position", Vector2.ZERO) as Vector2
 	var hp_ratio := float(hp) / float(maxi(max_hp, 1))
 	var has_last_seen := _last_seen_age < INF
+	var known_target_pos := target_context.get("known_target_pos", Vector2.ZERO) as Vector2
+	var target_is_last_seen := bool(target_context.get("target_is_last_seen", false))
+	var has_known_target := bool(target_context.get("has_known_target", false))
+	var combat_lock_for_context := bool(_is_combat_lock_active() and (player_visible or _is_last_seen_grace_active()))
+	var dist_to_known_target := INF
+	if has_known_target:
+		dist_to_known_target = global_position.distance_to(known_target_pos)
 	var home_pos := global_position
 	if nav_system and nav_system.has_method("get_room_center") and home_room_id >= 0:
 		var nav_home := nav_system.get_room_center(home_room_id) as Vector2
 		if nav_home != Vector2.ZERO:
 			home_pos = nav_home
 	return {
-		"dist": global_position.distance_to(player_pos) if player_valid else INF,
+		"dist": dist_to_known_target,
 		"los": player_visible,
 		"alert_level": _resolve_effective_alert_level_for_utility(),
-		"combat_lock": _is_combat_lock_active(),
+		"combat_lock": combat_lock_for_context,
 		"last_seen_age": _last_seen_age,
 		"last_seen_pos": _last_seen_pos,
 		"has_last_seen": has_last_seen,
@@ -610,7 +764,10 @@ func _build_utility_context(player_valid: bool, player_pos: Vector2, player_visi
 		"hp_ratio": hp_ratio,
 		"path_ok": bool(assignment.get("path_ok", false)),
 		"has_slot": bool(assignment.get("has_slot", false)),
-		"player_pos": player_pos,
+		"player_pos": known_target_pos,
+		"known_target_pos": known_target_pos,
+		"target_is_last_seen": target_is_last_seen,
+		"has_known_target": has_known_target,
 		"home_position": home_pos,
 	}
 
@@ -633,8 +790,11 @@ func _emit_awareness_transition(transition: Dictionary) -> void:
 
 func _resolve_room_id_for_events() -> int:
 	var room_id := int(get_meta("room_id", home_room_id))
-	if room_id < 0 and nav_system and nav_system.has_method("room_id_at_point"):
-		room_id = int(nav_system.room_id_at_point(global_position))
+	if nav_system and nav_system.has_method("room_id_at_point"):
+		var detected_room_id := int(nav_system.room_id_at_point(global_position))
+		if detected_room_id >= 0:
+			room_id = detected_room_id
+	if room_id >= 0:
 		set_meta("room_id", room_id)
 	return room_id
 
@@ -646,6 +806,17 @@ func _resolve_effective_alert_level_for_utility() -> int:
 	if awareness_alert == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT:
 		return ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
 	return maxi(_current_alert_level, awareness_alert)
+
+
+func _resolve_awareness_alert_level() -> int:
+	var awareness_alert := ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	if _awareness and _awareness.has_method("get_awareness_state"):
+		awareness_alert = int(_awareness.get_awareness_state())
+	return clampi(
+		awareness_alert,
+		ENEMY_ALERT_LEVELS_SCRIPT.CALM,
+		ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
+	)
 
 
 func _is_combat_lock_active() -> bool:
@@ -661,6 +832,7 @@ func _raise_room_alert_for_combat_same_tick() -> void:
 	if room_id < 0:
 		return
 	alert_system.raise_combat_immediate(room_id, entity_id)
+	_ensure_combat_latch_registered()
 
 
 func get_current_alert_level() -> int:
@@ -671,6 +843,31 @@ func get_current_intent() -> Dictionary:
 	if _utility_brain:
 		return _utility_brain.get_current_intent()
 	return {}
+
+
+func get_ui_awareness_snapshot() -> Dictionary:
+	if _awareness == null or not _awareness.has_method("get_ui_snapshot"):
+		return {
+			"state": ENEMY_ALERT_LEVELS_SCRIPT.CALM,
+			"combat_phase": 0,
+			"confirm01": 0.0,
+			"hostile_contact": false,
+			"hostile_damaged": false,
+			"zone_state": _get_zone_state(),
+		}
+	var snap := (_awareness.get_ui_snapshot() as Dictionary).duplicate(true)
+	snap["zone_state"] = _get_zone_state()
+	return snap
+
+
+func _get_zone_state() -> int:
+	if not _zone_director:
+		return -1
+	if not _zone_director.has_method("get_zone_for_room") or not _zone_director.has_method("get_zone_state"):
+		return -1
+	var room_id := int(get_meta("room_id", -1))
+	var zone_id := int(_zone_director.get_zone_for_room(room_id))
+	return int(_zone_director.get_zone_state(zone_id))
 
 
 func enable_suspicion_test_profile(profile: Dictionary) -> void:
@@ -713,6 +910,10 @@ func set_flashlight_hit_for_detection(hit: bool) -> void:
 	_flashlight_hit_override = hit
 
 
+func is_flashlight_active_for_navigation() -> bool:
+	return _debug_last_flashlight_active
+
+
 func set_stealth_test_debug_logging(enabled: bool) -> void:
 	_stealth_test_debug_logging_enabled = enabled
 	if not enabled:
@@ -748,10 +949,11 @@ func get_debug_detection_snapshot() -> Dictionary:
 		"visibility_factor": _debug_last_visibility_factor,
 		"flashlight_active": _debug_last_flashlight_active,
 		"in_cone": _debug_last_flashlight_in_cone,
-		"flashlight_hit": _debug_last_flashlight_hit,
-		"flashlight_bonus_raw": _debug_last_flashlight_bonus_raw,
-		"effective_visibility_pre_clamp": _debug_last_effective_visibility_pre_clamp,
-		"effective_visibility_post_clamp": _debug_last_effective_visibility_post_clamp,
+			"flashlight_hit": _debug_last_flashlight_hit,
+			"flashlight_bonus_raw": _debug_last_flashlight_bonus_raw,
+			"flashlight_inactive_reason": _debug_last_flashlight_inactive_reason,
+			"effective_visibility_pre_clamp": _debug_last_effective_visibility_pre_clamp,
+			"effective_visibility_post_clamp": _debug_last_effective_visibility_post_clamp,
 		"confirmed": confirmed,
 		"intent_type": _debug_last_intent_type,
 		"intent_target": _debug_last_intent_target,
@@ -762,8 +964,13 @@ func get_debug_detection_snapshot() -> Dictionary:
 		"flashlight_calc_tick_id": _debug_last_flashlight_calc_tick_id,
 		"last_seen_age": _debug_last_last_seen_age,
 		"room_alert_level": _debug_last_room_alert_level,
-		"weapons_enabled": _weapons_enabled_internal,
+		"room_alert_effective": _debug_last_room_alert_effective,
+		"room_alert_transient": _debug_last_room_alert_transient,
+		"room_latch_count": _debug_last_room_latch_count,
+		"latched": _debug_last_latched,
 		"suspicion_ring_progress": _suspicion_ring.call("get_progress") if _suspicion_ring and _suspicion_ring.has_method("get_progress") else suspicion,
+		"target_is_last_seen": _debug_last_target_is_last_seen,
+		"last_seen_grace_left": _last_seen_grace_timer,
 	}
 
 
@@ -787,7 +994,7 @@ func _apply_test_profile_intent_policy(intent: Dictionary, context: Dictionary, 
 		intent_type = _test_intent_policy_last_type
 		out["type"] = intent_type
 		if not out.has("target") or (out.get("target", Vector2.ZERO) as Vector2) == Vector2.ZERO:
-			out["target"] = context.get("player_pos", global_position) as Vector2
+			out["target"] = context.get("known_target_pos", context.get("player_pos", global_position)) as Vector2
 		return out
 
 	if should_stabilize and blocked_for_test:
@@ -795,7 +1002,7 @@ func _apply_test_profile_intent_policy(intent: Dictionary, context: Dictionary, 
 		var hold_range_max := _utility_cfg_float("hold_range_max_px", 610.0)
 		intent_type = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE if dist <= hold_range_max else ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
 		out["type"] = intent_type
-		out["target"] = context.get("player_pos", global_position) as Vector2
+		out["target"] = context.get("known_target_pos", context.get("player_pos", global_position)) as Vector2
 
 	if should_stabilize and (
 		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
@@ -822,7 +1029,7 @@ func _emit_stealth_debug_trace_if_needed(context: Dictionary, suspicion_now: flo
 	var facing_changed := facing_delta >= _test_profile_facing_log_delta_rad()
 	if not intent_changed and not facing_changed:
 		return
-	print("[EnemyStealthTrace] id=%d state=%s room_alert=%s intent=%d los=%s susp=%.3f vis=%.3f dist=%.1f last_seen_age=%.2f weapons=%s facing_delta=%.3f" % [
+	print("[EnemyStealthTrace] id=%d state=%s room_alert=%s intent=%d los=%s susp=%.3f vis=%.3f dist=%.1f last_seen_age=%.2f facing_delta=%.3f" % [
 		entity_id,
 		_debug_last_state_name,
 		ENEMY_ALERT_LEVELS_SCRIPT.level_name(_debug_last_room_alert_level),
@@ -832,7 +1039,6 @@ func _emit_stealth_debug_trace_if_needed(context: Dictionary, suspicion_now: flo
 		_debug_last_visibility_factor,
 		float(context.get("dist", INF)),
 		_debug_last_last_seen_age,
-		str(_debug_last_weapons_enabled),
 		facing_delta,
 	])
 	_debug_last_logged_intent_type = intent_type
@@ -861,6 +1067,58 @@ func _test_profile_facing_log_delta_rad() -> float:
 	if _suspicion_test_profile_enabled and not _suspicion_test_profile.is_empty():
 		return maxf(float(_suspicion_test_profile.get("facing_log_delta_rad", TEST_FACING_LOG_DELTA_RAD)), 0.0)
 	return TEST_FACING_LOG_DELTA_RAD
+
+
+func _is_canon_confirm_mode() -> bool:
+	return GameConfig != null and GameConfig.stealth_canon is Dictionary
+
+
+func _stealth_canon_config() -> Dictionary:
+	if _is_canon_confirm_mode():
+		return GameConfig.stealth_canon as Dictionary
+	return {}
+
+
+func _confirm_config_with_defaults() -> Dictionary:
+	var config := _stealth_canon_config().duplicate(true)
+	if config.is_empty():
+		config = {}
+	config["confirm_time_to_engage"] = float(config.get("confirm_time_to_engage", 7.50))
+	config["confirm_decay_rate"] = float(config.get("confirm_decay_rate", 0.0916667))
+	config["confirm_grace_window"] = float(config.get("confirm_grace_window", 1.50))
+	return config
+
+
+func _flashlight_policy_active_in_alert() -> bool:
+	return _flashlight_policy_flag("flashlight_active_in_alert", true)
+
+
+func _flashlight_policy_active_in_combat() -> bool:
+	return _flashlight_policy_flag("flashlight_active_in_combat", true)
+
+
+func _flashlight_policy_bonus_in_alert() -> bool:
+	return _flashlight_policy_flag("flashlight_bonus_in_alert", true)
+
+
+func _flashlight_policy_bonus_in_combat() -> bool:
+	return _flashlight_policy_flag("flashlight_bonus_in_combat", true)
+
+
+func _is_zone_lockdown() -> bool:
+	if not _zone_director:
+		return false
+	if not _zone_director.has_method("get_zone_for_room") or not _zone_director.has_method("get_zone_state"):
+		return false
+	var room_id := int(get_meta("room_id", -1))
+	var zone_id := int(_zone_director.get_zone_for_room(room_id))
+	return int(_zone_director.get_zone_state(zone_id)) == ZONE_STATE_LOCKDOWN
+
+
+func _flashlight_policy_flag(key: String, fallback: bool) -> bool:
+	if not _suspicion_test_profile_enabled:
+		return fallback
+	return bool(_suspicion_test_profile.get(key, fallback))
 
 
 func _utility_cfg_float(key: String, fallback: float) -> float:
@@ -917,6 +1175,166 @@ func _is_combat_awareness_active() -> bool:
 	if not _awareness:
 		return false
 	return _awareness.get_state_name() == AWARENESS_COMBAT
+
+
+func _resolve_room_alert_snapshot() -> Dictionary:
+	var room_id := _resolve_room_id_for_events()
+	var effective := ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	var transient := ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	var latch_count := 0
+	if room_id >= 0 and alert_system:
+		if alert_system.has_method("get_room_effective_level"):
+			effective = int(alert_system.get_room_effective_level(room_id))
+		elif alert_system.has_method("get_room_alert_level"):
+			effective = int(alert_system.get_room_alert_level(room_id))
+		if alert_system.has_method("get_room_transient_level"):
+			transient = int(alert_system.get_room_transient_level(room_id))
+		else:
+			transient = effective
+		if alert_system.has_method("get_room_latch_count"):
+			latch_count = int(alert_system.get_room_latch_count(room_id))
+	elif room_id >= 0 and nav_system and nav_system.has_method("get_alert_level"):
+		effective = int(nav_system.get_alert_level(room_id))
+		transient = effective
+	return {
+		"effective": clampi(effective, ENEMY_ALERT_LEVELS_SCRIPT.CALM, ENEMY_ALERT_LEVELS_SCRIPT.COMBAT),
+		"transient": clampi(transient, ENEMY_ALERT_LEVELS_SCRIPT.CALM, ENEMY_ALERT_LEVELS_SCRIPT.ALERT),
+		"latch_count": maxi(latch_count, 0),
+	}
+
+
+func _sync_combat_latch_with_awareness_state(state_name: String) -> void:
+	if is_dead:
+		_unregister_combat_latch()
+		return
+	var normalized := String(state_name).strip_edges().to_upper()
+	if normalized == AWARENESS_COMBAT:
+		_seed_last_seen_from_player_if_missing()
+		_ensure_combat_latch_registered()
+		return
+	if _combat_latched:
+		_unregister_combat_latch()
+	else:
+		_combat_latched_room_id = -1
+		_reset_combat_migration_candidate()
+
+
+func _ensure_combat_latch_registered() -> void:
+	if entity_id <= 0:
+		return
+	if alert_system == null or not alert_system.has_method("register_enemy_combat"):
+		return
+	if _combat_latched and _combat_latched_room_id >= 0:
+		var current_room_id := _resolve_room_id_for_events()
+		if current_room_id != _combat_latched_room_id:
+			_debug_last_latched = true
+			return
+		alert_system.register_enemy_combat(entity_id, _combat_latched_room_id)
+		_debug_last_latched = true
+		return
+	var room_id := _resolve_room_id_for_events()
+	if room_id < 0:
+		return
+	alert_system.register_enemy_combat(entity_id, room_id)
+	_combat_latched = true
+	_combat_latched_room_id = room_id
+	_debug_last_latched = true
+
+
+func _unregister_combat_latch() -> void:
+	_reset_combat_migration_candidate()
+	if entity_id > 0 and alert_system and alert_system.has_method("unregister_enemy_combat") and _combat_latched:
+		alert_system.unregister_enemy_combat(entity_id)
+	_combat_latched = false
+	_combat_latched_room_id = -1
+	_debug_last_latched = false
+
+
+func _update_combat_latch_migration(delta: float) -> void:
+	if not _combat_latched:
+		_reset_combat_migration_candidate()
+		return
+	if entity_id <= 0 or alert_system == null or not alert_system.has_method("migrate_enemy_latch_room"):
+		_reset_combat_migration_candidate()
+		return
+	var current_room := _resolve_room_id_for_events()
+	if current_room < 0:
+		_reset_combat_migration_candidate()
+		return
+	if _combat_latched_room_id < 0:
+		_combat_latched_room_id = current_room
+		_reset_combat_migration_candidate()
+		return
+	if current_room == _combat_latched_room_id:
+		_reset_combat_migration_candidate()
+		return
+	if _combat_migration_candidate_room_id != current_room:
+		_combat_migration_candidate_room_id = current_room
+		_combat_migration_candidate_elapsed = maxf(delta, 0.0)
+	else:
+		_combat_migration_candidate_elapsed += maxf(delta, 0.0)
+	if _combat_migration_candidate_elapsed < _combat_room_migration_hysteresis_sec():
+		return
+	alert_system.migrate_enemy_latch_room(entity_id, current_room)
+	_combat_latched_room_id = current_room
+	_reset_combat_migration_candidate()
+
+
+func _reset_combat_migration_candidate() -> void:
+	_combat_migration_candidate_room_id = -1
+	_combat_migration_candidate_elapsed = 0.0
+
+
+func _combat_room_migration_hysteresis_sec() -> float:
+	if _suspicion_test_profile_enabled and not _suspicion_test_profile.is_empty():
+		return maxf(float(_suspicion_test_profile.get("combat_room_migration_hysteresis_sec", COMBAT_ROOM_MIGRATION_HYSTERESIS_SEC)), 0.0)
+	return COMBAT_ROOM_MIGRATION_HYSTERESIS_SEC
+
+
+func _combat_last_seen_grace_sec() -> float:
+	if _suspicion_test_profile_enabled and not _suspicion_test_profile.is_empty():
+		return maxf(float(_suspicion_test_profile.get("combat_last_seen_grace_sec", COMBAT_LAST_SEEN_GRACE_SEC)), 0.0)
+	return COMBAT_LAST_SEEN_GRACE_SEC
+
+
+func _is_last_seen_grace_active() -> bool:
+	return _last_seen_grace_timer > 0.0
+
+
+func _resolve_known_target_context(player_valid: bool, player_pos: Vector2, player_visible: bool) -> Dictionary:
+	var has_last_seen := _last_seen_age < INF
+	if player_valid and player_visible:
+		return {
+			"known_target_pos": player_pos,
+			"target_is_last_seen": false,
+			"has_known_target": true,
+		}
+	if has_last_seen:
+		return {
+			"known_target_pos": _last_seen_pos,
+			"target_is_last_seen": true,
+			"has_known_target": true,
+		}
+	return {
+		"known_target_pos": Vector2.ZERO,
+		"target_is_last_seen": false,
+		"has_known_target": false,
+	}
+
+
+func _seed_last_seen_from_player_if_missing() -> void:
+	if _last_seen_age < INF:
+		return
+	if _perception == null or not _perception.has_method("has_player") or not _perception.has_method("get_player_position"):
+		return
+	if not bool(_perception.has_player()):
+		return
+	var player_pos := _perception.get_player_position() as Vector2
+	if player_pos == Vector2.ZERO:
+		return
+	_last_seen_pos = player_pos
+	_last_seen_age = 0.0
+	_last_seen_grace_timer = _combat_last_seen_grace_sec()
 
 
 func _fire_enemy_shotgun(origin: Vector2, aim_dir: Vector2) -> void:
@@ -1132,6 +1550,15 @@ func _player_lethal_damage() -> int:
 func apply_damage(amount: int, source: String) -> void:
 	if is_dead:
 		return
+	if _awareness and not bool(_awareness.hostile_damaged):
+		_awareness.hostile_damaged = true
+		_awareness.combat_phase = ENEMY_AWARENESS_SYSTEM_SCRIPT.CombatPhase.ENGAGED
+		if int(_awareness.get_state()) != int(ENEMY_AWARENESS_SYSTEM_SCRIPT.State.COMBAT):
+			if _awareness.has_method("_transition_to_combat_from_damage"):
+				var transitions: Array[Dictionary] = _awareness._transition_to_combat_from_damage()
+				_apply_awareness_transitions(transitions)
+		if EventBus and EventBus.has_method("emit_hostile_escalation"):
+			EventBus.emit_hostile_escalation(entity_id, "damaged")
 	hp -= amount
 	if sprite:
 		var flash_dur := GameConfig.hit_flash_duration if GameConfig else 0.06
@@ -1179,6 +1606,7 @@ func die() -> void:
 		return
 
 	is_dead = true
+	_unregister_combat_latch()
 
 	if RuntimeState:
 		RuntimeState.kills += 1

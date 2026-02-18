@@ -49,11 +49,17 @@ func _test_system_creation_and_wiring_order() -> void:
 
 	layout_controller.set_dependencies(transition_controller, camera_controller, enemy_runtime, runtime_guard)
 	bootstrap.init_runtime_state(ctx, transition_controller.current_mission_index(ctx))
+	# Disable procedural layout to skip slow navmesh bake (make_polygons_from_outlines) in test
+	var _layout_was_enabled: bool = GameConfig.procedural_layout_enabled if GameConfig else false
+	if GameConfig:
+		GameConfig.procedural_layout_enabled = false
 	bootstrap.init_systems(ctx, layout_controller, transition_controller, camera_controller)
+	if GameConfig:
+		GameConfig.procedural_layout_enabled = _layout_was_enabled
 	bootstrap.init_visual_polish(ctx, hud_controller)
 
 	_t.run_test("bootstrap creates core systems", ctx.combat_system != null and ctx.projectile_system != null and ctx.vfx_system != null)
-	_t.run_test("bootstrap creates layout and tactical systems", ctx.layout_door_system != null and ctx.room_nav_system != null and ctx.enemy_alert_system != null and ctx.enemy_squad_system != null)
+	_t.run_test("bootstrap creates layout and tactical systems", ctx.layout_door_system != null and ctx.navigation_service != null and ctx.enemy_alert_system != null and ctx.enemy_squad_system != null)
 	_t.run_test("bootstrap creates runtime budget scheduler", ctx.runtime_budget_controller != null)
 	_t.run_test("bootstrap creates visual polish systems", ctx.shadow_system != null and ctx.combat_feedback_system != null and ctx.atmosphere_system != null)
 
@@ -67,6 +73,9 @@ func _test_system_creation_and_wiring_order() -> void:
 	var debug_idx := _child_index(ctx.level, "LayoutDebug")
 	_t.run_test("bootstrap ordering keeps LayoutWalls -> LayoutDoors -> LayoutDebug", walls_idx < doors_idx and doors_idx < debug_idx)
 
+	if ctx.runtime_budget_controller and ctx.runtime_budget_controller.has_method("unbind"):
+		ctx.runtime_budget_controller.unbind()
+	ctx.runtime_budget_controller = null
 	ctx.level.queue_free()
 	await get_tree().process_frame
 

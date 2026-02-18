@@ -12,9 +12,19 @@ enum State {
 	COMBAT = ENEMY_ALERT_LEVELS_SCRIPT.COMBAT,
 }
 
+enum CombatPhase {
+	NONE,
+	ENGAGED,
+	HOSTILE_SEARCH,
+}
+
 var _state: State = State.CALM
 var _visibility: float = 0.0
 var _suspicion: float = 0.0
+var hostile_contact: bool = false
+var hostile_damaged: bool = false
+var combat_phase: CombatPhase = CombatPhase.NONE
+var _confirm_progress: float = 0.0 # 0..1, replaces _suspicion for canon mode
 var _has_confirmed_visual: bool = false
 var _los_lost_time: float = 0.0
 var _suspicion_profile_enabled: bool = false
@@ -31,6 +41,10 @@ func reset() -> void:
 	_state = State.CALM
 	_visibility = 0.0
 	_suspicion = 0.0
+	hostile_contact = false
+	hostile_damaged = false
+	combat_phase = CombatPhase.NONE
+	_confirm_progress = 0.0
 	_has_confirmed_visual = false
 	_los_lost_time = 0.0
 	_combat_timer = 0.0
@@ -85,23 +99,6 @@ func set_suspicion_profile_enabled(enabled: bool) -> void:
 		_los_lost_time = 0.0
 
 
-func process(delta: float, has_los: bool) -> Array[Dictionary]:
-	var transitions: Array[Dictionary] = []
-	var dt := maxf(delta, 0.0)
-
-	if has_los:
-		_visibility = 1.0
-		if _state != State.COMBAT:
-			_transition_to(State.COMBAT, "vision", transitions)
-		else:
-			_combat_timer = ENEMY_ALERT_LEVELS_SCRIPT.ttl_for_level(State.COMBAT)
-	else:
-		_decay_visibility(dt)
-
-	_advance_timers(dt, has_los, transitions)
-	return transitions
-
-
 func process_suspicion(
 	delta: float,
 	has_los: bool,
@@ -120,12 +117,28 @@ func process_suspicion(
 	var grace_time := maxf(float(profile.get("los_grace_time", 0.3)), 0.0)
 	var grace_decay_mult := clampf(float(profile.get("los_grace_decay_mult", 0.25)), 0.0, 1.0)
 	var flashlight_bonus := maxf(float(profile.get("flashlight_bonus", 2.5)), 0.0)
+	var flashlight_bonus_in_alert := bool(profile.get("flashlight_bonus_in_alert", true))
+	var flashlight_bonus_in_combat := bool(profile.get("flashlight_bonus_in_combat", true))
 
 	if _state == State.COMBAT:
-		_debug_last_flashlight_bonus_raw = 1.0
-		_debug_last_effective_visibility_pre_clamp = maxf(visibility_factor, 0.0)
-		_debug_last_effective_visibility_post_clamp = clampf(_debug_last_effective_visibility_pre_clamp, 0.0, 1.0)
 		_suspicion = maxf(_suspicion, combat_threshold)
+		if has_los:
+			_los_lost_time = 0.0
+			var combat_effective_visibility := maxf(visibility_factor, 0.0)
+			var combat_flashlight_bonus_raw := 1.0
+			if flashlight_hit and flashlight_bonus_in_combat:
+				combat_flashlight_bonus_raw = flashlight_bonus
+				combat_effective_visibility *= combat_flashlight_bonus_raw
+			var combat_effective_visibility_post_clamp := clampf(combat_effective_visibility, 0.0, 1.0)
+			_debug_last_flashlight_bonus_raw = combat_flashlight_bonus_raw
+			_debug_last_effective_visibility_pre_clamp = combat_effective_visibility
+			_debug_last_effective_visibility_post_clamp = combat_effective_visibility_post_clamp
+			_visibility = combat_effective_visibility_post_clamp
+			_suspicion = clampf(_suspicion + gain_rate_alert * combat_effective_visibility_post_clamp * dt, 0.0, 1.0)
+		else:
+			_debug_last_flashlight_bonus_raw = 1.0
+			_debug_last_effective_visibility_pre_clamp = 0.0
+			_debug_last_effective_visibility_post_clamp = 0.0
 		_advance_timers(dt, has_los, transitions)
 		if _state != State.COMBAT:
 			_has_confirmed_visual = false
@@ -135,7 +148,7 @@ func process_suspicion(
 		_los_lost_time = 0.0
 		var effective_visibility := maxf(visibility_factor, 0.0)
 		var flashlight_bonus_raw := 1.0
-		if _state == State.ALERT and flashlight_hit:
+		if _state == State.ALERT and flashlight_hit and flashlight_bonus_in_alert:
 			flashlight_bonus_raw = flashlight_bonus
 			effective_visibility *= flashlight_bonus_raw
 		var effective_visibility_post_clamp := clampf(effective_visibility, 0.0, 1.0)
@@ -171,6 +184,62 @@ func process_suspicion(
 		_transition_to(State.SUSPICIOUS, "suspicion", transitions)
 
 	_advance_timers(dt, has_los, transitions)
+	return transitions
+
+
+func process_confirm(
+	delta: float,
+	has_visual_los: bool,
+	in_shadow: bool,
+	flashlight_hit: bool,
+	config: Dictionary
+) -> Array[Dictionary]:
+	var transitions: Array[Dictionary] = []
+	var dt := maxf(delta, 0.0)
+	var confirm_time := float(config.get("confirm_time_to_engage", 2.50))
+	var decay_rate := float(config.get("confirm_decay_rate", 0.275))
+	var grace_window := float(config.get("confirm_grace_window", 0.50))
+
+	# Determine if confirm should accumulate.
+	var visual_channel := has_visual_los and not in_shadow
+	var can_accumulate := visual_channel or flashlight_hit
+
+	if can_accumulate:
+		_los_lost_time = 0.0
+		var gain := dt / maxf(confirm_time, 0.001)
+		_confirm_progress = clampf(_confirm_progress + gain, 0.0, 1.0)
+		_visibility = 1.0
+	else:
+		_los_lost_time += dt
+		if _los_lost_time > grace_window:
+			_confirm_progress = clampf(_confirm_progress - decay_rate * dt, 0.0, 1.0)
+		_decay_visibility(dt)
+	_suspicion = _confirm_progress
+
+	# Hostility persistence: never return to CALM.
+	if hostile_contact or hostile_damaged:
+		if _state == State.COMBAT and not can_accumulate:
+			if combat_phase != CombatPhase.HOSTILE_SEARCH:
+				combat_phase = CombatPhase.HOSTILE_SEARCH
+		elif _state == State.COMBAT and can_accumulate:
+			combat_phase = CombatPhase.ENGAGED
+		# Never auto-downgrade from COMBAT when hostile.
+		_combat_timer = ENEMY_ALERT_LEVELS_SCRIPT.ttl_for_level(State.COMBAT)
+		return transitions
+
+	# State transitions based on confirm_progress.
+	if _confirm_progress >= 1.0 and _state != State.COMBAT:
+		hostile_contact = true
+		combat_phase = CombatPhase.ENGAGED
+		_transition_to(State.COMBAT, "confirmed_contact", transitions)
+		return transitions
+
+	if _confirm_progress >= 0.55 and (_state == State.CALM or _state == State.SUSPICIOUS):
+		_transition_to(State.ALERT, "confirm_rising", transitions)
+	elif _confirm_progress >= 0.25 and _state == State.CALM:
+		_transition_to(State.SUSPICIOUS, "confirm_rising", transitions)
+
+	_advance_timers(dt, can_accumulate, transitions)
 	return transitions
 
 
@@ -213,6 +282,24 @@ func register_reinforcement() -> Array[Dictionary]:
 		return transitions
 	_transition_to(State.COMBAT, "reinforcement", transitions)
 	return transitions
+
+
+func _transition_to_combat_from_damage() -> Array[Dictionary]:
+	var transitions: Array[Dictionary] = []
+	hostile_damaged = true
+	combat_phase = CombatPhase.ENGAGED
+	_transition_to(State.COMBAT, "damage", transitions)
+	return transitions
+
+
+func get_ui_snapshot() -> Dictionary:
+	return {
+		"state": _state,
+		"combat_phase": combat_phase,
+		"confirm01": _confirm_progress,
+		"hostile_contact": hostile_contact,
+		"hostile_damaged": hostile_damaged,
+	}
 
 
 func _advance_timers(delta: float, has_los: bool, transitions: Array[Dictionary]) -> void:

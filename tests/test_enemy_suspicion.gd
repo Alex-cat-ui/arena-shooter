@@ -8,6 +8,11 @@ const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_confi
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
+const CANON_CONFIG := {
+	"confirm_time_to_engage": 2.50,
+	"confirm_decay_rate": 0.275,
+	"confirm_grace_window": 0.50,
+}
 
 
 func _ready() -> void:
@@ -23,7 +28,7 @@ func run_suite() -> Dictionary:
 	print("ENEMY SUSPICION TEST")
 	print("============================================================")
 
-	_test_legacy_los_still_instant_combat()
+	_test_confirm_path_not_instant_combat()
 	_test_suspicion_accumulates_without_instant_combat()
 	_test_only_threshold_confirms_visual_and_enters_combat()
 	_test_micro_los_grace_reduced_decay()
@@ -43,11 +48,11 @@ func _profile() -> Dictionary:
 	return STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile()
 
 
-func _test_legacy_los_still_instant_combat() -> void:
+func _test_confirm_path_not_instant_combat() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
-	var transitions: Array[Dictionary] = awareness.process(0.1, true)
-	_t.run_test("legacy process: LOS enters COMBAT instantly", _has_transition(transitions, "CALM", "COMBAT", "vision"))
+	var transitions: Array[Dictionary] = awareness.process_confirm(0.1, true, false, false, CANON_CONFIG)
+	_t.run_test("confirm path: first LOS tick does not instantly enter COMBAT", not _has_transition(transitions, "CALM", "COMBAT", "confirmed_contact") and awareness.get_state_name() != "COMBAT")
 
 
 func _test_suspicion_accumulates_without_instant_combat() -> void:

@@ -116,6 +116,17 @@ func _test_alert_flashlight_growth_in_scene() -> void:
 			and int(snapshot.get("room_alert_level", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.CALM
 		)
 	)
+	_t.run_test("scene COMBAT keeps enemy latched", bool(snapshot.get("latched", false)))
+	_t.run_test("scene COMBAT keeps flashlight active", bool(snapshot.get("flashlight_active", false)))
+	player.global_position = enemy.global_position + Vector2(120.0, 260.0)
+	player.velocity = Vector2.ZERO
+	enemy.runtime_budget_tick(0.2)
+	snapshot = enemy.get_debug_detection_snapshot() as Dictionary
+	_t.run_test("scene COMBAT remains flashlight-active out of cone", bool(snapshot.get("flashlight_active", false)))
+	_t.run_test(
+		"scene COMBAT out-of-cone reason is exposed",
+		String(snapshot.get("flashlight_inactive_reason", "")) == "cone_miss"
+	)
 
 	room.queue_free()
 	await get_tree().process_frame

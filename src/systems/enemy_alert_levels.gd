@@ -22,9 +22,9 @@ const COLOR_ALERT := Color(1.00, 0.86, 0.24, 1.0)
 const COLOR_COMBAT := Color(0.90, 0.20, 0.15, 1.0)
 
 ## Decay timings (seconds) for each non-calm level.
-const SUSPICIOUS_TTL_SEC := 6.0
-const ALERT_TTL_SEC := 8.0
-const COMBAT_TTL_SEC := 10.0
+const SUSPICIOUS_TTL_SEC := 18.0
+const ALERT_TTL_SEC := 24.0
+const COMBAT_TTL_SEC := 30.0
 
 
 static func ttl_for_level(level: int) -> float:
@@ -54,7 +54,7 @@ static func level_name(level: int) -> String:
 
 
 static func visibility_decay_sec() -> float:
-	return _alert_cfg_float("visibility_decay_sec", 2.0)
+	return _alert_cfg_float("visibility_decay_sec", 6.0)
 
 
 static func _alert_cfg_float(key: String, fallback: float) -> float:

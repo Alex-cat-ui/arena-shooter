@@ -1,13 +1,18 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/room_nav_system.gd")
+const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/navigation_service.gd")
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
 const ENEMY_AGGRO_COORDINATOR_SCRIPT := preload("res://src/systems/enemy_aggro_coordinator.gd")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
 var _reinforcement_calls_counter: int = 0
+const CANON_CONFIG := {
+	"confirm_time_to_engage": 2.50,
+	"confirm_decay_rate": 0.275,
+	"confirm_grace_window": 0.50,
+}
 
 
 class FakeLayout:
@@ -67,7 +72,7 @@ class NoiseEnemy:
 		_emit_transitions(awareness.register_noise())
 
 	func tick_los(has_los: bool, delta: float = 0.1) -> void:
-		_emit_transitions(awareness.process(delta, has_los))
+		_emit_transitions(awareness.process_confirm(delta, has_los, false, false, CANON_CONFIG))
 
 	func _emit_transitions(transitions: Array[Dictionary]) -> void:
 		for tr_variant in transitions:
@@ -149,7 +154,8 @@ func _test_noise_alert_and_los_escalation() -> void:
 	_t.run_test("Shot noise does not alert non-adjacent room enemy", String(enemy_room2.get_meta("awareness_state", "CALM")) == "CALM")
 	_t.run_test("Noise without LOS does not call COMBAT reinforcement", _reinforcement_calls_counter == 0)
 
-	enemy_room0.tick_los(true, 0.1)
+	for _i in range(30):
+		enemy_room0.tick_los(true, 0.1)
 	await _flush_event_bus_frames(6)
 
 	_t.run_test("LOS after noise enters COMBAT", String(enemy_room0.get_meta("awareness_state", "CALM")) == "COMBAT")

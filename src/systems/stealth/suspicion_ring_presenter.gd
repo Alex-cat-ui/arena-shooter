@@ -1,9 +1,12 @@
 ## suspicion_ring_presenter.gd
 ## World-space ring UI that fills clockwise based on enemy suspicion.
+## Visibility contract: visible when enabled, progress > 0, and NOT in COMBAT.
 class_name SuspicionRingPresenter
 extends Node2D
 
+const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
 const START_ANGLE := -PI * 0.5
+const PROGRESS_EPSILON := 0.0001
 
 @export_range(4.0, 48.0, 1.0) var ring_radius: float = 12.0:
 	set(value):
@@ -51,8 +54,8 @@ func set_progress(value: float) -> void:
 	if is_equal_approx(_progress, clamped):
 		return
 	_progress = clamped
-	if _enabled:
-		queue_redraw()
+	_refresh_visibility()
+	queue_redraw()
 
 
 func get_progress() -> float:
@@ -64,14 +67,14 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	if not _enabled:
+	if not visible:
 		return
 	var radius := maxf(ring_radius, 1.0)
 	var width := maxf(ring_width, 1.0)
 	var base_points := maxi(int(radius * 3.0), 24)
 	draw_arc(Vector2.ZERO, radius, 0.0, TAU, base_points, outline_color, width + 2.0, true)
 	draw_arc(Vector2.ZERO, radius, 0.0, TAU, base_points, track_color, width, true)
-	if _progress <= 0.0001:
+	if _progress <= PROGRESS_EPSILON:
 		return
 	var end_angle := START_ANGLE + TAU * _progress
 	var fill_points := maxi(8, int(base_points * _progress) + 2)
@@ -79,16 +82,32 @@ func _draw() -> void:
 
 
 func _refresh_visibility() -> void:
-	visible = _enabled and _is_ring_state_visible()
+	if not _enabled:
+		visible = false
+		return
+	var snap := _get_parent_snapshot()
+	if snap.is_empty():
+		visible = _progress > PROGRESS_EPSILON and not _is_combat_state()
+		return
+	var state: int = int(snap.get("state", 0))
+	var confirm: float = float(snap.get("confirm01", 0.0))
+	visible = (_progress > PROGRESS_EPSILON or confirm > PROGRESS_EPSILON or state > 0) and not _is_combat_state()
 
 
-func _is_ring_state_visible() -> bool:
+func _get_parent_snapshot() -> Dictionary:
+	var parent_node := get_parent()
+	if parent_node and parent_node.has_method("get_ui_awareness_snapshot"):
+		return parent_node.get_ui_awareness_snapshot()
+	return {}
+
+
+func update_from_snapshot(snap: Dictionary) -> void:
+	set_progress(float(snap.get("confirm01", 0.0)))
+
+
+func _is_combat_state() -> bool:
 	var parent_node := get_parent()
 	if parent_node == null:
 		return false
 	var state_name := String(parent_node.get_meta("awareness_state", "CALM")).to_upper()
-	if state_name == "ALERT" or state_name == "COMBAT":
-		return true
-	if state_name == "CALM" or state_name == "IDLE":
-		return false
-	return false
+	return state_name == "COMBAT"

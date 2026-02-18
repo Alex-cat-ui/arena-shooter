@@ -28,7 +28,7 @@ var projectile_system: ProjectileSystem = null
 var vfx_system: VFXSystem = null
 var footprint_system: FootprintSystem = null
 var room_enemy_spawner = null
-var room_nav_system = null
+var navigation_service = null
 var enemy_alert_system = null
 var enemy_squad_system = null
 var enemy_aggro_coordinator = null
@@ -85,9 +85,6 @@ var camera_follow_initialized: bool = false
 # Cached textures for floor patches
 var cached_white_pixel_tex: ImageTexture = null
 var cached_black_pixel_tex: ImageTexture = null
-
-# Runtime toggles
-var enemy_weapons_enabled: bool = false
 
 # Runtime budget frame stats (AI/pathing scheduler)
 var runtime_budget_last_frame: Dictionary = {}

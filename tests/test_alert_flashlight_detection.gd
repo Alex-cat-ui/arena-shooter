@@ -25,6 +25,8 @@ func run_suite() -> Dictionary:
 	await _test_flashlight_clamp_prevents_jump()
 	await _test_flashlight_boosts_shadow_detection_in_alert()
 	await _test_flashlight_does_not_work_without_los()
+	await _test_flashlight_inactive_reason_profile_off()
+	await _test_flashlight_inactive_reason_state_blocked()
 
 	_t.summary("ALERT FLASHLIGHT DETECTION RESULTS")
 	return {
@@ -55,11 +57,12 @@ func _test_flashlight_boosts_shadow_detection_in_alert() -> void:
 
 	_t.run_test("ALERT enables flashlight", bool(in_snapshot.get("flashlight_active", false)))
 	_t.run_test("player in front remains in LOS", bool(in_snapshot.get("has_los", false)))
-	_t.run_test("player off-angle remains in LOS", bool(out_snapshot.get("has_los", false)))
+	_t.run_test("player off-angle is blocked by confirm channel", not bool(out_snapshot.get("has_los", true)))
 	_t.run_test("cone geometry includes front player", in_cone_eval)
 	_t.run_test("cone geometry excludes off-angle player", not out_cone_eval)
 	_t.run_test("player in cone produces flashlight hit", bool(in_snapshot.get("flashlight_hit", false)))
 	_t.run_test("player outside cone does not produce flashlight hit", not bool(out_snapshot.get("flashlight_hit", false)))
+	_t.run_test("out-of-cone reason is cone_miss", String(out_snapshot.get("flashlight_inactive_reason", "")) == "cone_miss")
 	_t.run_test("flashlight hit grows suspicion faster than shadow-only", in_suspicion > out_suspicion)
 
 
@@ -97,10 +100,31 @@ func _test_flashlight_does_not_work_without_los() -> void:
 
 	_t.run_test("occluded LOS reports false", not bool(blocked_snapshot.get("has_los", true)))
 	_t.run_test("flashlight hit stays false when LOS is blocked", not bool(blocked_snapshot.get("flashlight_hit", true)))
+	_t.run_test("LOS-blocked reason is exposed", String(blocked_snapshot.get("flashlight_inactive_reason", "")) == "los_blocked")
 	_t.run_test("suspicion does not grow when LOS is blocked", is_zero_approx(blocked_suspicion))
 
 
-func _run_detection_case(player_position: Vector2, add_blocker: bool, flashlight_bonus_override: float = -1.0) -> Dictionary:
+func _test_flashlight_inactive_reason_profile_off() -> void:
+	var profile_off := await _run_detection_case(Vector2(300.0, 0.0), false, -1.0, false, true)
+	var snapshot := profile_off.get("snapshot", {}) as Dictionary
+	_t.run_test("profile-off keeps flashlight inactive", not bool(snapshot.get("flashlight_active", true)))
+	_t.run_test("profile-off reason is exposed", String(snapshot.get("flashlight_inactive_reason", "")) == "profile_off")
+
+
+func _test_flashlight_inactive_reason_state_blocked() -> void:
+	var calm_state := await _run_detection_case(Vector2(300.0, 0.0), false, -1.0, true, false)
+	var snapshot := calm_state.get("snapshot", {}) as Dictionary
+	_t.run_test("CALM blocks flashlight activity", not bool(snapshot.get("flashlight_active", true)))
+	_t.run_test("state-blocked reason is exposed", String(snapshot.get("flashlight_inactive_reason", "")) == "state_blocked")
+
+
+func _run_detection_case(
+	player_position: Vector2,
+	add_blocker: bool,
+	flashlight_bonus_override: float = -1.0,
+	enable_profile: bool = true,
+	force_alert_state: bool = true
+) -> Dictionary:
 	if RuntimeState:
 		RuntimeState.is_frozen = false
 		RuntimeState.player_hp = 100
@@ -139,7 +163,8 @@ func _run_detection_case(player_position: Vector2, add_blocker: bool, flashlight
 	await get_tree().process_frame
 
 	enemy.initialize(8801, "zombie")
-	enemy.enable_suspicion_test_profile(_profile())
+	if enable_profile:
+		enemy.enable_suspicion_test_profile(_profile())
 	if enemy.has_method("configure_stealth_test_flashlight"):
 		var cfg := _config_values()
 		var flashlight_bonus := float(cfg.get("flashlight_bonus", 2.5))
@@ -154,7 +179,8 @@ func _run_detection_case(player_position: Vector2, add_blocker: bool, flashlight
 	if pursuit_controller:
 		pursuit_controller.set("facing_dir", Vector2.RIGHT)
 		pursuit_controller.set("_target_facing_dir", Vector2.RIGHT)
-	enemy.on_heard_shot(0, player_position)
+	if force_alert_state:
+		enemy.on_heard_shot(0, player_position)
 
 	var pre_direct_in_cone := false
 	var pre_pursuit = enemy.get("_pursuit")

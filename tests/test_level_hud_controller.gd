@@ -56,12 +56,11 @@ func _test_hud_strings_and_hint() -> void:
 	_t.run_test("HUD HP string uses current runtime hp", ctx.hp_label.text == "HP: 77 / 100")
 	_t.run_test("HUD state string includes start delay", ctx.state_label.text == "State: PLAYING (0.9)")
 	_t.run_test("HUD time/kills string format preserved", ctx.time_label.text == "Time: 12.3 | Kills: 5")
-	_t.run_test("HUD weapon string format preserved", ctx.weapon_label.text == "GUN PISTOL [1/6]")
+	_t.run_test("HUD weapon string format preserved", ctx.weapon_label.text == "GUN PISTOL [1/2]")
 
-	ctx.enemy_weapons_enabled = true
 	GameConfig.god_mode = true
 	controller.refresh_right_debug_hint(ctx)
-	_t.run_test("Right debug hint includes Enemy Guns line", ctx.debug_hint_label.text.find("Enemy Guns: ON") >= 0)
+	_t.run_test("Right debug hint no longer includes Enemy Guns line", ctx.debug_hint_label.text.find("Enemy Guns:") < 0)
 	_t.run_test("Right debug hint includes God Mode line", ctx.debug_hint_label.text.find("God Mode: ON") >= 0)
 
 	ctx.ability_system.queue_free()
@@ -75,7 +74,6 @@ func _test_debug_overlay_updates() -> void:
 	var controller = LEVEL_HUD_CONTROLLER_SCRIPT.new()
 	var ctx = _make_ctx_with_hud()
 	ctx.debug_overlay_visible = true
-	ctx.enemy_weapons_enabled = true
 
 	ctx.projectiles_container = Node2D.new()
 	ctx.decals_container = Node2D.new()
@@ -94,7 +92,7 @@ func _test_debug_overlay_updates() -> void:
 
 	var room_label := ctx.debug_container.get_node_or_null("RoomTypesLabel") as Label
 	_t.run_test("Debug overlay creates RoomTypesLabel", room_label != null)
-	_t.run_test("RoomTypesLabel includes enemy toggle status", room_label != null and room_label.text.find("enemy_guns=ON") >= 0)
+	_t.run_test("RoomTypesLabel shows canonical room counters", room_label != null and room_label.text.find("corr=1") >= 0 and room_label.text.find("inner=2") >= 0)
 
 	ctx.level.queue_free()
 	await get_tree().process_frame

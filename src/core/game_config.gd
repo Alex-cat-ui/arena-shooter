@@ -87,13 +87,6 @@ var weapon_stats: Dictionary = {
 		"projectile_type": "bullet",
 		"pellets": 1,
 	},
-	"auto": {
-		"damage": 7,
-		"rpm": 150,
-		"speed_tiles": 14.0,
-		"projectile_type": "bullet",
-		"pellets": 1,
-	},
 	"shotgun": {
 		"damage": 6,
 		"rpm": 50.0,
@@ -104,36 +97,7 @@ var weapon_stats: Dictionary = {
 		"cone_deg": 8.0,
 		"shot_damage_total": 25.0,
 	},
-	"plasma": {
-		"damage": 20,
-		"rpm": 120,
-		"speed_tiles": 9.0,
-		"projectile_type": "plasma",
-		"pellets": 1,
-	},
-	"rocket": {
-		"damage": 40,
-		"rpm": 30,
-		"speed_tiles": 4.0,
-		"projectile_type": "rocket",
-		"pellets": 1,
-		"aoe_damage": 20,
-		"aoe_radius_tiles": 7.0,
-	},
-	"chain_lightning": {
-		"damage": 8,
-		"rpm": 120,
-		"chain_count": 5,
-		"chain_range_tiles": 6.0,
-		"projectile_type": "hitscan",
-	},
 }
-
-## Camera shake on rocket explosion
-@export_range(0.0, 20.0) var rocket_shake_amplitude: float = 3.0
-
-## Camera shake duration on rocket explosion
-@export_range(0.0, 1.0) var rocket_shake_duration: float = 0.15
 
 ## ============================================================================
 ## SECTION: AI / Combat Balance (Data-Driven)
@@ -189,12 +153,12 @@ const DEFAULT_AI_BALANCE := {
 		"slot_reposition_threshold_px": 40.0,
 		"intent_target_delta_px": 8.0,
 	},
-	"alert": {
-		"suspicious_ttl_sec": 6.0,
-		"alert_ttl_sec": 8.0,
-		"combat_ttl_sec": 10.0,
-		"visibility_decay_sec": 2.0,
-	},
+		"alert": {
+			"suspicious_ttl_sec": 18.0,
+			"alert_ttl_sec": 24.0,
+			"combat_ttl_sec": 30.0,
+			"visibility_decay_sec": 6.0,
+		},
 	"squad": {
 		"rebuild_interval_sec": 0.35,
 		"slot_reservation_ttl_sec": 1.1,
@@ -250,6 +214,30 @@ var projectile_ttl: Dictionary = DEFAULT_PROJECTILE_TTL.duplicate(true)
 
 ## Central AI/combat tuning values consumed by enemy + tactical systems.
 var ai_balance: Dictionary = DEFAULT_AI_BALANCE.duplicate(true)
+
+## ============================================================================
+## SECTION: Stealth Canon (Phase 0)
+## ============================================================================
+
+## Canon stealth timing and behavior toggles.
+var stealth_canon := {
+	"confirm_time_to_engage": 7.50,
+	"confirm_decay_rate": 0.0916667,
+	"confirm_grace_window": 1.50,
+	"shadow_is_binary": true,
+	"flashlight_works_in_alert": true,
+	"flashlight_works_in_combat": true,
+	"flashlight_works_in_lockdown": true,
+}
+
+## Zone system tuning for escalation and reinforcement.
+var zone_system := {
+	"lockdown_spread_delay_elevated_sec": 2.0,
+	"lockdown_spread_delay_far_sec": 5.0,
+	"max_reinforcement_waves_per_zone": 1,
+	"max_reinforcement_enemies_per_zone": 2,
+	"friendly_fire": false,
+}
 
 ## ============================================================================
 ## SECTION: Visual Polish (Patch 0.2 Phase 2)
@@ -410,19 +398,29 @@ func reset_to_defaults() -> void:
 	# Weapons
 	weapon_stats = {
 		"pistol": {"damage": 10, "rpm": 180, "speed_tiles": 12.0, "projectile_type": "bullet", "pellets": 1},
-		"auto": {"damage": 7, "rpm": 150, "speed_tiles": 14.0, "projectile_type": "bullet", "pellets": 1},
 		"shotgun": {"damage": 6, "rpm": 50.0, "cooldown_sec": 1.2, "speed_tiles": 40.0, "projectile_type": "pellet", "pellets": 16, "cone_deg": 8.0, "shot_damage_total": 25.0},
-		"plasma": {"damage": 20, "rpm": 120, "speed_tiles": 9.0, "projectile_type": "plasma", "pellets": 1},
-		"rocket": {"damage": 40, "rpm": 30, "speed_tiles": 4.0, "projectile_type": "rocket", "pellets": 1, "aoe_damage": 20, "aoe_radius_tiles": 7.0},
-		"chain_lightning": {"damage": 8, "rpm": 120, "chain_count": 5, "chain_range_tiles": 6.0, "projectile_type": "hitscan"},
 	}
-	rocket_shake_amplitude = 3.0
-	rocket_shake_duration = 0.15
 
 	# AI/combat balance
 	enemy_stats = DEFAULT_ENEMY_STATS.duplicate(true)
 	projectile_ttl = DEFAULT_PROJECTILE_TTL.duplicate(true)
 	ai_balance = DEFAULT_AI_BALANCE.duplicate(true)
+	stealth_canon = {
+		"confirm_time_to_engage": 7.50,
+		"confirm_decay_rate": 0.0916667,
+		"confirm_grace_window": 1.50,
+		"shadow_is_binary": true,
+		"flashlight_works_in_alert": true,
+		"flashlight_works_in_combat": true,
+		"flashlight_works_in_lockdown": true,
+	}
+	zone_system = {
+		"lockdown_spread_delay_elevated_sec": 2.0,
+		"lockdown_spread_delay_far_sec": 5.0,
+		"max_reinforcement_waves_per_zone": 1,
+		"max_reinforcement_enemies_per_zone": 2,
+		"friendly_fire": false,
+	}
 
 	# Visual Polish
 	footprints_enabled = true
@@ -529,8 +527,6 @@ func get_snapshot() -> Dictionary:
 		"music_volume": music_volume,
 		"sfx_volume": sfx_volume,
 		"player_speed_tiles": player_speed_tiles,
-		"rocket_shake_amplitude": rocket_shake_amplitude,
-		"rocket_shake_duration": rocket_shake_duration,
 		"enemy_stats": enemy_stats.duplicate(true),
 		"projectile_ttl": projectile_ttl.duplicate(true),
 		"ai_balance": ai_balance.duplicate(true),

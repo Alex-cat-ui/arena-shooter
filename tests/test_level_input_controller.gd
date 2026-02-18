@@ -7,7 +7,6 @@ const LEVEL_INPUT_CONTROLLER_SCRIPT := preload("res://src/levels/level_input_con
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
 var _regen_calls: int = 0
-var _enemy_toggle_calls: int = 0
 var _god_toggle_calls: int = 0
 var _open_test_scene_calls: int = 0
 
@@ -116,25 +115,21 @@ func _test_debug_toggle_and_door_actions() -> void:
 
 func _test_unhandled_key_callbacks() -> void:
 	_regen_calls = 0
-	_enemy_toggle_calls = 0
 	_god_toggle_calls = 0
 	_open_test_scene_calls = 0
 
 	var controller = LEVEL_INPUT_CONTROLLER_SCRIPT.new()
 	controller.configure_callbacks(
 		Callable(self, "_on_regen_callback"),
-		Callable(self, "_on_enemy_toggle_callback"),
 		Callable(self, "_on_god_toggle_callback"),
 		Callable(self, "_on_open_test_scene_callback")
 	)
 
 	controller.handle_unhandled_key_input(null, _key_event(KEY_F4))
-	controller.handle_unhandled_key_input(null, _key_event(KEY_F7))
 	var f8_bound_before := controller._is_key_assigned_in_input_map(KEY_F8)
 	controller.handle_unhandled_key_input(null, _key_event(KEY_F8))
 
 	_t.run_test("F4 triggers on_regenerate_layout callback", _regen_calls == 1)
-	_t.run_test("F7 triggers on_toggle_enemy_weapons callback", _enemy_toggle_calls == 1)
 	_t.run_test(
 		"F8 uses fallback when key is free",
 		(f8_bound_before and _god_toggle_calls == 1 and _open_test_scene_calls == 0) or
@@ -165,10 +160,6 @@ func _key_event(code: Key) -> InputEventKey:
 
 func _on_regen_callback() -> void:
 	_regen_calls += 1
-
-
-func _on_enemy_toggle_callback() -> void:
-	_enemy_toggle_calls += 1
 
 
 func _on_god_toggle_callback() -> void:

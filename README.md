@@ -89,7 +89,7 @@ godot --path . --scene res://scenes/app_root.tscn
   - глобальные contact i-frames.
 - Процедурная генерация комнатного уровня (`ProceduralLayoutV2`).
 - Статический room-based спавн врагов (`RoomEnemySpawner`).
-- Граф комнат и room-aware навигация (`RoomNavSystem`).
+- Граф комнат и room-aware навигация (`NavigationService`).
 - Тактический AI-слой:
   - room alert propagation/decay;
   - роли отряда (pressure/hold/flank);
@@ -182,7 +182,7 @@ godot --headless --path . --scene res://tests/test_enemy_behavior_integration.ts
 
 - Часть баланса AI/combat все еще зашита в константах разных систем.
 - Alert/suspicion логика приводится к единому источнику истины.
-- Квота `nav_tasks` заведена в runtime scheduler, но очередь фоновых nav-задач в `RoomNavSystem` пока минимальная.
+- Квота `nav_tasks` заведена в runtime scheduler, но очередь фоновых nav-задач в `NavigationService` пока минимальная.
 
 ## Ближайшее Направление
 

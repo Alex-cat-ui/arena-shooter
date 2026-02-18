@@ -32,6 +32,26 @@ const STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE := "res://tests/test_stealth_weapon_
 const STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE := "res://tests/test_stealth_room_alert_flashlight_integration.tscn"
 const RING_VISIBILITY_POLICY_TEST_SCENE := "res://tests/test_ring_visibility_policy.tscn"
 const SHADOW_ZONE_TEST_SCENE := "res://tests/test_shadow_zone.tscn"
+const MARKER_SEMANTICS_MAPPING_TEST_SCENE := "res://tests/test_marker_semantics_mapping.tscn"
+const RING_VISIBLE_DURING_DECAY_TEST_SCENE := "res://tests/test_ring_visible_during_decay.tscn"
+const WEAPONS_STARTUP_POLICY_ON_TEST_SCENE := "res://tests/test_weapons_startup_policy_on.tscn"
+const DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE := "res://tests/test_debugui_layout_no_overlap.tscn"
+const STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE := "res://tests/test_stealth_room_combat_fire.tscn"
+const STEALTH_ROOM_LKP_SEARCH_TEST_SCENE := "res://tests/test_stealth_room_lkp_search.tscn"
+const COMBAT_ROOM_ALERT_SYNC_TEST_SCENE := "res://tests/test_combat_room_alert_sync.tscn"
+const COMBAT_NO_DEGRADE_TEST_SCENE := "res://tests/test_combat_no_degrade.tscn"
+const COMBAT_UTILITY_INTENT_AGGRESSIVE_TEST_SCENE := "res://tests/test_combat_utility_intent_aggressive.tscn"
+const MAIN_MENU_STEALTH_ENTRY_TEST_SCENE := "res://tests/test_main_menu_stealth_entry.tscn"
+const ENEMY_LATCH_REGISTER_UNREGISTER_TEST_SCENE := "res://tests/test_enemy_latch_register_unregister.tscn"
+const ENEMY_LATCH_MIGRATION_TEST_SCENE := "res://tests/test_enemy_latch_migration.tscn"
+const COMBAT_USES_LAST_SEEN_TEST_SCENE := "res://tests/test_combat_uses_last_seen_not_live_player_pos_without_los.tscn"
+const LAST_SEEN_GRACE_WINDOW_TEST_SCENE := "res://tests/test_last_seen_grace_window.tscn"
+const COMBAT_NO_LOS_NEVER_HOLD_RANGE_TEST_SCENE := "res://tests/test_combat_no_los_never_hold_range.tscn"
+const COMBAT_INTENT_PUSH_TO_SEARCH_TEST_SCENE := "res://tests/test_combat_intent_switches_push_to_search_after_grace.tscn"
+const DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE := "res://tests/test_detour_side_flip_on_stall.tscn"
+const HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE := "res://tests/test_honest_repath_without_teleport.tscn"
+const FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_active_in_combat_when_latched.tscn"
+const FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_bonus_applies_in_combat.tscn"
 const LEVEL_RUNTIME_GUARD_TEST_SCENE := "res://tests/test_level_runtime_guard.tscn"
 const LEVEL_INPUT_CONTROLLER_TEST_SCENE := "res://tests/test_level_input_controller.tscn"
 const LEVEL_HUD_CONTROLLER_TEST_SCENE := "res://tests/test_level_hud_controller.tscn"
@@ -103,6 +123,31 @@ func _run_tests() -> void:
 
 	_test("sfx_volume = 0.7", func():
 		return is_equal_approx(GameConfig.sfx_volume, 0.7)
+	)
+
+	print("\n--- SECTION 2b: Phase 0 stealth foundation ---")
+
+	_test("GameConfig.stealth_canon has all 7 Phase 0 keys", func():
+		if not (GameConfig.stealth_canon is Dictionary):
+			return false
+		var canon := GameConfig.stealth_canon as Dictionary
+		var required_keys := [
+			"confirm_time_to_engage",
+			"confirm_decay_rate",
+			"confirm_grace_window",
+			"shadow_is_binary",
+			"flashlight_works_in_alert",
+			"flashlight_works_in_combat",
+			"flashlight_works_in_lockdown",
+		]
+		for key in required_keys:
+			if not canon.has(key):
+				return false
+		return true
+	)
+
+	_test("EventBus has Phase 0 zone/escalation signals", func():
+		return EventBus.has_signal("zone_state_changed") and EventBus.has_signal("hostile_escalation")
 	)
 
 	print("\n--- SECTION 3: State transitions ---")
@@ -218,9 +263,8 @@ func _run_tests() -> void:
 		return stats.damage == 10 and stats.rpm == 180
 	)
 
-	_test("Auto dmg=7, rpm=150", func():
-		var stats: Dictionary = GameConfig.weapon_stats.get("auto", {})
-		return stats.damage == 7 and stats.rpm == 150
+	_test("Weapon list reduced to pistol+shotgun", func():
+		return GameConfig.weapon_stats.keys().size() == 2 and GameConfig.weapon_stats.has("pistol") and GameConfig.weapon_stats.has("shotgun")
 	)
 
 	_test("Shotgun pellets=16, dmg=6", func():
@@ -449,6 +493,18 @@ func _run_tests() -> void:
 	_test("Shadow zone test scene exists", func():
 		return load(SHADOW_ZONE_TEST_SCENE) is PackedScene
 	)
+	_test("Marker semantics mapping test scene exists", func():
+		return load(MARKER_SEMANTICS_MAPPING_TEST_SCENE) is PackedScene
+	)
+	_test("Ring visible during decay test scene exists", func():
+		return load(RING_VISIBLE_DURING_DECAY_TEST_SCENE) is PackedScene
+	)
+	_test("Weapons startup policy ON test scene exists", func():
+		return load(WEAPONS_STARTUP_POLICY_ON_TEST_SCENE) is PackedScene
+	)
+	_test("DebugUI layout no overlap test scene exists", func():
+		return load(DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE) is PackedScene
+	)
 
 	await _run_embedded_scene_suite("Config validator AI balance suite", CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy awareness suite", AWARENESS_TEST_SCENE)
@@ -476,6 +532,78 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Stealth room alert flashlight integration suite", STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE)
 	await _run_embedded_scene_suite("Ring visibility policy suite", RING_VISIBILITY_POLICY_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow zone suite", SHADOW_ZONE_TEST_SCENE)
+	await _run_embedded_scene_suite("Marker semantics mapping suite", MARKER_SEMANTICS_MAPPING_TEST_SCENE)
+	await _run_embedded_scene_suite("Ring visible during decay suite", RING_VISIBLE_DURING_DECAY_TEST_SCENE)
+	await _run_embedded_scene_suite("Weapons startup policy ON suite", WEAPONS_STARTUP_POLICY_ON_TEST_SCENE)
+	await _run_embedded_scene_suite("DebugUI layout no overlap suite", DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE)
+
+	print("\n--- SECTION 18b: Stealth phases 1-7 suites ---")
+
+	_test("Stealth room combat fire test scene exists", func():
+		return load(STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE) is PackedScene
+	)
+	_test("Stealth room LKP search test scene exists", func():
+		return load(STEALTH_ROOM_LKP_SEARCH_TEST_SCENE) is PackedScene
+	)
+	_test("Combat room alert sync test scene exists", func():
+		return load(COMBAT_ROOM_ALERT_SYNC_TEST_SCENE) is PackedScene
+	)
+	_test("Combat no degrade test scene exists", func():
+		return load(COMBAT_NO_DEGRADE_TEST_SCENE) is PackedScene
+	)
+	_test("Combat utility intent aggressive test scene exists", func():
+		return load(COMBAT_UTILITY_INTENT_AGGRESSIVE_TEST_SCENE) is PackedScene
+	)
+	_test("Main menu stealth entry test scene exists", func():
+		return load(MAIN_MENU_STEALTH_ENTRY_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy latch register/unregister test scene exists", func():
+		return load(ENEMY_LATCH_REGISTER_UNREGISTER_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy latch migration test scene exists", func():
+		return load(ENEMY_LATCH_MIGRATION_TEST_SCENE) is PackedScene
+	)
+	_test("Combat uses last seen test scene exists", func():
+		return load(COMBAT_USES_LAST_SEEN_TEST_SCENE) is PackedScene
+	)
+	_test("Last seen grace window test scene exists", func():
+		return load(LAST_SEEN_GRACE_WINDOW_TEST_SCENE) is PackedScene
+	)
+	_test("Combat no LOS never hold range test scene exists", func():
+		return load(COMBAT_NO_LOS_NEVER_HOLD_RANGE_TEST_SCENE) is PackedScene
+	)
+	_test("Combat intent push to search test scene exists", func():
+		return load(COMBAT_INTENT_PUSH_TO_SEARCH_TEST_SCENE) is PackedScene
+	)
+	_test("Detour side flip on stall test scene exists", func():
+		return load(DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE) is PackedScene
+	)
+	_test("Honest repath without teleport test scene exists", func():
+		return load(HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE) is PackedScene
+	)
+	_test("Flashlight active in combat test scene exists", func():
+		return load(FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE) is PackedScene
+	)
+	_test("Flashlight bonus in combat test scene exists", func():
+		return load(FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE) is PackedScene
+	)
+
+	await _run_embedded_scene_suite("Stealth room combat fire suite", STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE)
+	await _run_embedded_scene_suite("Stealth room LKP search suite", STEALTH_ROOM_LKP_SEARCH_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat room alert sync suite", COMBAT_ROOM_ALERT_SYNC_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat no degrade suite", COMBAT_NO_DEGRADE_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat utility intent aggressive suite", COMBAT_UTILITY_INTENT_AGGRESSIVE_TEST_SCENE)
+	await _run_embedded_scene_suite("Main menu stealth entry suite", MAIN_MENU_STEALTH_ENTRY_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy latch register/unregister suite", ENEMY_LATCH_REGISTER_UNREGISTER_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy latch migration suite", ENEMY_LATCH_MIGRATION_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat uses last seen suite", COMBAT_USES_LAST_SEEN_TEST_SCENE)
+	await _run_embedded_scene_suite("Last seen grace window suite", LAST_SEEN_GRACE_WINDOW_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat no LOS never hold range suite", COMBAT_NO_LOS_NEVER_HOLD_RANGE_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat intent push to search suite", COMBAT_INTENT_PUSH_TO_SEARCH_TEST_SCENE)
+	await _run_embedded_scene_suite("Detour side flip on stall suite", DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE)
+	await _run_embedded_scene_suite("Honest repath without teleport suite", HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE)
+	await _run_embedded_scene_suite("Flashlight active in combat suite", FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE)
+	await _run_embedded_scene_suite("Flashlight bonus in combat suite", FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE)
 
 	print("\n--- SECTION 19: Level decomposition controller suites ---")
 

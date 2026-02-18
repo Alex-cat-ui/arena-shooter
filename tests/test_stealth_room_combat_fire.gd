@@ -73,7 +73,9 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		RuntimeState.player_hp = 100
 		RuntimeState.player_visibility_mul = 1.0
 
-	player.global_position = Vector2(300.0, -40.0)
+	# Place player 500px to the left of enemy spawn (260,-40) — within HOLD_RANGE (390-610px).
+	# Clear LOS at y=-40: no obstacles between x=-240 and x=260 in the stealth test room.
+	player.global_position = Vector2(-240.0, -40.0)
 	player.velocity = Vector2.ZERO
 	await get_tree().physics_frame
 
@@ -81,23 +83,30 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		controller.call("_force_enemy_combat")
 	if enemy.has_method("disable_suspicion_test_profile"):
 		enemy.disable_suspicion_test_profile()
-	enemy.weapons_enabled = true
 	_t.run_test(
 		"stealth fire: fallback profile is disabled before firing",
 		not bool(enemy.get("_suspicion_test_profile_enabled"))
 	)
 
-	# Keep deterministic LOS in the one-room scene.
+	# Face enemy toward player (player is to the LEFT at x=-240, enemy at x=260).
+	# 180° FOV requires facing within 90° of player direction to detect.
 	var pursuit = enemy.get("_pursuit")
 	if pursuit:
-		pursuit.set("facing_dir", Vector2.RIGHT)
-		pursuit.set("_target_facing_dir", Vector2.RIGHT)
+		pursuit.set("facing_dir", Vector2.LEFT)
+		pursuit.set("_target_facing_dir", Vector2.LEFT)
+
+	# Disable squad slot positioning so pure distance logic applies.
+	# At 500px (hold_range_min=390, hold_range_max=610) enemy picks HOLD_RANGE and fires.
+	var old_squad_system = enemy.squad_system
+	enemy.squad_system = null
 
 	for _i in range(300):
 		await get_tree().physics_frame
 		await get_tree().process_frame
 		if _shot_count > 0 and _player_damaged_count > 0:
 			break
+
+	enemy.squad_system = old_squad_system
 
 	_t.run_test("stealth fire: enemy fires at least once in COMBAT", _shot_count >= 1)
 	_t.run_test("stealth fire: production weapon event is shotgun", _shotgun_shot_count >= 1)

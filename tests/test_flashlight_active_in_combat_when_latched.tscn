@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_flashlight_active_in_combat_when_latched.gd" id="1_script"]
+
+[node name="TestFlashlightActiveInCombatWhenLatched" type="Node"]
+script = ExtResource("1_script")

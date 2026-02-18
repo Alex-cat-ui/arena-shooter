@@ -22,8 +22,8 @@ func run_suite() -> Dictionary:
 	print("============================================================")
 
 	_connect_enemy_shot_signal()
-	await _test_weapons_toggle_gate_enemy_fire()
-	await _test_weapons_toggle_same_tick()
+	await _test_enemy_combat_without_toggle_gate()
+	await _test_enemy_toggle_input_removed()
 	_disconnect_enemy_shot_signal()
 
 	_t.summary("WEAPONS TOGGLE GATE RESULTS")
@@ -34,7 +34,7 @@ func run_suite() -> Dictionary:
 	}
 
 
-func _test_weapons_toggle_gate_enemy_fire() -> void:
+func _test_enemy_combat_without_toggle_gate() -> void:
 	_enemy_shots = 0
 	var room := STEALTH_ROOM_SCENE.instantiate()
 	add_child(room)
@@ -53,42 +53,31 @@ func _test_weapons_toggle_gate_enemy_fire() -> void:
 		await get_tree().process_frame
 		return
 
-	player.global_position = Vector2(300.0, -40.0)
+	player.global_position = Vector2(520.0, -40.0)
 	player.velocity = Vector2.ZERO
 	if enemy.has_method("disable_suspicion_test_profile"):
 		enemy.disable_suspicion_test_profile()
+	if controller.has_method("_force_enemy_combat"):
+		controller.call("_force_enemy_combat")
 	await get_tree().physics_frame
 
-	if controller.has_method("_set_test_weapons_enabled"):
-		controller.call("_set_test_weapons_enabled", false)
-	_press_key(controller, KEY_3)
-
-	var shots_before_off_window := _enemy_shots
-	for _i in range(180):
+	for _i in range(300):
 		await get_tree().physics_frame
 		await get_tree().process_frame
-	_t.run_test(
-		"weapons gate: toggle OFF blocks COMBAT fire",
-		_enemy_shots == shots_before_off_window
-	)
-
-	_press_key(controller, KEY_F7)
-	var shots_before_on_window := _enemy_shots
-	for _i in range(240):
-		await get_tree().physics_frame
-		await get_tree().process_frame
-		if _enemy_shots > shots_before_on_window:
+		var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
+		if String(snapshot.get("state_name", "")) == "COMBAT":
 			break
+	var final_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test(
-		"weapons gate: toggle ON allows COMBAT fire",
-		_enemy_shots > shots_before_on_window
+		"weapons gate removed: enemy reaches COMBAT without toggle",
+		String(final_snapshot.get("state_name", "")) == "COMBAT"
 	)
 
 	room.queue_free()
 	await get_tree().process_frame
 
 
-func _test_weapons_toggle_same_tick() -> void:
+func _test_enemy_toggle_input_removed() -> void:
 	var room := STEALTH_ROOM_SCENE.instantiate()
 	add_child(room)
 	await get_tree().process_frame
@@ -104,26 +93,17 @@ func _test_weapons_toggle_same_tick() -> void:
 		await get_tree().process_frame
 		return
 
-	if controller.has_method("_set_test_weapons_enabled"):
-		controller.call("_set_test_weapons_enabled", false)
 	var snapshot_before := enemy.get_debug_detection_snapshot() as Dictionary
-	var before_enabled := bool(snapshot_before.get("weapons_enabled", true))
+	var before_has_field := snapshot_before.has("weapons_enabled")
 
 	_press_key(controller, KEY_F7)
+	await get_tree().process_frame
 	var snapshot_after_on := enemy.get_debug_detection_snapshot() as Dictionary
-	var after_on_enabled := bool(snapshot_after_on.get("weapons_enabled", false))
-	var internal_on := enemy.has_method("is_weapons_enabled_for_test") and enemy.is_weapons_enabled_for_test()
+	var after_has_field := snapshot_after_on.has("weapons_enabled")
+	var toggle_api_removed := not enemy.has_method("set_weapons_enabled_for_test") and not enemy.has_method("is_weapons_enabled_for_test")
 
-	_press_key(controller, KEY_F7)
-	var snapshot_after_off := enemy.get_debug_detection_snapshot() as Dictionary
-	var after_off_enabled := bool(snapshot_after_off.get("weapons_enabled", true))
-	var internal_off := enemy.has_method("is_weapons_enabled_for_test") and not enemy.is_weapons_enabled_for_test()
-
-	_t.run_test("weapons same-tick: starts OFF in snapshot", not before_enabled)
-	_t.run_test("weapons same-tick: snapshot flips ON immediately", after_on_enabled)
-	_t.run_test("weapons same-tick: internal gate flips ON immediately", internal_on)
-	_t.run_test("weapons same-tick: snapshot flips OFF immediately", not after_off_enabled)
-	_t.run_test("weapons same-tick: internal gate flips OFF immediately", internal_off)
+	_t.run_test("weapons same-tick: snapshot has no weapons_enabled field", not before_has_field and not after_has_field)
+	_t.run_test("weapons same-tick: enemy toggle API removed", toggle_api_removed)
 
 	room.queue_free()
 	await get_tree().process_frame

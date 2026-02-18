@@ -4,7 +4,7 @@
 extends Control
 
 const GAME_STATE_SCRIPT := preload("res://src/core/game_state.gd")
-const STEALTH_TEST_SCENE_PATH := "res://src/levels/stealth_test_room.tscn"
+const STEALTH_TEST_SCENE_PATH := "res://src/levels/stealth_3zone_test.tscn"
 
 ## Button references (resolved dynamically)
 var _buttons: Array[Button] = []

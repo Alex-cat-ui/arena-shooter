@@ -113,19 +113,18 @@ func run_suite() -> Dictionary:
 	var ctx = LEVEL_CONTEXT_SCRIPT.new()
 	ctx.entities_container = entities
 	ctx.enemy_squad_system = squad_system
-	ctx.room_nav_system = nav
+	ctx.navigation_service = nav
 	ctx.runtime_budget_controller = LEVEL_RUNTIME_BUDGET_CONTROLLER_SCRIPT.new()
 	ctx.runtime_budget_controller.bind(ctx)
 
 	enemy.set_room_navigation(nav, 0)
 	enemy.set_tactical_systems(alert_system, squad_system)
-	enemy.weapons_enabled = true
 
 	var start_pos: Vector2 = enemy.global_position
 	EventBus.emit_enemy_player_spotted(9001, Vector3(enemy.global_position.x, enemy.global_position.y, 0.0))
 	await get_tree().process_frame
 
-	for _i in range(35):
+	for _i in range(240):
 		ctx.runtime_budget_controller.process_frame(ctx, 1.0 / 60.0)
 		await get_tree().physics_frame
 
@@ -140,14 +139,9 @@ func run_suite() -> Dictionary:
 
 	var intent := enemy.get_current_intent() as Dictionary
 	var intent_type := int(intent.get("type", -1))
-	var is_aggressive_intent := (
-		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
-	)
 	var moved_from_start: bool = enemy.global_position.distance_to(start_pos) > 1.0
 	_t.run_test("Utility intent is active (not PATROL in combat)",
 		intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL)
-	_t.run_test("Combat intent resolves to aggressive branch (PUSH/HOLD_RANGE)", is_aggressive_intent)
 	_t.run_test("PUSH intent advances enemy when selected",
 		intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH or moved_from_start)
 

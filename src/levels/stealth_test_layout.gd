@@ -1,5 +1,5 @@
 ## stealth_test_layout.gd
-## Minimal one-room layout stub compatible with RoomNavSystem/EnemyAlertSystem consumers.
+## Minimal one-room layout stub compatible with NavigationService/EnemyAlertSystem consumers.
 class_name StealthTestLayout
 extends RefCounted
 

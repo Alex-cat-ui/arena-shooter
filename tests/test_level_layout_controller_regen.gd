@@ -65,7 +65,7 @@ class FakeRoomEnemySpawner:
 		shared_log.append("spawner")
 
 
-class FakeRoomNavSystem:
+class FakeNavigationService:
 	extends Node
 	var shared_log: Array = []
 	func rebuild_for_layout(_layout) -> void:
@@ -156,9 +156,9 @@ func _test_regen_order_and_rebinds() -> void:
 	ctx.room_enemy_spawner = FakeRoomEnemySpawner.new()
 	ctx.room_enemy_spawner.shared_log = layout_controller.log
 	ctx.level.add_child(ctx.room_enemy_spawner)
-	ctx.room_nav_system = FakeRoomNavSystem.new()
-	ctx.room_nav_system.shared_log = layout_controller.log
-	ctx.level.add_child(ctx.room_nav_system)
+	ctx.navigation_service = FakeNavigationService.new()
+	ctx.navigation_service.shared_log = layout_controller.log
+	ctx.level.add_child(ctx.navigation_service)
 	ctx.enemy_alert_system = Node.new()
 	ctx.enemy_squad_system = Node.new()
 	ctx.level.add_child(ctx.enemy_alert_system)

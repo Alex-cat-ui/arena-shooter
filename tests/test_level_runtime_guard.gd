@@ -37,13 +37,13 @@ func _test_enforce_on_start() -> void:
 	RuntimeState.is_frozen = true
 
 	var ctx = LEVEL_CONTEXT_SCRIPT.new()
-	ctx.enemy_weapons_enabled = true
+	ctx.debug_overlay_visible = true
 
 	var guard = LEVEL_RUNTIME_GUARD_SCRIPT.new()
 	guard.enforce_on_start(ctx)
 
 	_t.run_test("enforce_on_start keeps runtime state intact", RuntimeState.is_frozen == true)
-	_t.run_test("enforce_on_start keeps context intact", ctx.enemy_weapons_enabled == true)
+	_t.run_test("enforce_on_start keeps context intact", ctx.debug_overlay_visible == true)
 
 
 func _test_enforce_on_layout_reset() -> void:

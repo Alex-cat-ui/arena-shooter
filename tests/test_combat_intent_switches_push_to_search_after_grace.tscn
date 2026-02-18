@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_combat_intent_switches_push_to_search_after_grace.gd" id="1_script"]
+
+[node name="TestCombatIntentSwitchesPushToSearchAfterGrace" type="Node"]
+script = ExtResource("1_script")

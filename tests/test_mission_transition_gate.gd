@@ -28,6 +28,10 @@ func run_suite() -> Dictionary:
 	StateManager.change_state(GameState.State.LEVEL_SETUP)
 	StateManager.change_state(GameState.State.PLAYING)
 
+	# Disable layout generation for entire test to skip slow navmesh bake
+	var _layout_was_enabled: bool = GameConfig.procedural_layout_enabled if GameConfig else false
+	if GameConfig:
+		GameConfig.procedural_layout_enabled = false
 	var scene := load("res://scenes/levels/level_mvp.tscn") as PackedScene
 	var level := scene.instantiate()
 	add_child(level)
@@ -36,6 +40,8 @@ func run_suite() -> Dictionary:
 
 	await _run_tests(level)
 
+	if GameConfig:
+		GameConfig.procedural_layout_enabled = _layout_was_enabled
 	_t.summary("MISSION TRANSITION GATE RESULTS")
 	level.queue_free()
 	await get_tree().process_frame

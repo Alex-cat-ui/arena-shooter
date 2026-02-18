@@ -3,22 +3,19 @@ class_name LevelInputController
 
 const DOOR_INTERACT_RADIUS = 20.0
 const DOOR_KICK_RADIUS = 40.0
-const STEALTH_TEST_SCENE_PATH = "res://src/levels/stealth_test_room.tscn"
+const STEALTH_TEST_SCENE_PATH = "res://src/levels/stealth_3zone_test.tscn"
 
 var on_regenerate_layout: Callable = Callable()
-var on_toggle_enemy_weapons: Callable = Callable()
 var on_toggle_god_mode: Callable = Callable()
 var on_open_stealth_test_scene: Callable = Callable()
 
 
 func configure_callbacks(
 	regen_cb: Callable,
-	toggle_enemy_cb: Callable,
 	toggle_god_cb: Callable,
 	open_stealth_test_scene_cb: Callable = Callable()
 ) -> void:
 	on_regenerate_layout = regen_cb
-	on_toggle_enemy_weapons = toggle_enemy_cb
 	on_toggle_god_mode = toggle_god_cb
 	on_open_stealth_test_scene = open_stealth_test_scene_cb
 
@@ -66,9 +63,6 @@ func handle_unhandled_key_input(_ctx, event: InputEvent) -> void:
 		print("[LevelMVP] F4: Regenerating layout")
 		if on_regenerate_layout.is_valid():
 			on_regenerate_layout.call()
-	elif event.keycode == KEY_F7:
-		if on_toggle_enemy_weapons.is_valid():
-			on_toggle_enemy_weapons.call()
 	elif event.keycode == KEY_F8:
 		if _is_key_assigned_in_input_map(KEY_F8):
 			if on_toggle_god_mode.is_valid():

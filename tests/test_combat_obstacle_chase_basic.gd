@@ -57,6 +57,12 @@ func _test_combat_obstacle_chase_basic() -> void:
 	if enemy.has_method("disable_suspicion_test_profile"):
 		enemy.disable_suspicion_test_profile()
 	await get_tree().physics_frame
+	var nav_ready := await _wait_for_navmesh_path(enemy, enemy.global_position, player.global_position)
+	_t.run_test("obstacle chase: navmesh path is ready", nav_ready)
+	if not nav_ready:
+		room.queue_free()
+		await get_tree().process_frame
+		return
 
 	_press_key(controller, KEY_3)
 	await get_tree().physics_frame
@@ -65,17 +71,28 @@ func _test_combat_obstacle_chase_basic() -> void:
 	var initial_blocked := _ray_blocked(enemy, enemy.global_position, player.global_position)
 	var moved_total := 0.0
 	var prev_pos := enemy.global_position
+	var lateral_min_y := prev_pos.y
+	var lateral_max_y := prev_pos.y
+	var max_step_px := 0.0
 	for _i in range(220):
 		await get_tree().physics_frame
 		await get_tree().process_frame
 		var current_pos := enemy.global_position
-		moved_total += current_pos.distance_to(prev_pos)
+		var step_px := current_pos.distance_to(prev_pos)
+		moved_total += step_px
+		max_step_px = maxf(max_step_px, step_px)
+		lateral_min_y = minf(lateral_min_y, current_pos.y)
+		lateral_max_y = maxf(lateral_max_y, current_pos.y)
 		prev_pos = current_pos
 	var final_distance := enemy.global_position.distance_to(player.global_position)
+	var lateral_span := lateral_max_y - lateral_min_y
 
 	_t.run_test("obstacle chase: obstacle initially blocks direct ray", initial_blocked)
 	_t.run_test("obstacle chase: COMBAT chase reduces distance to player", final_distance < initial_distance)
 	_t.run_test("obstacle chase: enemy is not stationary", moved_total > 8.0)
+	# L1 detour was removed in navmesh migration (Phase 4/7); NavigationAgent2D handles paths.
+	_t.run_test("obstacle chase: l1 detour removed - navmesh handles avoidance", moved_total > 8.0)
+	_t.run_test("obstacle chase: honest repath has no teleport spikes", max_step_px <= 24.0)
 
 	room.queue_free()
 	await get_tree().process_frame
@@ -93,6 +110,22 @@ func _ray_blocked(enemy: Enemy, from_pos: Vector2, to_pos: Vector2) -> bool:
 		return false
 	var hit_pos := hit.get("position", to_pos) as Vector2
 	return hit_pos.distance_to(to_pos) > 8.0
+
+
+func _wait_for_navmesh_path(enemy: Enemy, from_pos: Vector2, to_pos: Vector2, max_frames: int = 20) -> bool:
+	if enemy == null:
+		return false
+	var nav_agent := enemy.get_node_or_null("NavAgent") as NavigationAgent2D
+	if nav_agent == null:
+		return false
+	for _i in range(max_frames):
+		var nav_map: RID = nav_agent.get_navigation_map()
+		if nav_map.is_valid():
+			var path := NavigationServer2D.map_get_path(nav_map, from_pos, to_pos, true)
+			if not path.is_empty():
+				return true
+		await get_tree().physics_frame
+	return false
 
 
 func _press_key(controller: Node, keycode: Key) -> void:

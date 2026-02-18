@@ -83,13 +83,9 @@ func _test_stealth_weapon_pipeline_equivalence() -> void:
 	)
 	_t.run_test("pipeline eq: ability wiring matches LevelMVP contract", ability_wiring_matches)
 
-	var expected_enemy_weapons_enabled := false
-	if controller.has_method("debug_get_test_config"):
-		var cfg := controller.call("debug_get_test_config") as Dictionary
-		expected_enemy_weapons_enabled = bool(cfg.get("enemy_weapons_enabled_on_start", false))
 	_t.run_test(
-		"pipeline eq: enemy start weapons flag follows test config",
-		enemy.weapons_enabled == expected_enemy_weapons_enabled
+		"pipeline eq: enemy weapons toggle API removed",
+		not enemy.has_method("set_weapons_enabled_for_test") and not enemy.has_method("is_weapons_enabled_for_test")
 	)
 	_t.run_test("pipeline eq: enemy type matches production spawner default", enemy.enemy_type == "zombie")
 
@@ -111,6 +107,12 @@ func _test_stealth_weapon_pipeline_equivalence() -> void:
 		and String(player_ability.get_current_weapon()) == "pistol"
 	)
 	_t.run_test("pipeline eq: player loadout starts at production default weapon", player_loadout_matches)
+	var player_weapon_list_matches: bool = (
+		player_ability != null
+		and player_ability.has_method("get_weapon_list")
+		and (player_ability.get_weapon_list() as Array) == ["pistol", "shotgun"]
+	)
+	_t.run_test("pipeline eq: player weapon list reduced to pistol+shotgun", player_weapon_list_matches)
 
 	room.queue_free()
 	await get_tree().process_frame

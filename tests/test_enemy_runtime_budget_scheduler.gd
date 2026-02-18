@@ -131,7 +131,7 @@ func _test_round_robin_and_quotas() -> void:
 	_t.run_test("Squad system switched to runtime budget mode", squad.runtime_budget_scheduler_enabled)
 	_t.run_test("Nav tasks run through runtime budget quota", nav.calls >= 1 and nav.total_processed <= 6)
 
-	await _destroy_runtime_world(setup.get("root"))
+	await _destroy_runtime_world(setup)
 
 
 func _test_new_enemy_auto_enrollment() -> void:
@@ -149,7 +149,7 @@ func _test_new_enemy_auto_enrollment() -> void:
 
 	_t.run_test("Late-joined enemies are auto-enrolled in runtime budget mode", late_enemy.runtime_budget_enabled)
 
-	await _destroy_runtime_world(setup.get("root"))
+	await _destroy_runtime_world(setup)
 
 
 func _create_runtime_world(enemy_count: int) -> Dictionary:
@@ -175,7 +175,7 @@ func _create_runtime_world(enemy_count: int) -> Dictionary:
 	var ctx = LEVEL_CONTEXT_SCRIPT.new()
 	ctx.entities_container = entities
 	ctx.enemy_squad_system = squad
-	ctx.room_nav_system = nav
+	ctx.navigation_service = nav
 
 	var controller = LEVEL_RUNTIME_BUDGET_CONTROLLER_SCRIPT.new()
 	ctx.runtime_budget_controller = controller
@@ -191,7 +191,19 @@ func _create_runtime_world(enemy_count: int) -> Dictionary:
 	}
 
 
-func _destroy_runtime_world(root: Node) -> void:
+func _destroy_runtime_world(setup: Dictionary) -> void:
+	var controller = setup.get("controller")
+	if controller and controller.has_method("unbind"):
+		controller.unbind()
+
+	var ctx = setup.get("ctx")
+	if ctx:
+		ctx.runtime_budget_controller = null
+		ctx.entities_container = null
+		ctx.enemy_squad_system = null
+		ctx.navigation_service = null
+
+	var root := setup.get("root") as Node
 	if root:
 		root.queue_free()
 	await get_tree().process_frame

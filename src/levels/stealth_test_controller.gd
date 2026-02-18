@@ -3,7 +3,7 @@
 extends Node
 
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
-const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/room_nav_system.gd")
+const NAVIGATION_SERVICE_SCRIPT := preload("res://src/systems/navigation_service.gd")
 const ENEMY_ALERT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_alert_system.gd")
 const ENEMY_SQUAD_SYSTEM_SCRIPT := preload("res://src/systems/enemy_squad_system.gd")
 const ENEMY_AGGRO_COORDINATOR_SCRIPT := preload("res://src/systems/enemy_aggro_coordinator.gd")
@@ -26,9 +26,8 @@ var _enemy: Enemy = null
 var _enemy_id_counter: int = 9300
 var _test_config: Dictionary = {}
 var _suspicion_profile: Dictionary = {}
-var _test_state: Dictionary = {"weapons_enabled": false}
 
-var _room_nav_system: Node = null
+var _navigation_service: Node = null
 var _enemy_alert_system: Node = null
 var _enemy_squad_system: Node = null
 var _enemy_aggro_coordinator: Node = null
@@ -37,7 +36,7 @@ var _projectile_system: Node = null
 var _ability_system: Node = null
 var _projectiles_container: Node2D = null
 
-var _room_nav_from_autoload: bool = false
+var _navigation_service_from_autoload: bool = false
 var _enemy_alert_from_autoload: bool = false
 var _enemy_squad_from_autoload: bool = false
 var _enemy_aggro_from_autoload: bool = false
@@ -64,12 +63,11 @@ func _ready() -> void:
 
 	_test_config = STEALTH_TEST_CONFIG_SCRIPT.values()
 	_suspicion_profile = STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile()
-	_test_state["weapons_enabled"] = _enemy_weapons_enabled_on_start()
 	_layout_stub = STEALTH_TEST_LAYOUT_SCRIPT.new(room_rect)
 	_ensure_player_ready()
 	_ensure_combat_pipeline_ready()
 	_apply_scene_tuning()
-	_bind_tactical_systems()
+	await _bind_tactical_systems()
 	_spawn_or_reset_enemy()
 	_update_hint_text()
 	_set_overlay_visible(debug_overlay_enabled)
@@ -107,8 +105,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			_set_overlay_visible(not debug_overlay_enabled)
 		KEY_R:
 			_reset_positions()
-		KEY_F7:
-			_toggle_weapons_enabled()
 		_:
 			return
 	_refresh_debug_label(true)
@@ -116,11 +112,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func debug_get_system_summary() -> Dictionary:
 	return {
-		"room_nav_from_autoload": _room_nav_from_autoload,
+		"navigation_service_from_autoload": _navigation_service_from_autoload,
 		"enemy_alert_from_autoload": _enemy_alert_from_autoload,
 		"enemy_squad_from_autoload": _enemy_squad_from_autoload,
 		"enemy_aggro_from_autoload": _enemy_aggro_from_autoload,
-		"local_room_nav_exists": get_node_or_null("RoomNavSystem") != null,
+		"local_navigation_service_exists": get_node_or_null("NavigationService") != null,
 		"local_enemy_alert_exists": get_node_or_null("EnemyAlertSystem") != null,
 		"local_enemy_squad_exists": get_node_or_null("EnemySquadSystem") != null,
 		"local_enemy_aggro_exists": get_node_or_null("EnemyAggroCoordinator") != null,
@@ -150,15 +146,13 @@ func debug_get_combat_pipeline_summary() -> Dictionary:
 		"player_ability_wired": player_has_ability,
 		"ability_projectile_wired": ability_has_projectile,
 		"ability_combat_wired": ability_has_combat,
-		"enemy_weapons_enabled_on_start": _enemy_weapons_enabled_on_start(),
-		"test_weapons_enabled": bool(_test_state.get("weapons_enabled", false)),
 	}
 
 
 func _bind_tactical_systems() -> void:
-	var room_nav := _resolve_system("RoomNavSystem", ROOM_NAV_SYSTEM_SCRIPT)
-	_room_nav_system = room_nav.node
-	_room_nav_from_autoload = room_nav.from_autoload
+	var nav_service := _resolve_system("NavigationService", NAVIGATION_SERVICE_SCRIPT)
+	_navigation_service = nav_service.node
+	_navigation_service_from_autoload = nav_service.from_autoload
 
 	var alert := _resolve_system("EnemyAlertSystem", ENEMY_ALERT_SYSTEM_SCRIPT)
 	_enemy_alert_system = alert.node
@@ -172,28 +166,34 @@ func _bind_tactical_systems() -> void:
 	_enemy_aggro_coordinator = aggro.node
 	_enemy_aggro_from_autoload = aggro.from_autoload
 
-	if _room_nav_system and _room_nav_system.has_method("initialize"):
-		_room_nav_system.initialize(_layout_stub, _entities, _player)
+	if _navigation_service and _navigation_service.has_method("initialize"):
+		_navigation_service.initialize(_layout_stub, _entities, _player)
+	# Build navmesh only after current tree setup finishes.
+	# Running build_from_layout during _ready can trigger parent-busy add_child errors.
+	if _navigation_service and _navigation_service.has_method("build_from_layout"):
+		_navigation_service.call_deferred("build_from_layout", _layout_stub, _room_root)
+		await get_tree().process_frame
+		await get_tree().physics_frame
 
 	if _enemy_alert_system:
 		if _enemy_alert_system.has_method("initialize"):
-			_enemy_alert_system.initialize(_room_nav_system)
+			_enemy_alert_system.initialize(_navigation_service)
 		elif _enemy_alert_system.has_method("bind_room_nav"):
-			_enemy_alert_system.bind_room_nav(_room_nav_system)
+			_enemy_alert_system.bind_room_nav(_navigation_service)
 			if _enemy_alert_system.has_method("reset_all"):
 				_enemy_alert_system.reset_all()
 
 	if _enemy_squad_system and _enemy_squad_system.has_method("initialize"):
-		_enemy_squad_system.initialize(_player, _room_nav_system, _entities)
+		_enemy_squad_system.initialize(_player, _navigation_service, _entities)
 
-	if _room_nav_system and _room_nav_system.has_method("bind_tactical_systems"):
-		_room_nav_system.bind_tactical_systems(_enemy_alert_system, _enemy_squad_system)
+	if _navigation_service and _navigation_service.has_method("bind_tactical_systems"):
+		_navigation_service.bind_tactical_systems(_enemy_alert_system, _enemy_squad_system)
 
 	if _enemy_aggro_coordinator:
 		if _enemy_aggro_coordinator.has_method("initialize"):
-			_enemy_aggro_coordinator.initialize(_entities, _room_nav_system, _player)
+			_enemy_aggro_coordinator.initialize(_entities, _navigation_service, _player)
 		elif _enemy_aggro_coordinator.has_method("bind_context"):
-			_enemy_aggro_coordinator.bind_context(_entities, _room_nav_system, _player)
+			_enemy_aggro_coordinator.bind_context(_entities, _navigation_service, _player)
 
 
 func _resolve_system(node_name: String, script: Script) -> Dictionary:
@@ -212,7 +212,7 @@ func _resolve_system(node_name: String, script: Script) -> Dictionary:
 
 func _is_node_usable(node: Node, node_name: String) -> bool:
 	match node_name:
-		"RoomNavSystem":
+		"NavigationService":
 			return node.has_method("initialize") and node.has_method("bind_tactical_systems")
 		"EnemyAlertSystem":
 			return node.has_method("initialize") or node.has_method("bind_room_nav")
@@ -245,6 +245,17 @@ func _shadow_multiplier_default() -> float:
 	return float(_test_config.get("shadow_multiplier_default", 0.35))
 
 
+func _resolve_sandbox_door_system() -> Node:
+	if _room_root:
+		var room_door_system := _room_root.get_node_or_null("LayoutDoorSystem")
+		if room_door_system:
+			return room_door_system
+	var local_door_system := get_node_or_null("LayoutDoorSystem")
+	if local_door_system:
+		return local_door_system
+	return null
+
+
 func _spawn_or_reset_enemy() -> void:
 	if _enemy == null or not is_instance_valid(_enemy):
 		_enemy = ENEMY_SCENE.instantiate() as Enemy
@@ -256,6 +267,9 @@ func _spawn_or_reset_enemy() -> void:
 	_enemy.global_position = _enemy_spawn_position()
 	_enemy.velocity = Vector2.ZERO
 	_enemy.initialize(_enemy_id_counter, "zombie")
+	# Ensure nav/tactical wiring is ready immediately for same-tick COMBAT/latch tests.
+	if _navigation_service and _navigation_service.has_method("_configure_enemy"):
+		_navigation_service.call("_configure_enemy", _enemy)
 	if _enemy.has_method("configure_stealth_test_flashlight"):
 		_enemy.configure_stealth_test_flashlight(_flashlight_angle_deg(), _flashlight_distance_px(), _flashlight_bonus())
 	if _enemy.has_method("enable_suspicion_test_profile"):
@@ -264,7 +278,9 @@ func _spawn_or_reset_enemy() -> void:
 		_enemy.set_flashlight_hit_for_detection(false)
 	if _enemy.has_method("set_stealth_test_debug_logging"):
 		_enemy.set_stealth_test_debug_logging(true)
-	_apply_test_weapons_enabled()
+	var door_system := _resolve_sandbox_door_system()
+	if door_system:
+		_enemy.set_meta("door_system", door_system)
 	_enemy.set_runtime_budget_scheduler_enabled(false)
 	if _enemy.has_method("set_physics_process"):
 		_enemy.set_physics_process(true)
@@ -281,7 +297,6 @@ func _ensure_player_ready() -> void:
 		_player.collision_mask |= 1
 	if RuntimeState:
 		RuntimeState.player_pos = Vector3(_player.global_position.x, _player.global_position.y, 0.0)
-	_apply_test_weapons_enabled()
 
 
 func _ensure_combat_pipeline_ready() -> void:
@@ -345,7 +360,6 @@ func _reset_positions() -> void:
 		_enemy.velocity = Vector2.ZERO
 		if _enemy.has_method("set_flashlight_hit_for_detection"):
 			_enemy.set_flashlight_hit_for_detection(false)
-		_apply_test_weapons_enabled()
 	_force_enemy_calm()
 	if RuntimeState:
 		RuntimeState.player_visibility_mul = 1.0
@@ -391,13 +405,12 @@ func _set_overlay_visible(visible: bool) -> void:
 func _update_hint_text() -> void:
 	if not _hint_label:
 		return
-	_hint_label.set_text("%s\nControls: 1 CALM | 2 ALERT | 3 COMBAT | F7 Enemy Guns | TAB Debug | R Reset\nA1/A2: CALM -> stand in shadow (slow suspicion), then behind box (LOS blocked, no gain).\nA3/A4: ALERT -> step into flashlight cone (fast gain), then behind box (flashlight blocked by LOS).\nA5/A6: break LOS and watch suspicion decay; after COMBAT verify normal escalation/combat flow.\nTuning: shadow %.2f | flash %.0fdeg / %.0fpx / x%.2f | enemy_guns=%s" % [
+	_hint_label.set_text("%s\nControls: 1 CALM | 2 ALERT | 3 COMBAT | TAB Debug | R Reset\nA1/A2: CALM -> stand in shadow (slow suspicion), then behind box (LOS blocked, no gain).\nA3/A4: ALERT -> step into flashlight cone (fast gain), then behind box (flashlight blocked by LOS).\nA5/A6: break LOS and watch suspicion decay; after COMBAT verify normal escalation/combat flow.\nTuning: shadow %.2f | flash %.0fdeg / %.0fpx / x%.2f" % [
 		STEALTH_RUNTIME_MARKER,
 		_shadow_multiplier_default(),
 		_flashlight_angle_deg(),
 		_flashlight_distance_px(),
 		_flashlight_bonus(),
-		("ON" if bool(_test_state.get("weapons_enabled", false)) else "OFF"),
 	])
 
 
@@ -422,12 +435,15 @@ func _refresh_debug_label(force: bool) -> void:
 	var flashlight_bonus_raw := 1.0
 	var effective_visibility_pre_clamp := 0.0
 	var effective_visibility_post_clamp := 0.0
-	var facing_used_for_flashlight := Vector2.RIGHT
-	var facing_after_move := Vector2.RIGHT
 	var confirmed := false
 	var intent_type := -1
 	var last_seen_age := INF
-	var weapons_enabled := false
+	var room_effective := "CALM"
+	var room_transient := "CALM"
+	var latch_count := 0
+	var flashlight_inactive_reason := ""
+	var target_is_last_seen := false
+	var last_seen_grace_left := 0.0
 	if _enemy and is_instance_valid(_enemy):
 		enemy_state = String(_enemy.get_meta("awareness_state", "CALM"))
 		if _enemy.has_method("get_current_alert_level"):
@@ -447,65 +463,31 @@ func _refresh_debug_label(force: bool) -> void:
 			flashlight_bonus_raw = float(snapshot.get("flashlight_bonus_raw", 1.0))
 			effective_visibility_pre_clamp = float(snapshot.get("effective_visibility_pre_clamp", visibility_factor))
 			effective_visibility_post_clamp = float(snapshot.get("effective_visibility_post_clamp", visibility_factor))
-			facing_used_for_flashlight = snapshot.get("facing_used_for_flashlight", Vector2.RIGHT) as Vector2
-			facing_after_move = snapshot.get("facing_after_move", Vector2.RIGHT) as Vector2
 			confirmed = bool(snapshot.get("confirmed", false))
 			intent_type = int(snapshot.get("intent_type", -1))
 			last_seen_age = float(snapshot.get("last_seen_age", INF))
-			weapons_enabled = bool(snapshot.get("weapons_enabled", false))
+			room_effective = ENEMY_ALERT_LEVELS_SCRIPT.level_name(int(snapshot.get("room_alert_effective", 0)))
+			room_transient = ENEMY_ALERT_LEVELS_SCRIPT.level_name(int(snapshot.get("room_alert_transient", 0)))
+			latch_count = int(snapshot.get("room_latch_count", 0))
+			flashlight_inactive_reason = String(snapshot.get("flashlight_inactive_reason", ""))
+			target_is_last_seen = bool(snapshot.get("target_is_last_seen", false))
+			last_seen_grace_left = float(snapshot.get("last_seen_grace_left", 0.0))
 
 	var visibility_mul := RuntimeState.player_visibility_mul if RuntimeState else 1.0
-	_debug_label.set_text("state=%s | room_alert=%s | intent=%s | LOS=%s | suspicion=%.3f | vis=%.3f | dist=%.1f | last_seen_age=%.2f | weapons=%s\nbreakdown: distance_factor=%.3f | shadow_mul=%.3f | player_visibility_mul=%.3f | flashlight_active=%s | in_cone=%s | los_to_player=%s | flashlight_hit=%s | flashlight_bonus_raw=%.2f | effective_visibility_pre_clamp=%.3f | effective_visibility_post_clamp=%.3f | facing_used_for_flashlight=%s | facing_after_move=%s | confirmed=%s" % [
-		enemy_state,
-		enemy_alert,
-		_intent_name(intent_type),
-		str(has_los),
-		suspicion,
-		visibility_factor,
-		distance_to_player,
-		last_seen_age,
-		str(weapons_enabled),
-		distance_factor,
-		shadow_mul,
-		visibility_mul,
-		str(flashlight_active),
-		str(flashlight_in_cone),
-		str(los_to_player),
-		str(flashlight_hit),
-		flashlight_bonus_raw,
-		effective_visibility_pre_clamp,
-		effective_visibility_post_clamp,
-		_vec2_compact(facing_used_for_flashlight),
-		_vec2_compact(facing_after_move),
-		str(confirmed),
-	])
-
-
-func _enemy_weapons_enabled_on_start() -> bool:
-	return bool(_test_config.get("enemy_weapons_enabled_on_start", false))
-
-
-func _toggle_weapons_enabled() -> void:
-	var current := bool(_test_state.get("weapons_enabled", false))
-	_set_test_weapons_enabled(not current)
-
-
-func _set_test_weapons_enabled(enabled: bool) -> void:
-	_test_state["weapons_enabled"] = bool(enabled)
-	_apply_test_weapons_enabled()
-	_update_hint_text()
-
-
-func _apply_test_weapons_enabled() -> void:
-	var enabled := bool(_test_state.get("weapons_enabled", false))
-	if _enemy and is_instance_valid(_enemy):
-		if _enemy.has_method("set_weapons_enabled_for_test"):
-			_enemy.set_weapons_enabled_for_test(enabled)
-		else:
-			_enemy.weapons_enabled = enabled
-	if _player and is_instance_valid(_player):
-		if _player.has_method("set_weapons_enabled_for_test"):
-			_player.set_weapons_enabled_for_test(enabled)
+	var fl_reason := flashlight_inactive_reason if flashlight_inactive_reason != "" else "ok"
+	_debug_label.set_text(
+		"state=%s | room_eff=%s room_trans=%s latch=%d | intent=%s | fire_gate=ON\n" % [
+			enemy_state, room_effective, room_transient, latch_count,
+			_intent_name(intent_type)] +
+		"LOS=%s | suspicion=%.3f | vis=%.3f | dist=%.1f | last_seen=%.2f | grace=%.2f | target_lkp=%s | confirmed=%s\n" % [
+			str(has_los), suspicion, visibility_factor, distance_to_player,
+			last_seen_age, last_seen_grace_left, str(target_is_last_seen), str(confirmed)] +
+		"flash: active=%s reason=%s cone=%s hit=%s bonus=%.2f | vis_pre=%.3f vis_post=%.3f | shadow=%.3f dist_f=%.3f plr_mul=%.3f" % [
+			str(flashlight_active), fl_reason,
+			str(flashlight_in_cone), str(flashlight_hit), flashlight_bonus_raw,
+			effective_visibility_pre_clamp, effective_visibility_post_clamp,
+			shadow_mul, distance_factor, visibility_mul]
+	)
 
 
 func _intent_name(intent_type: int) -> String:

@@ -1,6 +1,6 @@
-## room_nav_system.gd
+## navigation_service.gd
 ## Room-level navigation helper for enemies on ProceduralLayoutV2.
-class_name RoomNavSystem
+class_name NavigationService
 extends Node
 
 var layout = null
@@ -8,10 +8,15 @@ var entities_container: Node2D = null
 var player_node: Node2D = null
 var alert_system: Node = null
 var squad_system: Node = null
+var _zone_director_cache: Node = null
+var _zone_director_checked: bool = false
 
 var _room_graph: Dictionary = {}      # room_id -> Array[int]
 var _pair_doors: Dictionary = {}      # "a|b" -> Array[Vector2]
 var _rng := RandomNumberGenerator.new()
+const DOOR_NAV_OVERLAP_PX := 16.0
+var _nav_regions: Array[NavigationRegion2D] = []
+var _room_to_region: Dictionary = {} # room_id -> NavigationRegion2D
 
 
 func initialize(p_layout, p_entities_container: Node2D, p_player_node: Node2D) -> void:
@@ -29,6 +34,12 @@ func initialize(p_layout, p_entities_container: Node2D, p_player_node: Node2D) -
 func bind_tactical_systems(p_alert_system: Node = null, p_squad_system: Node = null) -> void:
 	alert_system = p_alert_system
 	squad_system = p_squad_system
+	_configure_existing_enemies()
+
+
+func set_zone_director(director: Node) -> void:
+	_zone_director_cache = director
+	_zone_director_checked = true
 	_configure_existing_enemies()
 
 
@@ -78,12 +89,104 @@ func rebuild_for_layout(p_layout) -> void:
 	_configure_existing_enemies()
 
 
+func clear() -> void:
+	for region in _nav_regions:
+		if is_instance_valid(region):
+			region.queue_free()
+	_nav_regions.clear()
+	_room_to_region.clear()
+	_room_graph.clear()
+	_pair_doors.clear()
+
+
+func build_from_layout(p_layout, parent: Node2D) -> void:
+	clear()
+	if parent == null:
+		return
+	if not p_layout or not bool(p_layout.valid):
+		return
+
+	layout = p_layout
+	rebuild_for_layout(layout)
+
+	var void_ids: Array = []
+	if layout is Dictionary:
+		var layout_dict := layout as Dictionary
+		if layout_dict.has("_void_ids"):
+			void_ids = layout_dict.get("_void_ids", []) as Array
+	elif layout is Object:
+		for prop_variant in layout.get_property_list():
+			var prop := prop_variant as Dictionary
+			if String(prop.get("name", "")) == "_void_ids":
+				void_ids = layout.get("_void_ids") as Array
+				break
+
+	# Collect all door overlap rects per room first so each room bakes once.
+	var door_overlaps_per_room: Dictionary = {}
+	if layout.has_method("_door_adjacent_room_ids"):
+		for door_variant in (layout.doors as Array):
+			var door_rect := door_variant as Rect2
+			if door_rect == Rect2():
+				continue
+			var adjacent: Array = layout._door_adjacent_room_ids(door_rect)
+			if adjacent.size() != 2:
+				continue
+			var overlap_rect := door_rect.grow(DOOR_NAV_OVERLAP_PX)
+			for room_id_variant in adjacent:
+				var room_id := int(room_id_variant)
+				if not door_overlaps_per_room.has(room_id):
+					door_overlaps_per_room[room_id] = []
+				door_overlaps_per_room[room_id].append(overlap_rect)
+
+	for i in range(layout.rooms.size()):
+		if i in void_ids:
+			continue
+		var room := layout.rooms[i] as Dictionary
+		var rects := room.get("rects", []) as Array
+		var door_overlaps: Array = door_overlaps_per_room.get(i, [])
+		_create_region_for_room(i, rects, door_overlaps, parent)
+
+
+func get_navigation_map_rid() -> RID:
+	for region in _nav_regions:
+		if is_instance_valid(region):
+			return region.get_navigation_map()
+	var viewport := get_viewport()
+	if viewport and viewport.world_2d:
+		return viewport.world_2d.navigation_map
+	return RID()
+
+
 func room_id_at_point(p: Vector2) -> int:
 	if not layout or not bool(layout.valid):
 		return -1
 	if not layout.has_method("_room_id_at_point"):
 		return -1
 	return int(layout._room_id_at_point(p))
+
+
+func can_enemy_traverse_point(enemy: Node, point: Vector2) -> bool:
+	if enemy == null:
+		return true
+	if _is_enemy_flashlight_active(enemy):
+		return true
+	return not is_point_in_shadow(point)
+
+
+func is_point_in_shadow(point: Vector2) -> bool:
+	var tree := get_tree()
+	if tree == null:
+		return false
+	for zone_variant in tree.get_nodes_in_group("shadow_zones"):
+		var zone := zone_variant as Node
+		if zone == null:
+			continue
+		if not zone.has_method("contains_point"):
+			continue
+		var contains_variant: Variant = zone.call("contains_point", point)
+		if bool(contains_variant):
+			return true
+	return false
 
 
 func is_adjacent(a: int, b: int) -> bool:
@@ -165,6 +268,22 @@ func get_room_center(room_id: int) -> Vector2:
 	return room.get("center", Vector2.ZERO) as Vector2
 
 
+func _is_enemy_flashlight_active(enemy: Node) -> bool:
+	if enemy == null:
+		return false
+	if enemy.has_method("is_flashlight_active_for_navigation"):
+		var active_variant: Variant = enemy.call("is_flashlight_active_for_navigation")
+		return bool(active_variant)
+	if enemy.has_meta("flashlight_active"):
+		return bool(enemy.get_meta("flashlight_active"))
+	if enemy.has_method("get_debug_detection_snapshot"):
+		var snapshot_variant: Variant = enemy.call("get_debug_detection_snapshot")
+		if snapshot_variant is Dictionary:
+			var snapshot := snapshot_variant as Dictionary
+			return bool(snapshot.get("flashlight_active", false))
+	return false
+
+
 func get_player_position() -> Vector2:
 	if player_node and is_instance_valid(player_node):
 		return player_node.global_position
@@ -241,6 +360,20 @@ func random_point_in_room(room_id: int, margin: float = 20.0) -> Vector2:
 
 
 func build_path_points(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
+	var map_rid := get_navigation_map_rid()
+	if map_rid.is_valid():
+		var raw_path: PackedVector2Array = NavigationServer2D.map_get_path(map_rid, from_pos, to_pos, true)
+		if not raw_path.is_empty():
+			var out: Array[Vector2] = []
+			for p in raw_path:
+				out.append(p)
+			if out.is_empty() or out[out.size() - 1].distance_to(to_pos) > 0.5:
+				out.append(to_pos)
+			return out
+	return _build_room_graph_path_points(from_pos, to_pos)
+
+
+func _build_room_graph_path_points(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
 	var from_room := room_id_at_point(from_pos)
 	var to_room := room_id_at_point(to_pos)
 	if from_room < 0 or to_room < 0:
@@ -305,6 +438,40 @@ func _configure_enemy(node: Node) -> void:
 		enemy.set_room_navigation(self, room_id)
 	if enemy.has_method("set_tactical_systems"):
 		enemy.set_tactical_systems(alert_system, squad_system)
+	if enemy.has_method("set_zone_director"):
+		var zone_director := _get_zone_director()
+		if zone_director:
+			enemy.set_zone_director(zone_director)
+	var door_system := _resolve_door_system_for_enemy()
+	if door_system:
+		enemy.set_meta("door_system", door_system)
+
+
+func _get_zone_director() -> Node:
+	if _zone_director_checked:
+		return _zone_director_cache
+	_zone_director_checked = true
+	if not get_tree():
+		return null
+	if not get_tree().root:
+		return null
+	if get_tree().root.has_node("ZoneDirector"):
+		_zone_director_cache = get_tree().root.get_node("ZoneDirector")
+	return _zone_director_cache
+
+
+func _resolve_door_system_for_enemy() -> Node:
+	if layout is Dictionary:
+		var layout_dict := layout as Dictionary
+		if "door_system" in layout_dict:
+			return layout_dict.get("door_system", null) as Node
+	if layout and not (layout is Dictionary) and layout.has_meta("door_system"):
+		return layout.get_meta("door_system") as Node
+	if entities_container:
+		var level_root := entities_container.get_parent()
+		if level_root:
+			return level_root.get_node_or_null("LayoutDoorSystem")
+	return null
 
 
 func _adjacent_room_ids_for_door(door: Rect2) -> Array:
@@ -372,3 +539,130 @@ func _bfs_room_path(start_room: int, goal_room: int) -> Array[int]:
 		curp = int(parent[curp])
 		path.push_front(curp)
 	return path
+
+
+func _create_region_for_room(room_id: int, rects: Array, door_overlaps: Array, parent: Node2D) -> void:
+	if rects.is_empty() or parent == null:
+		return
+
+	var region := NavigationRegion2D.new()
+	var nav_poly := NavigationPolygon.new()
+
+	# Build room outline(s) from rects
+	var room_outlines: Array = []
+	if rects.size() == 1:
+		room_outlines.append(_rect_to_outline(rects[0] as Rect2))
+	else:
+		var merged := _rect_to_packed_vector2(rects[0] as Rect2)
+		for i in range(1, rects.size()):
+			var next := _rect_to_packed_vector2(rects[i] as Rect2)
+			var result: Array = Geometry2D.merge_polygons(merged, next)
+			if result.is_empty():
+				room_outlines.append(merged)
+				merged = next
+			else:
+				merged = result[0] as PackedVector2Array
+				for hole_idx in range(1, result.size()):
+					room_outlines.append(result[hole_idx] as PackedVector2Array)
+		room_outlines.append(merged)
+
+	# Merge all door overlaps in one pass (avoids repeated nav polygon rebakes)
+	var all_outlines: Array = room_outlines.duplicate()
+	for overlap_variant in door_overlaps:
+		all_outlines = _merge_overlapping_outlines(all_outlines, _rect_to_outline(overlap_variant as Rect2))
+
+	for outline_variant in all_outlines:
+		nav_poly.add_outline(outline_variant as PackedVector2Array)
+
+	_bake_navigation_polygon(nav_poly)
+	region.navigation_polygon = nav_poly
+	region.name = "NavRegion_%d" % room_id
+	parent.add_child(region)
+	_nav_regions.append(region)
+	_room_to_region[room_id] = region
+
+
+func _connect_regions_at_door(door_rect: Rect2, p_layout) -> void:
+	if door_rect == Rect2():
+		return
+	if not (p_layout is Object):
+		return
+	if not p_layout.has_method("_door_adjacent_room_ids"):
+		return
+	var adjacent := p_layout._door_adjacent_room_ids(door_rect) as Array
+	if adjacent.size() != 2:
+		return
+
+	var a := int(adjacent[0])
+	var b := int(adjacent[1])
+	var overlap_rect := door_rect.grow(DOOR_NAV_OVERLAP_PX)
+
+	for room_id in [a, b]:
+		if not _room_to_region.has(room_id):
+			continue
+		var region := _room_to_region[room_id] as NavigationRegion2D
+		if region == null:
+			continue
+		var nav_poly := region.navigation_polygon
+		if nav_poly == null:
+			continue
+		var existing_outlines: Array = []
+		for idx in range(nav_poly.get_outline_count()):
+			existing_outlines.append(nav_poly.get_outline(idx))
+		var merged_outlines := _merge_overlapping_outlines(existing_outlines, _rect_to_outline(overlap_rect))
+		var rebuilt := NavigationPolygon.new()
+		for outline_variant in merged_outlines:
+			rebuilt.add_outline(outline_variant as PackedVector2Array)
+		_bake_navigation_polygon(rebuilt)
+		region.navigation_polygon = rebuilt
+
+
+static func _bake_navigation_polygon(nav_poly: NavigationPolygon) -> void:
+	if nav_poly == null:
+		return
+	var source_data := NavigationMeshSourceGeometryData2D.new()
+	NavigationServer2D.bake_from_source_geometry_data(nav_poly, source_data)
+
+
+static func _rect_to_outline(r: Rect2) -> PackedVector2Array:
+	return PackedVector2Array([
+		r.position,
+		Vector2(r.end.x, r.position.y),
+		r.end,
+		Vector2(r.position.x, r.end.y),
+	])
+
+
+static func _rect_to_packed_vector2(r: Rect2) -> PackedVector2Array:
+	return _rect_to_outline(r)
+
+
+static func _merge_overlapping_outlines(existing_outlines: Array, addition: PackedVector2Array) -> Array:
+	var pending: Array = []
+	for outline_variant in existing_outlines:
+		var outline := outline_variant as PackedVector2Array
+		if not outline.is_empty():
+			pending.append(outline)
+	if not addition.is_empty():
+		pending.append(addition)
+	var merged_any := true
+	while merged_any:
+		merged_any = false
+		var i := 0
+		while i < pending.size():
+			var j := i + 1
+			while j < pending.size():
+				var a := pending[i] as PackedVector2Array
+				var b := pending[j] as PackedVector2Array
+				var merged := Geometry2D.merge_polygons(a, b)
+				if merged.is_empty():
+					j += 1
+					continue
+				pending[i] = merged[0]
+				pending.remove_at(j)
+				for hole_idx in range(1, merged.size()):
+					pending.append(merged[hole_idx])
+				merged_any = true
+				j = i + 1
+			i += 1
+	return pending

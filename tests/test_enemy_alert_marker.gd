@@ -5,8 +5,8 @@ const TestHelpers = preload("res://tests/test_helpers.gd")
 const MARKER_DIR := "res://assets/textures/ui/markers"
 const MARKER_FILES := [
 	"enemy_q_suspicious.png",
-	"enemy_q_alert.png",
-	"enemy_q_combat.png",
+	"enemy_excl_alert.png",
+	"enemy_excl_combat.png",
 ]
 const ENEMY_SCENE_PATH := "res://scenes/entities/enemy.tscn"
 
@@ -48,9 +48,8 @@ func _test_marker_files_exist() -> void:
 func _test_marker_dimensions() -> void:
 	for file_name in MARKER_FILES:
 		var path := "%s/%s" % [MARKER_DIR, file_name]
-		var image := Image.new()
-		var err := image.load(path)
-		var ok := err == OK and image.get_width() == 16 and image.get_height() == 16
+		var texture := load(path) as Texture2D
+		var ok := texture != null and texture.get_width() == 16 and texture.get_height() == 16
 		_t.run_test("%s is 16x16" % file_name, ok)
 
 

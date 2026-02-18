@@ -35,6 +35,7 @@ func bind(ctx) -> void:
 func unbind() -> void:
 	if _ctx and _ctx.entities_container and is_instance_valid(_ctx.entities_container) and _ctx.entities_container.child_entered_tree.is_connected(_on_entity_child_entered):
 		_ctx.entities_container.child_entered_tree.disconnect(_on_entity_child_entered)
+	_enemy_rr_cursor = 0
 	_ctx = null
 
 
@@ -112,13 +113,13 @@ func _process_nav_tasks(frame_start_usec: int, budget_usec: int) -> int:
 		return 0
 	if not _is_budget_available(frame_start_usec, budget_usec):
 		return 0
-	if not _ctx or not _ctx.room_nav_system or not is_instance_valid(_ctx.room_nav_system):
+	if not _ctx or not _ctx.navigation_service or not is_instance_valid(_ctx.navigation_service):
 		return 0
 
-	if _ctx.room_nav_system.has_method("runtime_budget_tick"):
-		return mini(maxi(int(_ctx.room_nav_system.call("runtime_budget_tick", quota)), 0), quota)
-	if _ctx.room_nav_system.has_method("process_runtime_budget_tasks"):
-		return mini(maxi(int(_ctx.room_nav_system.call("process_runtime_budget_tasks", quota)), 0), quota)
+	if _ctx.navigation_service.has_method("runtime_budget_tick"):
+		return mini(maxi(int(_ctx.navigation_service.call("runtime_budget_tick", quota)), 0), quota)
+	if _ctx.navigation_service.has_method("process_runtime_budget_tasks"):
+		return mini(maxi(int(_ctx.navigation_service.call("process_runtime_budget_tasks", quota)), 0), quota)
 	return 0
 
 
@@ -162,7 +163,7 @@ func _enable_runtime_budget_mode_on_enemy(enemy: Node) -> void:
 
 
 func _on_entity_child_entered(node: Node) -> void:
-	call_deferred("_enable_runtime_budget_mode_on_enemy", node)
+	_enable_runtime_budget_mode_on_enemy(node)
 
 
 func _is_budget_available(frame_start_usec: int, budget_usec: int) -> bool:

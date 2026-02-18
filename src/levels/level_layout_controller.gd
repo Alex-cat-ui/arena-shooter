@@ -77,10 +77,12 @@ func regenerate_layout(ctx, new_seed: int = 0) -> void:
 
 	if ctx.room_enemy_spawner:
 		ctx.room_enemy_spawner.rebuild_for_layout(ctx.layout)
-	if ctx.room_nav_system and ctx.room_nav_system.has_method("rebuild_for_layout"):
-		ctx.room_nav_system.rebuild_for_layout(ctx.layout)
-	if ctx.room_nav_system and ctx.room_nav_system.has_method("bind_tactical_systems"):
-		ctx.room_nav_system.bind_tactical_systems(ctx.enemy_alert_system, ctx.enemy_squad_system)
+	if ctx.navigation_service and ctx.navigation_service.has_method("rebuild_for_layout"):
+		ctx.navigation_service.rebuild_for_layout(ctx.layout)
+	if ctx.navigation_service and ctx.navigation_service.has_method("build_from_layout"):
+		ctx.navigation_service.build_from_layout(ctx.layout, ctx.level)
+	if ctx.navigation_service and ctx.navigation_service.has_method("bind_tactical_systems"):
+		ctx.navigation_service.bind_tactical_systems(ctx.enemy_alert_system, ctx.enemy_squad_system)
 	if enemy_runtime_controller:
 		enemy_runtime_controller.rebind_enemy_aggro_context(ctx)
 

@@ -58,6 +58,15 @@ signal enemy_state_changed(enemy_id: int, from_state: String, to_state: String, 
 ## Enemy called reinforcement for room group
 signal enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, target_room_ids: Array)
 
+## Zone state changed
+signal zone_state_changed(zone_id: int, old_state: int, new_state: int)
+
+## Irreversible hostile escalation ("contact" or "damaged")
+signal hostile_escalation(enemy_id: int, reason: String)
+
+## Enemy opened door while traversing
+signal enemy_opened_door(enemy_id: int, door_node: Node)
+
 ## ============================================================================
 ## SIGNALS - Player
 ## ============================================================================
@@ -174,6 +183,9 @@ func emit_enemy_state_changed(enemy_id: int, from_state: String, to_state: Strin
 
 func emit_enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, target_room_ids: Array) -> void:
 	_queue_event("enemy_reinforcement_called", [source_enemy_id, source_room_id, target_room_ids.duplicate()], Priority.HIGH)
+
+func emit_hostile_escalation(enemy_id: int, reason: String) -> void:
+	_queue_event("hostile_escalation", [enemy_id, reason], Priority.HIGH)
 
 ## ============================================================================
 ## PUBLIC API - Player
@@ -307,6 +319,8 @@ func _dispatch_event(event: Dictionary) -> void:
 			enemy_state_changed.emit(event.args[0], event.args[1], event.args[2], event.args[3], event.args[4])
 		"enemy_reinforcement_called":
 			enemy_reinforcement_called.emit(event.args[0], event.args[1], event.args[2])
+		"hostile_escalation":
+			hostile_escalation.emit(event.args[0], event.args[1])
 		# Player
 		"player_damaged":
 			player_damaged.emit(event.args[0], event.args[1], event.args[2])

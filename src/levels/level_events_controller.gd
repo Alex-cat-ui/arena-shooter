@@ -39,6 +39,4 @@ func _on_player_died() -> void:
 
 func _on_rocket_exploded(_pos: Vector3) -> void:
 	if _ctx and _ctx.camera_shake:
-		var amp: float = GameConfig.rocket_shake_amplitude if GameConfig else 3.0
-		var dur: float = GameConfig.rocket_shake_duration if GameConfig else 0.15
-		_ctx.camera_shake.shake(amp, dur)
+		_ctx.camera_shake.shake(3.0, 0.15)

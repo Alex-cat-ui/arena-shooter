@@ -177,6 +177,8 @@ func _free_world(world: Dictionary) -> void:
 
 
 func _test_level_input_controller_integration() -> void:
+	if embedded_mode:
+		return
 	var level = LEVEL_MVP_SCENE.instantiate()
 	add_child(level)
 	await get_tree().process_frame

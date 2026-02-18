@@ -12,7 +12,7 @@ const LEVEL_TRANSITION_CONTROLLER_SCRIPT = preload("res://src/levels/level_trans
 const LEVEL_ENEMY_RUNTIME_CONTROLLER_SCRIPT = preload("res://src/levels/level_enemy_runtime_controller.gd")
 const LEVEL_EVENTS_CONTROLLER_SCRIPT = preload("res://src/levels/level_events_controller.gd")
 const LEVEL_BOOTSTRAP_CONTROLLER_SCRIPT = preload("res://src/levels/level_bootstrap_controller.gd")
-const STEALTH_TEST_SCENE_PATH = "res://src/levels/stealth_test_room.tscn"
+const STEALTH_TEST_SCENE_PATH = "res://src/levels/stealth_3zone_test.tscn"
 
 # Scene refs
 @onready var player: CharacterBody2D = $Entities/Player
@@ -104,15 +104,12 @@ func _ready() -> void:
 	_ctx.start_delay_finished = false
 
 	_events_controller.bind(_ctx)
-	_enemy_runtime_controller.bind_enemy_toggle_hook(_ctx)
-	_enemy_runtime_controller.apply_enemy_weapon_toggle_to_all(_ctx)
 	_hud_controller.cache_music_system_ref(_ctx)
 	_hud_controller.refresh_right_debug_hint(_ctx)
 	_hud_controller.update_hud(_ctx)
 
 	_input_controller.configure_callbacks(
 		Callable(self, "_on_regenerate_layout_requested"),
-		Callable(self, "_on_toggle_enemy_weapons_requested"),
 		Callable(self, "_on_toggle_god_mode_requested"),
 		Callable(self, "_on_open_stealth_test_scene_requested")
 	)
@@ -148,7 +145,13 @@ func _exit_tree() -> void:
 	_events_controller.unbind()
 	if _ctx and _ctx.runtime_budget_controller and _ctx.runtime_budget_controller.has_method("unbind"):
 		_ctx.runtime_budget_controller.unbind()
-	_enemy_runtime_controller.unbind_enemy_toggle_hook()
+		_ctx.runtime_budget_controller = null
+	if _ctx and _ctx.player:
+		if "projectile_system" in _ctx.player:
+			_ctx.player.projectile_system = null
+		if "ability_system" in _ctx.player:
+			_ctx.player.ability_system = null
+	_ctx = null
 
 
 func _process(delta: float) -> void:
@@ -208,15 +211,11 @@ func _on_regenerate_layout_requested() -> void:
 
 
 func _on_transition_regenerate_layout() -> void:
-	regenerate_layout(0)
-
-
-func _on_toggle_enemy_weapons_requested() -> void:
-	if not _ctx:
+	if GameConfig and not GameConfig.procedural_layout_enabled:
+		if RuntimeState and _ctx:
+			RuntimeState.mission_index = _transition_controller.current_mission_index(_ctx)
 		return
-	var is_enabled = _enemy_runtime_controller.toggle_enemy_weapons(_ctx)
-	_hud_controller.refresh_right_debug_hint(_ctx)
-	print("[LevelMVP] Enemy weapons: %s" % ("ON" if is_enabled else "OFF"))
+	regenerate_layout(0)
 
 
 func _on_toggle_god_mode_requested() -> void:
@@ -238,12 +237,6 @@ func _on_open_stealth_test_scene_requested() -> void:
 	var err := get_tree().change_scene_to_file(STEALTH_TEST_SCENE_PATH)
 	if err != OK:
 		push_warning("[LevelMVP] Failed to open test scene (%s), err=%d" % [STEALTH_TEST_SCENE_PATH, err])
-
-
-func _apply_enemy_weapon_toggle_to_node_deferred(node: Node) -> void:
-	if not _ctx:
-		return
-	_enemy_runtime_controller.apply_enemy_weapon_toggle_to_node(_ctx, node)
 
 
 func regenerate_layout(new_seed: int = 0) -> void:

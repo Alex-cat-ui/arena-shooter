@@ -43,6 +43,7 @@ func _test_cone_geometry() -> void:
 	_t.run_test("point outside distance is out of cone", not cone.is_point_in_cone(origin, forward, Vector2(520.0, 0.0)))
 	_t.run_test("point outside cone angle is out of cone", not cone.is_point_in_cone(origin, forward, Vector2(100.0, 260.0)))
 	_t.run_test("point inside angle and distance is in cone", cone.is_point_in_cone(origin, forward, Vector2(260.0, 120.0)))
+	cone.free()
 
 
 func _test_los_requirement() -> void:
@@ -57,3 +58,4 @@ func _test_los_requirement() -> void:
 	_t.run_test("flashlight hit requires active state", not cone.is_player_hit(origin, forward, player_pos, true, false))
 	_t.run_test("flashlight hit requires LOS", not cone.is_player_hit(origin, forward, player_pos, false, true))
 	_t.run_test("flashlight hit true when active + LOS + in cone", cone.is_player_hit(origin, forward, player_pos, true, true))
+	cone.free()

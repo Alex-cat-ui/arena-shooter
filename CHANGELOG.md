@@ -1,5 +1,40 @@
 # Arena Shooter Changelog
 
+## 2026-02-16
+
+### 00:40 MSK - Phase 11: Full regression — all stealth tests wired into runner
+- **Added**: 16 unwired test suites from phases 1-7 wired into test_runner_node.gd
+- **Result**: 168/171 PASS (3 pre-existing non-stealth failures)
+- **Files**: tests/test_runner_node.gd
+
+### 00:30 MSK - Phase 10: Stealth controller/UI/config — weapons ON + overlay clarity
+- **Verified**: `enemy_weapons_enabled_on_start=true` already in config, single source of truth `_test_state.weapons_enabled` confirmed
+- **Added**: `target_is_last_seen` + `last_seen_grace_left` to enemy debug snapshot
+- **Changed**: Debug overlay restructured into 3 clear lines: state/room/intent, detection/LOS/last_seen, flashlight details
+- **Added**: New overlay fields: `room_eff`, `room_trans`, `latch`, `fire_gate`, `reason` (flashlight_inactive_reason), `target_lkp`, `grace`
+- **Fixed**: Label layout in stealth_test_room.tscn — wider (1100px), no overlap between DebugLabel and HintLabel
+- **Updated**: `test_stealth_room_smoke.gd` telemetry field checks to match new overlay format
+- **Added**: `test_weapons_startup_policy_on.gd` (8 tests: config default, controller pipeline, snapshot, single-source toggle)
+- **Added**: `test_debugui_layout_no_overlap.gd` (6 tests: label positioning, gap, width)
+- **Files**: `src/entities/enemy.gd`, `src/levels/stealth_test_controller.gd`, `src/levels/stealth_test_room.tscn`, `tests/test_stealth_room_smoke.gd`, `tests/test_weapons_startup_policy_on.gd`, `tests/test_debugui_layout_no_overlap.gd`, `tests/test_runner_node.gd`
+
+### 23:55 MSK - Phase 9: SuspicionRingPresenter visibility policy
+- **Changed**: Ring visibility contract: `visible = enabled && progress > epsilon && state != COMBAT`
+- **Changed**: Ring visible during both growth and decay of suspicion (any non-COMBAT state)
+- **Changed**: Ring always hidden in COMBAT (was visible before)
+- **Changed**: `_is_ring_state_visible()` replaced with simpler `_is_combat_state()` check
+- **Added**: `test_ring_visible_during_decay.gd` (17 tests: decay steps, combat override, growth phase)
+- **Fixed**: Tests use `set_physics_process(false)` to prevent enemy AI overwriting test meta
+- **Files**: `src/systems/stealth/suspicion_ring_presenter.gd`, `tests/test_ring_visibility_policy.gd`, `tests/test_ring_visible_during_decay.gd`, `tests/test_ring_visible_during_decay.tscn`, `tests/test_runner_node.gd`
+
+### 23:39 MSK - Phase 8: Marker assets ? -> !yellow -> !red
+- **Changed**: Generator now has separate `?` and `!` glyph bitmaps; SUSPICIOUS uses `?`, ALERT/COMBAT use `!`
+- **Changed**: Marker files renamed: `enemy_excl_alert.png`, `enemy_excl_combat.png` (was `enemy_q_*`)
+- **Changed**: Presenter mapping updated: SUSPICIOUS->? white, ALERT->! yellow, COMBAT->! red
+- **Added**: Fail-safe in presenter — missing texture hides marker + logs warning
+- **Added**: `test_marker_semantics_mapping.gd` (14 tests: glyph mapping, transitions, fail-safe)
+- **Files**: `generate_enemy_alert_markers.gd`, `src/systems/enemy_alert_marker_presenter.gd`, `tests/test_enemy_alert_marker.gd`, `tests/test_marker_semantics_mapping.gd`, `tests/test_marker_semantics_mapping.tscn`, `tests/test_runner_node.gd`, `assets/textures/ui/markers/enemy_excl_*.png`
+
 ## 2026-02-13
 
 ### Doors V2 + Patrol module

@@ -6,6 +6,11 @@ const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
+const CANON_CONFIG := {
+	"confirm_time_to_engage": 2.50,
+	"confirm_decay_rate": 0.275,
+	"confirm_grace_window": 0.50,
+}
 
 
 func _ready() -> void:
@@ -38,12 +43,12 @@ func _test_sticky_combat_no_downgrade() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
 
-	var transitions := awareness.process(0.1, true)
-	_t.run_test("LOS enters COMBAT", _has_transition(transitions, "CALM", "COMBAT", "vision"))
+	var transitions := awareness.process_confirm(2.5, true, false, false, CANON_CONFIG)
+	_t.run_test("LOS enters COMBAT", _has_transition(transitions, "CALM", "COMBAT", "confirmed_contact"))
 
 	var had_downgrade_transition := false
 	for _i in range(260):
-		var step := awareness.process(0.1, false)
+		var step := awareness.process_confirm(0.1, false, false, false, CANON_CONFIG)
 		if _has_non_combat_transition(step):
 			had_downgrade_transition = true
 	_t.run_test(
@@ -57,12 +62,12 @@ func _test_sticky_combat_no_downgrade() -> void:
 func _test_visibility_decay_2s() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
-	awareness.process(0.1, true)
+	awareness.process_confirm(2.5, true, false, false, CANON_CONFIG)
 
 	var decay_sec := ENEMY_ALERT_LEVELS_SCRIPT.visibility_decay_sec()
 	var frames := maxi(int(ceil(maxf(decay_sec, 0.0) / 0.1)), 1)
 	for _i in range(frames):
-		awareness.process(0.1, false)
+		awareness.process_confirm(0.1, false, false, false, CANON_CONFIG)
 
 	_t.run_test("Visibility decays to zero on configured timer", is_zero_approx(awareness.get_visibility()))
 	_t.run_test("Visibility decay does not bypass combat lock", awareness.get_state_name() == "COMBAT")
@@ -73,10 +78,10 @@ func _test_alert_to_combat_locks_sticky() -> void:
 	awareness.reset()
 	var alert_transitions := awareness.register_noise()
 	_t.run_test("Noise enters ALERT first", _has_transition(alert_transitions, "CALM", "ALERT", "noise"))
-	var combat_transitions := awareness.process(0.1, true)
-	_t.run_test("LOS from ALERT enters COMBAT", _has_transition(combat_transitions, "ALERT", "COMBAT", "vision"))
+	var combat_transitions := awareness.process_confirm(2.5, true, false, false, CANON_CONFIG)
+	_t.run_test("LOS from ALERT enters COMBAT", _has_transition(combat_transitions, "ALERT", "COMBAT", "confirmed_contact"))
 	for _i in range(160):
-		awareness.process(0.1, false)
+		awareness.process_confirm(0.1, false, false, false, CANON_CONFIG)
 	_t.run_test("Post-alert COMBAT remains sticky", awareness.get_state_name() == "COMBAT" and awareness.is_combat_locked())
 
 
@@ -92,7 +97,7 @@ func _scenario_trace() -> PackedStringArray:
 	var trace := PackedStringArray()
 	for i in range(160):
 		var has_los := i < 10 or (i >= 80 and i < 88)
-		var transitions := awareness.process(0.1, has_los)
+		var transitions := awareness.process_confirm(0.1, has_los, false, false, CANON_CONFIG)
 		for tr_variant in transitions:
 			var tr := tr_variant as Dictionary
 			trace.append("%03d:%s>%s:%s" % [
