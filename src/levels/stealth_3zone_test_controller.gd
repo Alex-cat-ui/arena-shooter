@@ -3,7 +3,7 @@ extends Node
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
 const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_config.gd")
 const SHADOW_ZONE_SCRIPT := preload("res://src/systems/stealth/shadow_zone.gd")
-const DOOR_PHYSICS_V3_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
+const DOOR_CONTROLLER_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
 const LAYOUT_DOOR_SYSTEM_SCRIPT := preload("res://src/systems/layout_door_system.gd")
 const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 const PAUSE_MENU_SCENE := preload("res://scenes/ui/pause_menu.tscn")
@@ -491,7 +491,7 @@ func _setup_door_system() -> void:
 
 func _build_door() -> void:
 	_clear_children(_doors_root)
-	_door_a1a2 = DOOR_PHYSICS_V3_SCRIPT.new()
+	_door_a1a2 = DOOR_CONTROLLER_SCRIPT.new()
 	_door_a1a2.name = "DoorA1A2"
 	_doors_root.add_child(_door_a1a2)
 	_door_a1a2.configure_from_opening(DOOR_A1A2_OPENING, WALL_THICKNESS)

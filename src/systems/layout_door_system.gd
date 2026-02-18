@@ -3,7 +3,7 @@
 class_name LayoutDoorSystem
 extends Node
 
-const DOOR_PHYSICS_V3_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
+const DOOR_CONTROLLER_SCRIPT := preload("res://src/systems/door_physics_v3.gd")
 const DEFAULT_INTERACT_RADIUS_PX := 20.0
 const DEFAULT_KICK_RADIUS_PX := 40.0
 const ENEMY_DOOR_INTERACT_RADIUS_PX := 30.0
@@ -102,7 +102,7 @@ func clear_doors() -> void:
 func _spawn_door(opening: Rect2, wall_thickness: float) -> void:
 	if opening.size.x <= 1.0 or opening.size.y <= 1.0:
 		return
-	var door: Node2D = DOOR_PHYSICS_V3_SCRIPT.new()
+	var door: Node2D = DOOR_CONTROLLER_SCRIPT.new()
 	door.name = "Door_%d" % doors_parent.get_child_count()
 	doors_parent.add_child(door)
 	door.configure_from_opening(opening, wall_thickness)
