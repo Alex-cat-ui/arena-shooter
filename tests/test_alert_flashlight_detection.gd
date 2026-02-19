@@ -165,6 +165,8 @@ func _run_detection_case(
 	enemy.initialize(8801, "zombie")
 	if enable_profile:
 		enemy.enable_suspicion_test_profile(_profile())
+	elif enemy.has_method("disable_suspicion_test_profile"):
+		enemy.disable_suspicion_test_profile()
 	if enemy.has_method("configure_stealth_test_flashlight"):
 		var cfg := _config_values()
 		var flashlight_bonus := float(cfg.get("flashlight_bonus", 2.5))

@@ -6,6 +6,9 @@ const SHADOW_ZONE_SCRIPT := preload("res://src/systems/stealth/shadow_zone.gd")
 const DOOR_CONTROLLER_SCRIPT := preload("res://src/systems/door_controller_v3.gd")
 const LAYOUT_DOOR_SYSTEM_SCRIPT := preload("res://src/systems/layout_door_system.gd")
 const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
+const ABILITY_SYSTEM_SCRIPT := preload("res://src/systems/ability_system.gd")
+const COMBAT_SYSTEM_SCRIPT := preload("res://src/systems/combat_system.gd")
+const PROJECTILE_SYSTEM_SCRIPT := preload("res://src/systems/projectile_system.gd")
 const PAUSE_MENU_SCENE := preload("res://scenes/ui/pause_menu.tscn")
 const GAME_OVER_SCENE := preload("res://scenes/ui/game_over.tscn")
 const LEVEL_COMPLETE_SCENE := preload("res://scenes/ui/level_complete.tscn")
@@ -172,6 +175,7 @@ var _prop_obstacle_rects: Array[Rect2] = []
 @onready var _enemy_aggro_coordinator := _systems_root.get_node("EnemyAggroCoordinator")
 @onready var _combat_system := _systems_root.get_node("CombatSystem")
 @onready var _projectile_system := _systems_root.get_node("ProjectileSystem")
+@onready var _ability_system := _systems_root.get_node_or_null("AbilitySystem")
 
 
 func _ready() -> void:
@@ -412,14 +416,7 @@ func _setup_layout_and_systems() -> void:
 	if _enemy_aggro_coordinator and _enemy_aggro_coordinator.has_method("set_zone_director"):
 		_enemy_aggro_coordinator.set_zone_director(_zone_director)
 
-	if _projectile_system and "projectiles_container" in _projectile_system:
-		_projectile_system.projectiles_container = _projectiles_root
-
-	if _combat_system and "player_node" in _combat_system:
-		_combat_system.player_node = _player
-
-	if _player and "projectile_system" in _player:
-		_player.projectile_system = _projectile_system
+	_ensure_combat_pipeline_ready()
 
 
 func _setup_player() -> void:
@@ -433,6 +430,67 @@ func _setup_player() -> void:
 		_player.collision_mask |= 1
 	if RuntimeState:
 		RuntimeState.player_pos = Vector3(_player.global_position.x, _player.global_position.y, 0.0)
+
+
+func debug_get_combat_pipeline_summary() -> Dictionary:
+	var player_has_projectile := false
+	var player_has_ability := false
+	if _player:
+		player_has_projectile = "projectile_system" in _player and _player.projectile_system != null
+		player_has_ability = "ability_system" in _player and _player.ability_system != null
+	var ability_has_projectile := false
+	var ability_has_combat := false
+	if _ability_system:
+		ability_has_projectile = "projectile_system" in _ability_system and _ability_system.projectile_system != null
+		ability_has_combat = "combat_system" in _ability_system and _ability_system.combat_system != null
+	return {
+		"combat_system_exists": _combat_system != null and is_instance_valid(_combat_system),
+		"projectile_system_exists": _projectile_system != null and is_instance_valid(_projectile_system),
+		"ability_system_exists": _ability_system != null and is_instance_valid(_ability_system),
+		"player_projectile_wired": player_has_projectile,
+		"player_ability_wired": player_has_ability,
+		"ability_projectile_wired": ability_has_projectile,
+		"ability_combat_wired": ability_has_combat,
+	}
+
+
+func _ensure_combat_pipeline_ready() -> void:
+	if not _systems_root or not _player:
+		return
+	if _combat_system == null or not is_instance_valid(_combat_system):
+		var combat_node := _systems_root.get_node_or_null("CombatSystem")
+		if combat_node == null:
+			combat_node = COMBAT_SYSTEM_SCRIPT.new()
+			combat_node.name = "CombatSystem"
+			_systems_root.add_child(combat_node)
+		_combat_system = combat_node
+	if _projectile_system == null or not is_instance_valid(_projectile_system):
+		var projectile_node := _systems_root.get_node_or_null("ProjectileSystem")
+		if projectile_node == null:
+			projectile_node = PROJECTILE_SYSTEM_SCRIPT.new()
+			projectile_node.name = "ProjectileSystem"
+			_systems_root.add_child(projectile_node)
+		_projectile_system = projectile_node
+	if _ability_system == null or not is_instance_valid(_ability_system):
+		var ability_node := _systems_root.get_node_or_null("AbilitySystem")
+		if ability_node == null:
+			ability_node = ABILITY_SYSTEM_SCRIPT.new()
+			ability_node.name = "AbilitySystem"
+			_systems_root.add_child(ability_node)
+		_ability_system = ability_node
+
+	if _combat_system and "player_node" in _combat_system:
+		_combat_system.player_node = _player
+	if _projectile_system and "projectiles_container" in _projectile_system:
+		_projectile_system.projectiles_container = _projectiles_root
+	if _ability_system and "projectile_system" in _ability_system:
+		_ability_system.projectile_system = _projectile_system
+	if _ability_system and "combat_system" in _ability_system:
+		_ability_system.combat_system = _combat_system
+	if "projectile_system" in _player:
+		_player.projectile_system = _projectile_system
+	if "ability_system" in _player:
+		_player.ability_system = _ability_system
 
 
 func _player_spawn_position() -> Vector2:
@@ -718,6 +776,10 @@ func _refresh_debug_label(force: bool) -> void:
 	var lines: Array[String] = []
 	lines.append("zones: A=%s B=%s C=%s" % [zone_a, zone_b, zone_c])
 	lines.append("door_a1a2_closed=%s enemies=%d" % [str(_door_closed()), _spawned_enemies.size()])
+	var player_weapon := "none"
+	if _player and "ability_system" in _player and _player.ability_system != null and _player.ability_system.has_method("get_current_weapon"):
+		player_weapon = String(_player.ability_system.get_current_weapon())
+	lines.append("player_weapon=%s" % player_weapon)
 	lines.append(_runtime_debug_line())
 
 	for enemy in _spawned_enemies:

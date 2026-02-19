@@ -74,6 +74,9 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var has_last_seen := bool(ctx.get("has_last_seen", target_is_last_seen or last_seen_pos != Vector2.ZERO))
 	var dist_to_last_seen := float(ctx.get("dist_to_last_seen", dist))
 	var home_pos := ctx.get("home_position", Vector2.ZERO) as Vector2
+	var investigate_anchor := ctx.get("investigate_anchor", Vector2.ZERO) as Vector2
+	var has_investigate_anchor := bool(ctx.get("has_investigate_anchor", false))
+	var dist_to_investigate_anchor := float(ctx.get("dist_to_investigate_anchor", INF))
 
 	var retreat_hp_ratio := _utility_cfg_float("retreat_hp_ratio", RETREAT_HP_RATIO)
 	var hold_range_min := _utility_cfg_float("hold_range_min_px", HOLD_RANGE_MIN_PX)
@@ -95,10 +98,13 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 		}
 
 	if alert_level <= ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS and not has_los:
-		if has_last_seen and last_seen_age <= investigate_max_age and dist_to_last_seen > investigate_arrive_px:
+		var inv_target := investigate_anchor if has_investigate_anchor else last_seen_pos
+		var inv_dist := dist_to_investigate_anchor if has_investigate_anchor else dist_to_last_seen
+		var inv_valid := (has_investigate_anchor or has_last_seen) and last_seen_age <= investigate_max_age
+		if inv_valid and inv_dist > investigate_arrive_px:
 			return {
 				"type": IntentType.INVESTIGATE,
-				"target": last_seen_pos,
+				"target": inv_target,
 			}
 		if has_search_anchor:
 			return {
@@ -108,12 +114,12 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 		return {"type": IntentType.PATROL}
 
 	if not has_los and alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.ALERT:
-		if has_last_seen and last_seen_age <= investigate_max_age and dist_to_last_seen > investigate_arrive_px:
+		if has_last_seen and dist_to_last_seen > investigate_arrive_px:
 			return {
 				"type": IntentType.INVESTIGATE,
 				"target": last_seen_pos,
 			}
-		if has_search_anchor:
+		if has_last_seen:
 			return {
 				"type": IntentType.SEARCH,
 				"target": search_target,
@@ -159,10 +165,10 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	}
 
 
-func _combat_no_los_grace_intent(known_target_pos: Vector2, last_seen_pos: Vector2, home_pos: Vector2) -> Dictionary:
+func _combat_no_los_grace_intent(known_target_pos: Vector2, _last_seen_pos: Vector2, home_pos: Vector2) -> Dictionary:
 	var target := known_target_pos
 	if target == Vector2.ZERO:
-		target = last_seen_pos if last_seen_pos != Vector2.ZERO else home_pos
+		target = home_pos
 	return {
 		"type": IntentType.PUSH,
 		"target": target,

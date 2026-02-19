@@ -34,7 +34,7 @@ func run_suite() -> Dictionary:
 
 	await _test_ring_shows_confirm_progress()
 	await _test_ring_hidden_in_combat()
-	await _test_ring_visible_in_suspicious()
+	await _test_ring_hidden_in_suspicious()
 	_test_marker_hostile_permanent()
 	_test_marker_lockdown_no_exclamation()
 	await _test_snapshot_fields_complete()
@@ -50,6 +50,7 @@ func run_suite() -> Dictionary:
 func _spawn_ring_fixture() -> Dictionary:
 	var holder := SnapshotParent.new()
 	add_child(holder)
+	holder.set_meta("awareness_state", "CALM")
 	var ring := SUSPICION_RING_PRESENTER_SCRIPT.new() as SuspicionRingPresenter
 	holder.add_child(ring)
 	await get_tree().process_frame
@@ -70,7 +71,7 @@ func _test_ring_shows_confirm_progress() -> void:
 	}
 	ring.update_from_snapshot(holder.snapshot)
 	await get_tree().process_frame
-	_t.run_test("ring_shows_confirm_progress", is_equal_approx(ring.get_progress(), 0.5))
+	_t.run_test("ring_shows_confirm_progress", is_equal_approx(ring.get_progress(), 0.5) and ring.visible)
 	holder.queue_free()
 	await get_tree().process_frame
 
@@ -83,6 +84,7 @@ func _test_ring_hidden_in_combat() -> void:
 		"state": ENEMY_AWARENESS_SYSTEM_SCRIPT.State.COMBAT,
 		"confirm01": 0.8,
 	}
+	holder.set_meta("awareness_state", "COMBAT")
 	ring.update_from_snapshot(holder.snapshot)
 	await get_tree().process_frame
 	_t.run_test("ring_hidden_in_combat", not ring.visible)
@@ -90,7 +92,7 @@ func _test_ring_hidden_in_combat() -> void:
 	await get_tree().process_frame
 
 
-func _test_ring_visible_in_suspicious() -> void:
+func _test_ring_hidden_in_suspicious() -> void:
 	var fixture := await _spawn_ring_fixture()
 	var holder := fixture.get("holder") as SnapshotParent
 	var ring := fixture.get("ring") as SuspicionRingPresenter
@@ -98,9 +100,10 @@ func _test_ring_visible_in_suspicious() -> void:
 		"state": ENEMY_AWARENESS_SYSTEM_SCRIPT.State.SUSPICIOUS,
 		"confirm01": 0.3,
 	}
+	holder.set_meta("awareness_state", "SUSPICIOUS")
 	ring.update_from_snapshot(holder.snapshot)
 	await get_tree().process_frame
-	_t.run_test("ring_visible_in_suspicious", ring.visible)
+	_t.run_test("ring_hidden_in_suspicious", not ring.visible)
 	holder.queue_free()
 	await get_tree().process_frame
 

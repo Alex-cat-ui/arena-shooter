@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_alert_to_combat_requires_5s_continuous_confirm.gd" id="1"]
+
+[node name="TestAlertToCombatRequires5sContinuousConfirm" type="Node"]
+script = ExtResource("1")

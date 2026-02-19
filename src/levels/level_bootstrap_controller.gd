@@ -8,6 +8,7 @@ const ENEMY_AGGRO_COORDINATOR_SCRIPT = preload("res://src/systems/enemy_aggro_co
 const ENEMY_ALERT_SYSTEM_SCRIPT = preload("res://src/systems/enemy_alert_system.gd")
 const ENEMY_SQUAD_SYSTEM_SCRIPT = preload("res://src/systems/enemy_squad_system.gd")
 const LAYOUT_DOOR_SYSTEM_SCRIPT = preload("res://src/systems/layout_door_system.gd")
+const ZONE_DIRECTOR_SCRIPT = preload("res://src/systems/zone_director.gd")
 const LEVEL_RUNTIME_BUDGET_CONTROLLER_SCRIPT = preload("res://src/levels/level_runtime_budget_controller.gd")
 
 
@@ -120,6 +121,7 @@ func init_systems(
 	ctx.level.add_child(ctx.enemy_alert_system)
 	if ctx.enemy_alert_system and ctx.enemy_alert_system.has_method("initialize"):
 		ctx.enemy_alert_system.initialize(ctx.navigation_service)
+	_initialize_zone_director(ctx)
 
 	ctx.enemy_squad_system = ENEMY_SQUAD_SYSTEM_SCRIPT.new()
 	ctx.enemy_squad_system.name = "EnemySquadSystem"
@@ -135,6 +137,8 @@ func init_systems(
 	ctx.level.add_child(ctx.enemy_aggro_coordinator)
 	if ctx.enemy_aggro_coordinator and ctx.enemy_aggro_coordinator.has_method("initialize"):
 		ctx.enemy_aggro_coordinator.initialize(ctx.entities_container, ctx.navigation_service, ctx.player)
+	if ctx.enemy_aggro_coordinator and ctx.enemy_aggro_coordinator.has_method("set_zone_director"):
+		ctx.enemy_aggro_coordinator.set_zone_director(ctx.zone_director)
 
 	ctx.runtime_budget_controller = LEVEL_RUNTIME_BUDGET_CONTROLLER_SCRIPT.new()
 	if ctx.runtime_budget_controller and ctx.runtime_budget_controller.has_method("bind"):
@@ -149,6 +153,48 @@ func init_systems(
 			ctx.player.collision_mask |= 1
 
 	print("[LevelMVP] Systems initialized (Weapons + Arena Polish)")
+
+
+func _initialize_zone_director(ctx) -> void:
+	ctx.zone_director = ZONE_DIRECTOR_SCRIPT.new()
+	ctx.zone_director.name = "ZoneDirector"
+	ctx.level.add_child(ctx.zone_director)
+
+	var zone_payload := _build_zone_payload(ctx.navigation_service)
+	var zone_config := zone_payload[0] as Array[Dictionary]
+	var zone_edges := zone_payload[1] as Array[Array]
+	if ctx.zone_director and ctx.zone_director.has_method("initialize"):
+		ctx.zone_director.initialize(zone_config, zone_edges, ctx.enemy_alert_system)
+
+	if ctx.navigation_service and ctx.navigation_service.has_method("set_zone_director"):
+		ctx.navigation_service.set_zone_director(ctx.zone_director)
+
+
+func _build_zone_payload(navigation_service: Node) -> Array:
+	var zone_config: Array[Dictionary] = []
+	var zone_edges: Array[Array] = []
+	if not navigation_service or not navigation_service.has_method("build_zone_config_from_layout"):
+		return [zone_config, zone_edges]
+
+	var raw_payload = navigation_service.call("build_zone_config_from_layout")
+	if not (raw_payload is Array):
+		return [zone_config, zone_edges]
+	var payload := raw_payload as Array
+	if payload.size() < 2:
+		return [zone_config, zone_edges]
+
+	for zone_variant in (payload[0] as Array):
+		var zone := zone_variant as Dictionary
+		if zone.is_empty():
+			continue
+		zone_config.append(zone.duplicate(true))
+
+	for edge_variant in (payload[1] as Array):
+		var edge := edge_variant as Array
+		if edge.size() < 2:
+			continue
+		zone_edges.append([int(edge[0]), int(edge[1])])
+	return [zone_config, zone_edges]
 
 
 func init_visual_polish(ctx, hud_controller) -> void:

@@ -33,6 +33,8 @@ func run_suite() -> Dictionary:
 
 
 func _test_flashlight_bonus_applies_in_combat() -> void:
+	if RuntimeState:
+		RuntimeState.player_hp = 100
 	var cfg := STEALTH_TEST_CONFIG_SCRIPT.values()
 	var profile := STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile()
 

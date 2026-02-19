@@ -19,12 +19,12 @@ func _ready() -> void:
 func run_suite() -> Dictionary:
 	print("")
 	print("============================================================")
-	print("COMBAT UTILITY INTENT AGGRESSIVE TEST")
+	print("COMBAT NO-LOS INTENT CONTRACT TEST")
 	print("============================================================")
 
-	await _test_combat_intent_stays_aggressive_without_los()
+	await _test_combat_no_los_intent_contract()
 
-	_t.summary("COMBAT UTILITY INTENT AGGRESSIVE RESULTS")
+	_t.summary("COMBAT NO-LOS INTENT CONTRACT RESULTS")
 	return {
 		"ok": _t.quit_code() == 0,
 		"run": _t.tests_run,
@@ -32,7 +32,7 @@ func run_suite() -> Dictionary:
 	}
 
 
-func _test_combat_intent_stays_aggressive_without_los() -> void:
+func _test_combat_no_los_intent_contract() -> void:
 	var room := STEALTH_ROOM_SCENE.instantiate()
 	add_child(room)
 	await get_tree().process_frame
@@ -62,29 +62,21 @@ func _test_combat_intent_stays_aggressive_without_los() -> void:
 
 	enemy.set("_last_seen_pos", enemy.global_position + Vector2(180.0, 0.0))
 	enemy.set("_last_seen_age", 0.1)
-	enemy.runtime_budget_tick(0.2)
+	enemy.runtime_budget_tick(0.3)
 	var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	var intent_type := int(snapshot.get("intent_type", -1))
-
-	var is_aggressive := (
-		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
-	)
-	var is_soft := (
-		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME
-	)
+	var target_is_last_seen := bool(snapshot.get("target_is_last_seen", true))
 
 	_t.run_test(
-		"combat intent: awareness stays COMBAT after LOS break",
+		"combat intent: state starts in COMBAT",
 		int(snapshot.get("state", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
 	)
-	_t.run_test("combat intent: intent remains aggressive in COMBAT", is_aggressive)
-	_t.run_test("combat intent: intent is not soft in COMBAT", not is_soft)
+	_t.run_test("combat intent: no-LOS COMBAT does not use last_seen target", not target_is_last_seen)
+	_t.run_test(
+		"combat intent: no-LOS COMBAT avoids INVESTIGATE/SEARCH-by-last_seen",
+		intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
+		and intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+	)
 
 	if had_player_group:
 		player.add_to_group("player")

@@ -18,12 +18,12 @@ func _ready() -> void:
 func run_suite() -> Dictionary:
 	print("")
 	print("============================================================")
-	print("COMBAT NO DEGRADE TEST")
+	print("COMBAT DEGRADES ON NO-CONTACT TIMER TEST")
 	print("============================================================")
 
-	await _test_combat_stays_sticky_with_los_break()
+	await _test_combat_degrades_to_alert_with_los_break()
 
-	_t.summary("COMBAT NO DEGRADE RESULTS")
+	_t.summary("COMBAT DEGRADES ON NO-CONTACT TIMER RESULTS")
 	return {
 		"ok": _t.quit_code() == 0,
 		"run": _t.tests_run,
@@ -31,7 +31,7 @@ func run_suite() -> Dictionary:
 	}
 
 
-func _test_combat_stays_sticky_with_los_break() -> void:
+func _test_combat_degrades_to_alert_with_los_break() -> void:
 	var room := STEALTH_ROOM_SCENE.instantiate()
 	add_child(room)
 	await get_tree().process_frame
@@ -41,17 +41,13 @@ func _test_combat_stays_sticky_with_los_break() -> void:
 	var player := room.get_node_or_null("Entities/Player") as CharacterBody2D
 	var enemy := _first_member_in_group_under("enemies", room) as Enemy
 
-	_t.run_test("combat no-degrade: controller exists", controller != null)
-	_t.run_test("combat no-degrade: player exists", player != null)
-	_t.run_test("combat no-degrade: enemy exists", enemy != null)
+	_t.run_test("combat degrade: controller exists", controller != null)
+	_t.run_test("combat degrade: player exists", player != null)
+	_t.run_test("combat degrade: enemy exists", enemy != null)
 	if controller == null or player == null or enemy == null:
 		room.queue_free()
 		await get_tree().process_frame
 		return
-
-	if RuntimeState:
-		RuntimeState.is_frozen = false
-		RuntimeState.player_hp = 100
 
 	if controller.has_method("_force_enemy_combat"):
 		controller.call("_force_enemy_combat")
@@ -60,7 +56,7 @@ func _test_combat_stays_sticky_with_los_break() -> void:
 	enemy.runtime_budget_tick(0.1)
 	var initial_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test(
-		"combat no-degrade: starts in COMBAT",
+		"combat degrade: starts in COMBAT",
 		int(initial_snapshot.get("state", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
 	)
 
@@ -68,19 +64,18 @@ func _test_combat_stays_sticky_with_los_break() -> void:
 	if had_player_group:
 		player.remove_from_group("player")
 
-	var stayed_combat := true
-	var confirmed_sticky := true
-	for _i in range(220):
+	var combat_ttl := ENEMY_ALERT_LEVELS_SCRIPT.ttl_for_level(ENEMY_ALERT_LEVELS_SCRIPT.COMBAT)
+	var frames := maxi(int(ceil((combat_ttl + 1.0) / 0.1)), 1)
+	var downgraded := false
+	for _i in range(frames):
 		enemy.runtime_budget_tick(0.1)
+		await get_tree().physics_frame
 		var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
-		if int(snapshot.get("state", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) != ENEMY_ALERT_LEVELS_SCRIPT.COMBAT:
-			stayed_combat = false
+		if int(snapshot.get("state", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.ALERT:
+			downgraded = true
 			break
-		if not bool(snapshot.get("confirmed", false)):
-			confirmed_sticky = false
 
-	_t.run_test("combat no-degrade: LOS break does not downgrade COMBAT", stayed_combat)
-	_t.run_test("combat no-degrade: confirmed stays sticky in COMBAT", confirmed_sticky)
+	_t.run_test("combat degrade: LOS break eventually downgrades COMBAT->ALERT", downgraded)
 
 	if had_player_group:
 		player.add_to_group("player")

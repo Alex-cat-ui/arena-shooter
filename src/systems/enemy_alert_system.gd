@@ -52,6 +52,8 @@ func update(delta: float) -> void:
 		_decay_room_transient_level(room_id, level)
 
 
+# Sole tick driver — level_mvp calls combat_system.update() but NOT alert_system.update().
+# No external manual call exists; this _process is the single authority.
 func _process(delta: float) -> void:
 	update(delta)
 
@@ -199,7 +201,7 @@ func _on_enemy_player_spotted(enemy_id: int, position: Vector3) -> void:
 		room_id = _resolve_enemy_room(enemy_id)
 	if room_id < 0:
 		return
-	raise_combat_immediate(room_id, enemy_id)
+	_raise_room_transient_level(room_id, ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
 
 
 func _on_enemy_killed(enemy_id: int, _enemy_type: String) -> void:

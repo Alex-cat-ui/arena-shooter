@@ -33,6 +33,7 @@ var enemy_alert_system = null
 var enemy_squad_system = null
 var enemy_aggro_coordinator = null
 var layout_door_system = null
+var zone_director = null
 var runtime_budget_controller = null
 
 # Weapons/polish systems

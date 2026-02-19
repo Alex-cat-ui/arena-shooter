@@ -23,10 +23,12 @@ var _shot_record_cleanup_timer: float = 0.0
 
 
 func _ready() -> void:
-	# Subscribe to events
+	# Subscribe to events — guard prevents double-connection on level reload without node free.
 	if EventBus:
-		EventBus.enemy_contact.connect(_on_enemy_contact)
-		EventBus.projectile_hit.connect(_on_projectile_hit)
+		if not EventBus.enemy_contact.is_connected(_on_enemy_contact):
+			EventBus.enemy_contact.connect(_on_enemy_contact)
+		if not EventBus.projectile_hit.is_connected(_on_projectile_hit):
+			EventBus.projectile_hit.connect(_on_projectile_hit)
 
 
 ## Update called each frame

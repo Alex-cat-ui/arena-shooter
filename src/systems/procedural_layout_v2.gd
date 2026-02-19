@@ -130,11 +130,7 @@ static func generate_and_build(arena_rect: Rect2, p_seed: int, walls_node: Node2
 		layout._build_walls(walls_node)
 		layout._recolor_walls_white(walls_node)
 		layout._place_player(player_node)
-		var game_config := _get_game_config_singleton()
-		if game_config and bool(game_config.get("layout_debug_draw")):
-			layout._build_debug(debug_node)
-		else:
-			layout._clear_node_children_detached(debug_node)
+		layout._clear_node_children_detached(debug_node)
 		print("[ProceduralLayoutV2] OK seed=%d mission=%d rooms=%d doors=%d loops=%d preset=%s attempts=%d" % [
 			layout.layout_seed,
 			layout.mission_index,

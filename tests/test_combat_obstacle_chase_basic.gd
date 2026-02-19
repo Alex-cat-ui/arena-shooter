@@ -31,6 +31,8 @@ func run_suite() -> Dictionary:
 
 
 func _test_combat_obstacle_chase_basic() -> void:
+	if RuntimeState:
+		RuntimeState.player_hp = 100
 	var room := STEALTH_ROOM_SCENE.instantiate()
 	add_child(room)
 	await get_tree().process_frame

@@ -97,6 +97,18 @@ func _test_force_combat_escalates_room_alert_same_tick() -> void:
 		and snapshot.has("latched")
 	)
 	_t.run_test(
+		"combat sync: snapshot includes transition diagnostics",
+		snapshot.has("transition_reason")
+		and snapshot.has("transition_blocked_by")
+		and snapshot.has("transition_from")
+		and snapshot.has("transition_to")
+	)
+	_t.run_test(
+		"combat sync: forced combat transition is not blocked",
+		String(snapshot.get("transition_blocked_by", "")) == ""
+		and String(snapshot.get("transition_to", "")) == "COMBAT"
+	)
+	_t.run_test(
 		"combat sync: snapshot marks enemy as latched in COMBAT",
 		bool(snapshot.get("latched", false))
 		and int(snapshot.get("room_latch_count", 0)) > 0

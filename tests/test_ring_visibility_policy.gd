@@ -62,21 +62,21 @@ func _test_ring_visibility_policy() -> void:
 
 	enemy.set_meta("awareness_state", "SUSPICIOUS")
 	await get_tree().process_frame
-	_t.run_test("SUSPICIOUS + progress > 0 => ring visible", ring.visible)
+	_t.run_test("SUSPICIOUS + progress > 0 => ring hidden", not ring.visible)
 
 	enemy.set_meta("awareness_state", "ALERT")
 	await get_tree().process_frame
-	_t.run_test("ALERT + progress > 0 => ring visible", ring.visible)
+	_t.run_test("ALERT + progress > 0 => ring hidden", not ring.visible)
 
 	enemy.set_meta("awareness_state", "COMBAT")
 	await get_tree().process_frame
 	_t.run_test("COMBAT => ring hidden", not ring.visible)
 
 	# Zero progress hides ring even in non-COMBAT
-	enemy.set_meta("awareness_state", "SUSPICIOUS")
+	enemy.set_meta("awareness_state", "CALM")
 	ring.set_progress(0.0)
 	await get_tree().process_frame
-	_t.run_test("SUSPICIOUS + progress == 0 => ring hidden", not ring.visible)
+	_t.run_test("CALM + progress == 0 => ring hidden", not ring.visible)
 
 	# Disabled hides ring even with progress
 	ring.set_progress(0.5)

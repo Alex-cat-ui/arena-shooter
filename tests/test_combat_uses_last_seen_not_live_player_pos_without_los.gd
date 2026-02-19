@@ -17,12 +17,12 @@ func _ready() -> void:
 func run_suite() -> Dictionary:
 	print("")
 	print("============================================================")
-	print("COMBAT LAST_SEEN NO-LOS TEST")
+	print("COMBAT LAST_SEEN FORBIDDEN TEST")
 	print("============================================================")
 
-	await _test_combat_uses_last_seen_not_live_player_pos_without_los()
+	await _test_combat_does_not_use_last_seen_without_los()
 
-	_t.summary("COMBAT LAST_SEEN NO-LOS RESULTS")
+	_t.summary("COMBAT LAST_SEEN FORBIDDEN RESULTS")
 	return {
 		"ok": _t.quit_code() == 0,
 		"run": _t.tests_run,
@@ -30,7 +30,7 @@ func run_suite() -> Dictionary:
 	}
 
 
-func _test_combat_uses_last_seen_not_live_player_pos_without_los() -> void:
+func _test_combat_does_not_use_last_seen_without_los() -> void:
 	var world := Node2D.new()
 	add_child(world)
 
@@ -48,7 +48,7 @@ func _test_combat_uses_last_seen_not_live_player_pos_without_los() -> void:
 	enemy.debug_force_awareness_state("COMBAT")
 	enemy.runtime_budget_tick(0.1)
 
-	var last_seen_before_los_loss := player.global_position
+	var remembered := player.global_position
 	var blocker := _spawn_blocker(world, Vector2(230.0, 0.0), Vector2(32.0, 640.0))
 	_t.run_test("no-los setup: blocker exists", blocker != null)
 	player.global_position = Vector2(540.0, 140.0)
@@ -60,10 +60,10 @@ func _test_combat_uses_last_seen_not_live_player_pos_without_los() -> void:
 	var intent_target := intent.get("target", Vector2.ZERO) as Vector2
 
 	_t.run_test("without LOS: snapshot marks has_los=false", not bool(snapshot.get("has_los", true)))
+	_t.run_test("without LOS: target_is_last_seen=false in COMBAT", not bool(snapshot.get("target_is_last_seen", true)))
 	_t.run_test(
-		"without LOS: intent target stays at last_seen (not live player pos)",
-		intent_target.distance_to(last_seen_before_los_loss) <= 24.0
-		and intent_target.distance_to(player.global_position) > 48.0
+		"without LOS: intent target is not remembered last_seen anchor",
+		intent_target.distance_to(remembered) > 48.0
 	)
 
 	world.queue_free()

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_alert_degrade_hold_grace_decay.gd" id="1"]
+
+[node name="TestAlertDegradeHoldGraceDecay" type="Node"]
+script = ExtResource("1")

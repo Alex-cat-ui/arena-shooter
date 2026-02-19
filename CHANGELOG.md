@@ -1,5 +1,58 @@
 # Arena Shooter Changelog
 
+## 2026-02-18
+
+### 19:05 MSK - Phase 6 fix: post-COMBAT ALERT hold timer (pre-existing test failures)
+- **Fixed**: `enemy_awareness_system.gd` — после COMBAT→ALERT переход удерживает ALERT на `_combat_ttl_sec()` (30s) вместо `_minimum_alert_hold_sec` (2.5s). `can_degrade` теперь проверяет `_alert_hold_timer <= 0.0` вместо `_alert_elapsed_sec >= _minimum_alert_hold_sec`
+- **Fixed**: "Last seen grace window suite" (6/6 → было 3/6) — state остаётся ALERT в tick 305, `target_is_last_seen=true`, intent = INVESTIGATE
+- **Fixed**: "Combat intent push to search suite" (7/7 → было 5/7) — то же самое для реального Enemy с runtime_budget_tick
+- **Removed**: `tests/test_diag_combat.gd`, `tests/test_diag_combat.tscn` — временные диагностические файлы удалены
+- **Result**: 249/249 PASS (все тесты зелёные)
+- **Files**: `src/systems/enemy_awareness_system.gd`
+
+### 18:10 MSK - Audit Patch P8: timeboxed long-run AI stress test (Phase 7)
+- **Added**: `tests/test_ai_long_run_stress.gd` — 10s реального времени, 8 awareness систем, 43 000+ виртуальных тиков, вывод метрик AIWatchdog. 4 проверки: timebox без фриза, queue < 2048, transitions > min, backpressure recovery
+- **Added**: `tests/test_ai_long_run_stress.tscn` — сцена теста
+- **Registered**: `AI_LONG_RUN_STRESS_TEST_SCENE` + `_run_embedded_scene_suite` в test_runner_node.gd
+- **Result**: 247/249 PASS (пре-existing 2 провала без изменений)
+- **Files**: `tests/test_ai_long_run_stress.gd`, `tests/test_ai_long_run_stress.tscn`, `tests/test_runner_node.gd`
+
+### 18:00 MSK - Audit Patch P7: EventBus backpressure mode (Phase 7)
+- **Added**: Backpressure: при queue > 256 вторичные сигналы (enemy_teammate_call, zone_state_changed, VFX) пропускаются. Деактивация при queue <= 128 (гистерезис). Первичные сигналы (state, combat, player) всегда проходят
+- **Added**: `BACKPRESSURE_ACTIVATE_THRESHOLD=256`, `BACKPRESSURE_DEACTIVATE_THRESHOLD=128`, `SECONDARY_EVENTS` список, `_backpressure_active` флаг, `debug_is_backpressure_active()` accessor
+- **Files**: `src/systems/event_bus.gd`
+
+### 17:50 MSK - Audit Patch P6: AIWatchdog — Phase 7 watchdog метрики
+- **Added**: `src/systems/ai_watchdog.gd` — autoload Node, отслеживает 4 метрики: EventBus queue length, transitions/tick, avg AI tick ms (EMA), replans/sec (EMA). Предупреждения при превышении порогов (5s cooldown)
+- **Wired**: `runtime_budget_tick()` в enemy.gd — begin/end timing; `_emit_awareness_transition()` — record_transition(); `_attempt_replan_with_policy()` в pursuit — record_replan()
+- **Registered**: `AIWatchdog` в project.godot [autoload]
+- **Files**: `src/systems/ai_watchdog.gd` (новый), `src/entities/enemy.gd`, `src/systems/enemy_pursuit_system.gd`, `project.godot`
+
+### 17:40 MSK - Audit Patch P5: HOLD_LISTEN стадия в SUSPICIOUS (Phase 5)
+- **Added**: Третья стадия HOLD_LISTEN (0.8–1.6s) в `_execute_search()` — после одного полного цикла синусоиды (phase >= TAU) враг останавливается и слушает перед завершением поиска
+- **Added**: `HOLD_LISTEN_MIN_SEC=0.8`, `HOLD_LISTEN_MAX_SEC=1.6` в enemy_pursuit_system.gd
+- **Added**: `_in_hold_listen`, `_hold_listen_timer`, `_last_intent_type` — состояние сброшено при смене интента и при configure_navigation
+- **Files**: `src/systems/enemy_pursuit_system.gd`
+
+### 17:30 MSK - Audit Patch P4: типизированные точки патруля (center/corner-inset/door-adjacent/mid-wall)
+- **Changed**: `_rebuild_route()` генерирует 4 типа точек вместо полностью случайных: center (1), corner-inset (1-2, детерминировано RNG), door-adjacent (0-1 на соседа, 60% шанс), mid-wall (0-1, 50% шанс). Заполнение до route_points_min через random_point_in_room
+- **Added**: `get_room_rect(room_id)`, `get_door_center_between(a, b, anchor)` в navigation_service.gd
+- **Config**: новые параметры patrol: corner_inset_px (48), door_inset_px (32), wall_inset_px (36)
+- **Files**: `src/systems/enemy_patrol_system.gd`, `src/systems/navigation_service.gd`
+
+### 17:20 MSK - Audit Patch P3: investigate_anchor фиксируется при входе в SUSPICIOUS
+- **Fixed**: `_investigate_anchor` фиксируется в `_last_seen_pos` при переходе → SUSPICIOUS и очищается при выходе. EnemyUtilityBrain использует зафиксированный якорь как цель INVESTIGATE в SUSPICIOUS (вместо live last_seen_pos)
+- **Added**: Константа `AWARENESS_SUSPICIOUS` в enemy.gd. Поля `investigate_anchor`, `has_investigate_anchor`, `dist_to_investigate_anchor` в контексте utility brain
+- **Files**: `src/entities/enemy.gd`, `src/systems/enemy_utility_brain.gd`
+
+### 17:10 MSK - Audit Patch P2: SUSPICIOUS search budget 4-7s → 5-9s
+- **Fixed**: `SEARCH_MIN_SEC` 4.0→5.0, `SEARCH_MAX_SEC` 7.0→9.0 согласно Spec v1.0
+- **Files**: `src/systems/enemy_pursuit_system.gd`, `src/core/game_config.gd`
+
+### 17:00 MSK - Audit Patch P1: PATH_POLICY_REPLAN_LIMIT 3→10
+- **Fixed**: `PATH_POLICY_REPLAN_LIMIT` исправлен с 3 на 10 согласно Spec v1.0 (fallback теперь срабатывает после 10 неудачных перепланирований, не после 3)
+- **Files**: `src/systems/enemy_pursuit_system.gd`
+
 ## 2026-02-16
 
 ### 00:40 MSK - Phase 11: Full regression — all stealth tests wired into runner

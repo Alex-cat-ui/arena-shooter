@@ -1,6 +1,6 @@
 ## suspicion_ring_presenter.gd
 ## World-space ring UI that fills clockwise based on enemy suspicion.
-## Visibility contract: visible when enabled, progress > 0, and NOT in COMBAT.
+## Visibility contract: visible only in CALM when enabled and progress > 0.
 class_name SuspicionRingPresenter
 extends Node2D
 
@@ -85,13 +85,9 @@ func _refresh_visibility() -> void:
 	if not _enabled:
 		visible = false
 		return
-	var snap := _get_parent_snapshot()
-	if snap.is_empty():
-		visible = _progress > PROGRESS_EPSILON and not _is_combat_state()
-		return
-	var state: int = int(snap.get("state", 0))
-	var confirm: float = float(snap.get("confirm01", 0.0))
-	visible = (_progress > PROGRESS_EPSILON or confirm > PROGRESS_EPSILON or state > 0) and not _is_combat_state()
+	var parent_node := get_parent()
+	var state_name := String(parent_node.get_meta("awareness_state", "CALM")).to_upper() if parent_node else "CALM"
+	visible = state_name == "CALM" and _progress > PROGRESS_EPSILON
 
 
 func _get_parent_snapshot() -> Dictionary:

@@ -9,6 +9,18 @@ const GAME_STATE_SCRIPT := preload("res://src/core/game_state.gd")
 const MAX_EVENTS_PER_FRAME := 512
 const EVENT_QUEUE_WARN_THRESHOLD := 2048
 const EVENT_QUEUE_WARN_COOLDOWN_SEC := 1.0
+const BACKPRESSURE_ACTIVATE_THRESHOLD := 256
+const BACKPRESSURE_DEACTIVATE_THRESHOLD := 128
+# Secondary events safe to drop under backpressure (VFX + propagation, not gameplay-critical).
+const SECONDARY_EVENTS := [
+	"enemy_teammate_call",
+	"zone_state_changed",
+	"blood_spawned",
+	"footprint_spawned",
+	"corpse_spawned",
+	"corpses_baked",
+	"chain_lightning_hit",
+]
 
 ## Event priorities
 enum Priority {
@@ -60,6 +72,9 @@ signal enemy_state_changed(enemy_id: int, from_state: String, to_state: String, 
 
 ## Enemy called reinforcement for room group
 signal enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, target_room_ids: Array)
+
+## One-shot teammate call on SUSPICIOUS->ALERT edge.
+signal enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, timestamp_sec: float)
 
 ## Zone state changed
 signal zone_state_changed(zone_id: int, old_state: int, new_state: int)
@@ -143,6 +158,7 @@ var _event_queue: Array[Dictionary] = []
 var _is_processing: bool = false
 var _event_order_counter: int = 0
 var _event_queue_warn_cooldown: float = 0.0
+var _backpressure_active: bool = false
 
 
 ## ============================================================================
@@ -188,6 +204,12 @@ func emit_enemy_state_changed(enemy_id: int, from_state: String, to_state: Strin
 
 func emit_enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, target_room_ids: Array) -> void:
 	_queue_event("enemy_reinforcement_called", [source_enemy_id, source_room_id, target_room_ids.duplicate()], Priority.HIGH)
+
+func emit_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, timestamp_sec: float) -> void:
+	_queue_event("enemy_teammate_call", [source_enemy_id, source_room_id, call_id, timestamp_sec], Priority.HIGH)
+
+func emit_zone_state_changed(zone_id: int, old_state: int, new_state: int) -> void:
+	_queue_event("zone_state_changed", [zone_id, old_state, new_state], Priority.HIGH)
 
 func emit_hostile_escalation(enemy_id: int, reason: String) -> void:
 	_queue_event("hostile_escalation", [enemy_id, reason], Priority.HIGH)
@@ -260,6 +282,9 @@ func emit_chain_lightning_hit(origin: Vector3, target: Vector3) -> void:
 
 ## Queue an event for processing
 func _queue_event(event_name: String, args: Array, priority: Priority = Priority.NORMAL) -> void:
+	# Backpressure: drop secondary signals when queue is overloaded.
+	if _backpressure_active and event_name in SECONDARY_EVENTS:
+		return
 	_event_queue.append({
 		"name": event_name,
 		"args": args,
@@ -273,6 +298,13 @@ func _queue_event(event_name: String, args: Array, priority: Priority = Priority
 func _process(delta: float) -> void:
 	if _event_queue_warn_cooldown > 0.0:
 		_event_queue_warn_cooldown = maxf(0.0, _event_queue_warn_cooldown - maxf(delta, 0.0))
+	# Backpressure hysteresis: activate above threshold, deactivate below lower threshold.
+	var qsize := _event_queue.size()
+	if not _backpressure_active and qsize > BACKPRESSURE_ACTIVATE_THRESHOLD:
+		_backpressure_active = true
+		push_warning("[EventBus] Backpressure activated: queue=%d, secondary signals will be dropped" % qsize)
+	elif _backpressure_active and qsize <= BACKPRESSURE_DEACTIVATE_THRESHOLD:
+		_backpressure_active = false
 	if _is_processing or _event_queue.is_empty():
 		return
 
@@ -332,6 +364,10 @@ func _dispatch_event(event: Dictionary) -> void:
 			enemy_state_changed.emit(event.args[0], event.args[1], event.args[2], event.args[3], event.args[4])
 		"enemy_reinforcement_called":
 			enemy_reinforcement_called.emit(event.args[0], event.args[1], event.args[2])
+		"enemy_teammate_call":
+			enemy_teammate_call.emit(event.args[0], event.args[1], event.args[2], event.args[3])
+		"zone_state_changed":
+			zone_state_changed.emit(event.args[0], event.args[1], event.args[2])
 		"hostile_escalation":
 			hostile_escalation.emit(event.args[0], event.args[1])
 		# Player
@@ -386,6 +422,10 @@ func _warn_if_queue_backlogged(total_events_before_dispatch: int, pending_after_
 
 func debug_get_pending_event_count() -> int:
 	return _event_queue.size()
+
+
+func debug_is_backpressure_active() -> bool:
+	return _backpressure_active
 
 
 func debug_reset_queue_for_tests() -> void:

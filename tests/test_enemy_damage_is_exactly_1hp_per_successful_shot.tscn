@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_enemy_damage_is_exactly_1hp_per_successful_shot.gd" id="1"]
+
+[node name="TestEnemyDamageIsExactly1hpPerSuccessfulShot" type="Node"]
+script = ExtResource("1")

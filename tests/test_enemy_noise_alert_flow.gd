@@ -9,8 +9,8 @@ var embedded_mode: bool = false
 var _t := TestHelpers.new()
 var _reinforcement_calls_counter: int = 0
 const CANON_CONFIG := {
-	"confirm_time_to_engage": 2.50,
-	"confirm_decay_rate": 0.275,
+	"confirm_time_to_engage": 5.0,
+	"confirm_decay_rate": 0.10,
 	"confirm_grace_window": 0.50,
 }
 
@@ -152,14 +152,15 @@ func _test_noise_alert_and_los_escalation() -> void:
 	_t.run_test("Shot noise alerts same room enemy", String(enemy_room0.get_meta("awareness_state", "CALM")) == "ALERT")
 	_t.run_test("Shot noise alerts adjacent room enemy", String(enemy_room1.get_meta("awareness_state", "CALM")) == "ALERT")
 	_t.run_test("Shot noise does not alert non-adjacent room enemy", String(enemy_room2.get_meta("awareness_state", "CALM")) == "CALM")
-	_t.run_test("Noise without LOS does not call COMBAT reinforcement", _reinforcement_calls_counter == 0)
+	_t.run_test("CALM->ALERT noise does not call reinforcement (entry-gated)", _reinforcement_calls_counter == 0)
+	var reinforcement_before_combat := _reinforcement_calls_counter
 
-	for _i in range(30):
+	for _i in range(55):
 		enemy_room0.tick_los(true, 0.1)
 	await _flush_event_bus_frames(6)
 
 	_t.run_test("LOS after noise enters COMBAT", String(enemy_room0.get_meta("awareness_state", "CALM")) == "COMBAT")
-	_t.run_test("LOS escalation can trigger standard reinforcement", _reinforcement_calls_counter >= 1)
+	_t.run_test("LOS->COMBAT does not add reinforcement fanout", _reinforcement_calls_counter == reinforcement_before_combat)
 
 	if EventBus.enemy_reinforcement_called.is_connected(_on_reinforcement_counter):
 		EventBus.enemy_reinforcement_called.disconnect(_on_reinforcement_counter)

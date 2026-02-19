@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_friendly_block_prevents_fire_and_triggers_reposition.gd" id="1"]
+
+[node name="TestFriendlyBlockPreventsFireAndTriggersReposition" type="Node"]
+script = ExtResource("1")

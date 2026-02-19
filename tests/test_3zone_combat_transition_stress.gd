@@ -2,10 +2,20 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const THREE_ZONE_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
+const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
 
 const STRESS_FRAMES := 900
 const POST_GAME_OVER_DRAIN_FRAMES := 180
 const EVENT_QUEUE_HARD_CAP := 2048
+const ALERT_COMBAT_TRANSITION_LOOPS := 200
+const CONFIRM_CONFIG := {
+	"confirm_time_to_engage": 5.0,
+	"confirm_decay_rate": 0.10,
+	"confirm_grace_window": 0.50,
+	"suspicious_enter": 0.25,
+	"alert_enter": 0.55,
+	"alert_fallback": 0.25,
+}
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -25,6 +35,7 @@ func run_suite() -> Dictionary:
 	print("3-ZONE COMBAT TRANSITION STRESS TEST")
 	print("============================================================")
 
+	_test_alert_to_combat_transition_loop_no_freeze()
 	await _test_mass_combat_transition_no_hard_freeze()
 
 	_t.summary("3-ZONE COMBAT TRANSITION STRESS RESULTS")
@@ -33,6 +44,35 @@ func run_suite() -> Dictionary:
 		"run": _t.tests_run,
 		"passed": _t.tests_passed,
 	}
+
+
+func _test_alert_to_combat_transition_loop_no_freeze() -> void:
+	var all_iterations_ok := true
+	var reached_combat_count := 0
+	for _iter in range(ALERT_COMBAT_TRANSITION_LOOPS):
+		var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+		awareness.reset()
+		var reached_combat := false
+		for _i in range(80):
+			var has_los := _i >= 30
+			var transitions := awareness.process_confirm(0.1, has_los, false, false, CONFIRM_CONFIG)
+			for tr_variant in transitions:
+				var tr := tr_variant as Dictionary
+				if String(tr.get("to_state", "")) == "COMBAT":
+					reached_combat = true
+					break
+			if reached_combat:
+				break
+		if reached_combat:
+			reached_combat_count += 1
+		else:
+			all_iterations_ok = false
+			break
+
+	_t.run_test(
+		"stress: ALERT->COMBAT transition loop has no freeze in 200 iterations",
+		all_iterations_ok and reached_combat_count == ALERT_COMBAT_TRANSITION_LOOPS
+	)
 
 
 func _test_mass_combat_transition_no_hard_freeze() -> void:

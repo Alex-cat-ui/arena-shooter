@@ -32,6 +32,8 @@ func run_suite() -> Dictionary:
 
 
 func _test_combat_no_los_never_hold_range() -> void:
+	if RuntimeState:
+		RuntimeState.player_hp = 100
 	var world := Node2D.new()
 	add_child(world)
 
@@ -46,6 +48,7 @@ func _test_combat_no_los_never_hold_range() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 	enemy.initialize(4801, "zombie")
+	enemy.set_runtime_budget_scheduler_enabled(true)
 	enemy.debug_force_awareness_state("COMBAT")
 	enemy.runtime_budget_tick(0.1)
 

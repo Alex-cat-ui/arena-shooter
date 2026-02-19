@@ -48,6 +48,10 @@ enum DirectionRenderMode {
 ## Global i-frame duration for contact damage (seconds)
 @export_range(0.1, 5.0) var contact_iframes_sec: float = 0.7
 
+## Contact damage emitted when a shotgun shot-level hit reaches the player.
+## Set to 0 only when explicitly disabling contact damage for diagnostics.
+@export_range(0, 50) var shotgun_hit_contact_damage: int = 1
+
 ## ============================================================================
 ## SECTION: Audio
 ## ============================================================================
@@ -132,8 +136,8 @@ const DEFAULT_AI_BALANCE := {
 		"attack_range_pref_min_px": 500.0,
 		"last_seen_reached_px": 20.0,
 		"return_target_reached_px": 20.0,
-		"search_min_sec": 4.0,
-		"search_max_sec": 7.0,
+		"search_min_sec": 5.0,
+		"search_max_sec": 9.0,
 		"search_sweep_rad": 0.9,
 		"search_sweep_speed": 2.4,
 		"path_repath_interval_sec": 0.35,
@@ -177,23 +181,23 @@ const DEFAULT_AI_BALANCE := {
 		"squad_rebuild_quota": 1,
 		"nav_tasks_quota": 2,
 	},
-	"patrol": {
-		"point_reached_px": 14.0,
-		"speed_scale": 0.82,
-		"route_points_min": 3,
-		"route_points_max": 6,
-		"route_rebuild_min_sec": 7.0,
-		"route_rebuild_max_sec": 12.0,
-		"pause_min_sec": 0.30,
-		"pause_max_sec": 1.15,
-		"look_chance": 0.45,
-		"look_min_sec": 0.45,
-		"look_max_sec": 1.25,
-		"look_sweep_rad": 0.62,
-		"look_sweep_speed": 2.8,
-		"route_dedup_min_dist_px": 42.0,
-		"fallback_step_px": 24.0,
-	},
+		"patrol": {
+			"point_reached_px": 14.0,
+			"speed_scale": 0.82,
+			"route_points_min": 3,
+			"route_points_max": 6,
+			"route_rebuild_min_sec": 7.0,
+			"route_rebuild_max_sec": 12.0,
+			"pause_min_sec": 0.25,
+			"pause_max_sec": 0.90,
+			"look_chance": 0.45,
+			"look_min_sec": 0.35,
+			"look_max_sec": 0.85,
+			"look_sweep_rad": 0.62,
+			"look_sweep_speed": 2.6,
+			"route_dedup_min_dist_px": 42.0,
+			"fallback_step_px": 24.0,
+		},
 	"spawner": {
 		"enemy_type": "zombie",
 		"edge_padding_px": 24.0,
@@ -214,16 +218,42 @@ var projectile_ttl: Dictionary = DEFAULT_PROJECTILE_TTL.duplicate(true)
 
 ## Central AI/combat tuning values consumed by enemy + tactical systems.
 var ai_balance: Dictionary = DEFAULT_AI_BALANCE.duplicate(true)
+## Fire profile mode: production|debug_test|auto.
+var ai_fire_profile_mode: String = "auto"
+## Fire profile timings used by enemy first-shot telegraph.
+var ai_fire_profiles: Dictionary = {
+	"production": {
+		"telegraph_min_sec": 0.10,
+		"telegraph_max_sec": 0.18,
+	},
+	"debug_test": {
+		"telegraph_min_sec": 0.35,
+		"telegraph_max_sec": 0.60,
+	},
+}
 
 ## ============================================================================
 ## SECTION: Stealth Canon (Phase 0)
 ## ============================================================================
 
+@export_group("Stealth")
+
+@export var stealth_enabled: bool = true
+## Time (sec) for full confirm-to-engage from clear LOS.
+@export_range(1.0, 15.0) var stealth_confirm_time_sec: float = 5.0
+## Suspicion threshold to enter SUSPICIOUS state (0..1).
+@export_range(0.0, 1.0) var stealth_suspicious_enter: float = 0.25
+## Suspicion threshold to enter ALERT state (0..1).
+@export_range(0.0, 1.0) var stealth_alert_enter: float = 0.55
+## Flashlight active for ALL stealth enemies.
+@export var stealth_flashlight_enabled: bool = true
+
 ## Canon stealth timing and behavior toggles.
 var stealth_canon := {
-	"confirm_time_to_engage": 7.50,
-	"confirm_decay_rate": 0.0916667,
-	"confirm_grace_window": 1.50,
+	"confirm_time_to_engage": 5.0,
+	"confirm_decay_rate": 1.25,
+	"confirm_grace_window": 0.50,
+	"minimum_hold_alert_sec": 2.5,
 	"shadow_is_binary": true,
 	"flashlight_works_in_alert": true,
 	"flashlight_works_in_combat": true,
@@ -232,10 +262,47 @@ var stealth_canon := {
 
 ## Zone system tuning for escalation and reinforcement.
 var zone_system := {
+	"elevated_min_hold_sec": 16.0,
+	"lockdown_min_hold_sec": 24.0,
+	"elevated_to_calm_no_events_sec": 12.0,
+	"lockdown_to_elevated_no_events_sec": 18.0,
+	"confirmed_contacts_lockdown_threshold": 3,
+	"confirmed_contacts_window_sec": 8.0,
+	"calls_per_enemy_per_window": 2,
+	"call_window_sec": 20.0,
+	"global_call_cooldown_sec": 3.0,
+	"call_dedup_ttl_sec": 1.5,
+	"zone_profiles": {
+		"CALM": {
+			"alert_sweep_budget_scale": 0.85,
+			"role_weights_profiled": {"PRESSURE": 0.30, "HOLD": 0.60, "FLANK": 0.10},
+			"reinforcement_cooldown_scale": 1.25,
+			"flashlight_active_cap": 1,
+			"zone_refill_scale": 0.0,
+		},
+		"ELEVATED": {
+			"alert_sweep_budget_scale": 1.10,
+			"role_weights_profiled": {"PRESSURE": 0.45, "HOLD": 0.40, "FLANK": 0.15},
+			"reinforcement_cooldown_scale": 0.90,
+			"flashlight_active_cap": 2,
+			"zone_refill_scale": 0.35,
+		},
+		"LOCKDOWN": {
+			"alert_sweep_budget_scale": 1.45,
+			"role_weights_profiled": {"PRESSURE": 0.60, "HOLD": 0.25, "FLANK": 0.15},
+			"reinforcement_cooldown_scale": 0.65,
+			"flashlight_active_cap": 4,
+			"zone_refill_scale": 1.00,
+		},
+	},
 	"lockdown_spread_delay_elevated_sec": 2.0,
 	"lockdown_spread_delay_far_sec": 5.0,
 	"max_reinforcement_waves_per_zone": 1,
 	"max_reinforcement_enemies_per_zone": 2,
+	"lockdown_max_reinforcement_waves_per_zone": 3,
+	"lockdown_max_reinforcement_enemies_per_zone": 6,
+	"lockdown_combat_no_contact_window_sec": 45.0,
+	"lockdown_hold_to_pressure_ratio": 0.75,
 	"friendly_fire": false,
 }
 
@@ -300,7 +367,6 @@ var zone_system := {
 
 @export var procedural_layout_enabled: bool = true
 ## Runtime level generation always uses ProceduralLayoutV2.
-@export var spawn_enemies_enabled: bool = false
 
 @export var layout_seed: int = 1337
 
@@ -356,7 +422,6 @@ var zone_system := {
 @export_range(2.0, 50.0) var corridor_max_aspect: float = 12.0
 @export var composition_enabled: bool = true
 
-@export var layout_debug_draw: bool = false
 @export var layout_debug_text: bool = true
 
 ## ============================================================================
@@ -378,6 +443,7 @@ func reset_to_defaults() -> void:
 	# Combat
 	player_max_hp = 100
 	contact_iframes_sec = 0.7
+	shotgun_hit_contact_damage = 1
 
 	# Audio
 	music_volume = 0.7
@@ -398,20 +464,74 @@ func reset_to_defaults() -> void:
 	enemy_stats = DEFAULT_ENEMY_STATS.duplicate(true)
 	projectile_ttl = DEFAULT_PROJECTILE_TTL.duplicate(true)
 	ai_balance = DEFAULT_AI_BALANCE.duplicate(true)
+	ai_fire_profile_mode = "auto"
+	ai_fire_profiles = {
+		"production": {
+			"telegraph_min_sec": 0.10,
+			"telegraph_max_sec": 0.18,
+		},
+		"debug_test": {
+			"telegraph_min_sec": 0.35,
+			"telegraph_max_sec": 0.60,
+		},
+	}
+	stealth_enabled = true
+	stealth_confirm_time_sec = 5.0
+	stealth_suspicious_enter = 0.25
+	stealth_alert_enter = 0.55
+	stealth_flashlight_enabled = true
 	stealth_canon = {
-		"confirm_time_to_engage": 7.50,
-		"confirm_decay_rate": 0.0916667,
-		"confirm_grace_window": 1.50,
+		"confirm_time_to_engage": 5.0,
+		"confirm_decay_rate": 1.25,
+		"confirm_grace_window": 0.50,
+		"minimum_hold_alert_sec": 2.5,
 		"shadow_is_binary": true,
 		"flashlight_works_in_alert": true,
 		"flashlight_works_in_combat": true,
 		"flashlight_works_in_lockdown": true,
 	}
 	zone_system = {
+		"elevated_min_hold_sec": 16.0,
+		"lockdown_min_hold_sec": 24.0,
+		"elevated_to_calm_no_events_sec": 12.0,
+		"lockdown_to_elevated_no_events_sec": 18.0,
+		"confirmed_contacts_lockdown_threshold": 3,
+		"confirmed_contacts_window_sec": 8.0,
+		"calls_per_enemy_per_window": 2,
+		"call_window_sec": 20.0,
+		"global_call_cooldown_sec": 3.0,
+		"call_dedup_ttl_sec": 1.5,
+		"zone_profiles": {
+			"CALM": {
+				"alert_sweep_budget_scale": 0.85,
+				"role_weights_profiled": {"PRESSURE": 0.30, "HOLD": 0.60, "FLANK": 0.10},
+				"reinforcement_cooldown_scale": 1.25,
+				"flashlight_active_cap": 1,
+				"zone_refill_scale": 0.0,
+			},
+			"ELEVATED": {
+				"alert_sweep_budget_scale": 1.10,
+				"role_weights_profiled": {"PRESSURE": 0.45, "HOLD": 0.40, "FLANK": 0.15},
+				"reinforcement_cooldown_scale": 0.90,
+				"flashlight_active_cap": 2,
+				"zone_refill_scale": 0.35,
+			},
+			"LOCKDOWN": {
+				"alert_sweep_budget_scale": 1.45,
+				"role_weights_profiled": {"PRESSURE": 0.60, "HOLD": 0.25, "FLANK": 0.15},
+				"reinforcement_cooldown_scale": 0.65,
+				"flashlight_active_cap": 4,
+				"zone_refill_scale": 1.00,
+			},
+		},
 		"lockdown_spread_delay_elevated_sec": 2.0,
 		"lockdown_spread_delay_far_sec": 5.0,
 		"max_reinforcement_waves_per_zone": 1,
 		"max_reinforcement_enemies_per_zone": 2,
+		"lockdown_max_reinforcement_waves_per_zone": 3,
+		"lockdown_max_reinforcement_enemies_per_zone": 6,
+		"lockdown_combat_no_contact_window_sec": 45.0,
+		"lockdown_hold_to_pressure_ratio": 0.75,
 		"friendly_fire": false,
 	}
 
@@ -456,7 +576,6 @@ func reset_to_defaults() -> void:
 
 	# Procedural Layout
 	procedural_layout_enabled = true
-	spawn_enemies_enabled = false
 	layout_seed = 1337
 	rooms_count_min = 9
 	rooms_count_max = 15
@@ -499,7 +618,6 @@ func reset_to_defaults() -> void:
 	narrow_room_max = 1
 	corridor_max_aspect = 12.0
 	composition_enabled = true
-	layout_debug_draw = false
 	layout_debug_text = true
 
 ## Create a snapshot of current config (for validation/comparison)
@@ -516,4 +634,11 @@ func get_snapshot() -> Dictionary:
 		"enemy_stats": enemy_stats.duplicate(true),
 		"projectile_ttl": projectile_ttl.duplicate(true),
 		"ai_balance": ai_balance.duplicate(true),
+		"ai_fire_profile_mode": ai_fire_profile_mode,
+		"ai_fire_profiles": ai_fire_profiles.duplicate(true),
+		"stealth_enabled": stealth_enabled,
+		"stealth_confirm_time_sec": stealth_confirm_time_sec,
+		"stealth_suspicious_enter": stealth_suspicious_enter,
+		"stealth_alert_enter": stealth_alert_enter,
+		"stealth_flashlight_enabled": stealth_flashlight_enabled,
 	}

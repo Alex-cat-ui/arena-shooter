@@ -115,11 +115,11 @@ func _test_spotted_escalation() -> void:
 	_nav.alive_enemy_counts.clear()
 	EventBus.emit_enemy_player_spotted(101, Vector3(0.0, 0.0, 0.0))
 	await get_tree().process_frame
-	_t.run_test("spotted: source room -> COMBAT",
-		_alert_system.get_room_alert_level(1) == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT)
-	_t.run_test("spotted: both neighbors -> ALERT",
-		_alert_system.get_room_alert_level(0) == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
-		and _alert_system.get_room_alert_level(2) == ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
+	_t.run_test("spotted: source room -> ALERT (no immediate COMBAT)",
+		_alert_system.get_room_alert_level(1) == ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
+	_t.run_test("spotted: neighbors stay unchanged before reinforcement",
+		_alert_system.get_room_alert_level(0) == ENEMY_ALERT_LEVELS_SCRIPT.CALM
+		and _alert_system.get_room_alert_level(2) == ENEMY_ALERT_LEVELS_SCRIPT.CALM)
 
 
 func _test_enemy_killed_signal() -> void:

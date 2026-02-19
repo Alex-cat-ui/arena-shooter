@@ -47,6 +47,7 @@ func run_suite() -> Dictionary:
 	_test_five_enemies_spawned(level)
 	_test_three_zones_calm(zone_director)
 	_test_player_in_room_a1(nav, player)
+	await _test_3zone_player_weapon_pipeline(level, controller, player)
 	await _test_3zone_spawn_shadow_blocks_calm_detection(level)
 	_test_door_a1a2_starts_closed(door)
 	_test_shadow_areas_present(shadow_root)
@@ -109,6 +110,39 @@ func _test_player_in_room_a1(nav: Node, player: Node2D) -> void:
 		return
 	var room_id := int(nav.room_id_at_point(player.global_position))
 	_t.run_test("player_in_room_a1", room_id == 0)
+
+
+func _test_3zone_player_weapon_pipeline(level: Node2D, controller: Node, player: CharacterBody2D) -> void:
+	if controller == null or player == null or not controller.has_method("debug_get_combat_pipeline_summary"):
+		_t.run_test("3zone player weapon pipeline wired", false)
+		_t.run_test("3zone weapon_2 switches player to shotgun", false)
+		return
+	var summary := controller.call("debug_get_combat_pipeline_summary") as Dictionary
+	var pipeline_ok := (
+		bool(summary.get("combat_system_exists", false))
+		and bool(summary.get("projectile_system_exists", false))
+		and bool(summary.get("ability_system_exists", false))
+		and bool(summary.get("player_projectile_wired", false))
+		and bool(summary.get("player_ability_wired", false))
+		and bool(summary.get("ability_projectile_wired", false))
+		and bool(summary.get("ability_combat_wired", false))
+	)
+	_t.run_test("3zone player weapon pipeline wired", pipeline_ok)
+
+	var ability: Variant = player.ability_system if "ability_system" in player else null
+	var switched := false
+	if ability != null and ability.has_method("set_weapon_by_index") and ability.has_method("get_current_weapon"):
+		ability.set_weapon_by_index(0)
+		await get_tree().physics_frame
+		Input.action_press("weapon_2")
+		await get_tree().physics_frame
+		await get_tree().process_frame
+		Input.action_release("weapon_2")
+		await get_tree().process_frame
+		switched = String(ability.get_current_weapon()) == "shotgun"
+	else:
+		Input.action_release("weapon_2")
+	_t.run_test("3zone weapon_2 switches player to shotgun", switched)
 
 
 func _test_3zone_spawn_shadow_blocks_calm_detection(level: Node2D) -> void:

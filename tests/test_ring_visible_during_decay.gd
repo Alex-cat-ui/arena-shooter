@@ -45,7 +45,7 @@ func _spawn_enemy(world: Node2D, seed_id: int) -> Enemy:
 	return enemy
 
 
-## Ring stays visible as progress decays from 1.0 toward 0.
+## In CALM state, ring stays visible as progress decays from 1.0 toward 0.
 func _test_ring_visible_during_decay() -> void:
 	var world := Node2D.new()
 	add_child(world)
@@ -61,7 +61,7 @@ func _test_ring_visible_during_decay() -> void:
 	ring.set_enabled(true)
 
 	# Simulate suspicion reaching peak then decaying
-	enemy.set_meta("awareness_state", "SUSPICIOUS")
+	enemy.set_meta("awareness_state", "CALM")
 	ring.set_progress(1.0)
 	await get_tree().process_frame
 	_t.run_test("decay: visible at peak (1.0)", ring.visible)
@@ -82,7 +82,7 @@ func _test_ring_visible_during_decay() -> void:
 	await get_tree().process_frame
 
 
-## Even with decaying progress, COMBAT forces ring hidden.
+## Non-CALM states force ring hidden even with progress.
 func _test_ring_hidden_combat_even_with_progress() -> void:
 	var world := Node2D.new()
 	add_child(world)
@@ -98,24 +98,32 @@ func _test_ring_hidden_combat_even_with_progress() -> void:
 	ring.set_enabled(true)
 	ring.set_progress(0.7)
 
+	enemy.set_meta("awareness_state", "CALM")
+	await get_tree().process_frame
+	_t.run_test("combat-decay: visible in CALM", ring.visible)
+
 	enemy.set_meta("awareness_state", "SUSPICIOUS")
 	await get_tree().process_frame
-	_t.run_test("combat-decay: visible in SUSPICIOUS", ring.visible)
+	_t.run_test("combat-decay: hidden in SUSPICIOUS with progress 0.7", not ring.visible)
+
+	enemy.set_meta("awareness_state", "ALERT")
+	await get_tree().process_frame
+	_t.run_test("combat-decay: hidden in ALERT with progress 0.7", not ring.visible)
 
 	enemy.set_meta("awareness_state", "COMBAT")
 	await get_tree().process_frame
 	_t.run_test("combat-decay: hidden in COMBAT with progress 0.7", not ring.visible)
 
-	# Return to SUSPICIOUS — ring reappears
-	enemy.set_meta("awareness_state", "SUSPICIOUS")
+	# Return to CALM — ring reappears
+	enemy.set_meta("awareness_state", "CALM")
 	await get_tree().process_frame
-	_t.run_test("combat-decay: visible again after leaving COMBAT", ring.visible)
+	_t.run_test("combat-decay: visible again after returning to CALM", ring.visible)
 
 	world.queue_free()
 	await get_tree().process_frame
 
 
-## Ring visible during growth phase (progress increasing from 0).
+## In CALM state ring is visible during growth phase (progress increasing from 0).
 func _test_ring_visible_growth_phase() -> void:
 	var world := Node2D.new()
 	add_child(world)
@@ -130,7 +138,7 @@ func _test_ring_visible_growth_phase() -> void:
 
 	ring.set_enabled(true)
 	ring.set_progress(0.0)
-	enemy.set_meta("awareness_state", "SUSPICIOUS")
+	enemy.set_meta("awareness_state", "CALM")
 	await get_tree().process_frame
 	_t.run_test("growth: hidden at progress 0", not ring.visible)
 

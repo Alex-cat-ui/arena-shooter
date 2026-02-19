@@ -39,6 +39,41 @@ const DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE := "res://tests/test_debugui_layout_n
 const STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE := "res://tests/test_stealth_room_combat_fire.tscn"
 const STEALTH_ROOM_LKP_SEARCH_TEST_SCENE := "res://tests/test_stealth_room_lkp_search.tscn"
 const COMBAT_ROOM_ALERT_SYNC_TEST_SCENE := "res://tests/test_combat_room_alert_sync.tscn"
+const AI_TRANSITION_SINGLE_OWNER_TEST_SCENE := "res://tests/test_ai_transition_single_owner.tscn"
+const AI_NO_DUPLICATE_STATE_CHANGE_PER_TICK_TEST_SCENE := "res://tests/test_ai_no_duplicate_state_change_per_tick.tscn"
+const THREE_ZONE_PLAYER_WEAPON_SWITCH_TEST_SCENE := "res://tests/test_3zone_player_weapon_switch_to_shotgun.tscn"
+const THREE_ZONE_PLAYER_SHOTGUN_FIRE_PIPELINE_TEST_SCENE := "res://tests/test_3zone_player_shotgun_fire_pipeline.tscn"
+const ENEMY_SHOTGUN_FIRE_BLOCK_REASONS_TEST_SCENE := "res://tests/test_enemy_shotgun_fire_block_reasons.tscn"
+const ALERT_TO_COMBAT_REQUIRES_5S_CONFIRM_TEST_SCENE := "res://tests/test_alert_to_combat_requires_5s_continuous_confirm.tscn"
+const PEEK_CORNER_CONFIRM_THRESHOLD_TEST_SCENE := "res://tests/test_peek_corner_confirm_threshold.tscn"
+const NO_COMBAT_LATCH_BEFORE_CONFIRM_COMPLETE_TEST_SCENE := "res://tests/test_no_combat_latch_before_confirm_complete.tscn"
+const LAST_SEEN_ONLY_IN_SUSPICIOUS_ALERT_TEST_SCENE := "res://tests/test_last_seen_used_only_in_suspicious_alert.tscn"
+const TEAMMATE_CALL_DEDUP_AND_COOLDOWN_TEST_SCENE := "res://tests/test_teammate_call_dedup_and_cooldown.tscn"
+const ALERT_CALL_ONLY_ON_STATE_ENTRY_TEST_SCENE := "res://tests/test_alert_call_only_on_state_entry.tscn"
+const ALERT_DEGRADE_HOLD_GRACE_DECAY_TEST_SCENE := "res://tests/test_alert_degrade_hold_grace_decay.tscn"
+const SUSPICION_CHANNELS_VS_CONFIRM_CHANNEL_TEST_SCENE := "res://tests/test_suspicion_channels_vs_confirm_channel.tscn"
+const TEAMMATE_CALL_ROOM_GRAPH_GATE_TEST_SCENE := "res://tests/test_teammate_call_room_graph_gate_no_telepathy.tscn"
+const COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE := "res://tests/test_combat_role_lock_and_reassign_triggers.tscn"
+const COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE := "res://tests/test_combat_search_per_room_budget_and_total_cap.tscn"
+const COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE := "res://tests/test_combat_next_room_scoring_no_loops.tscn"
+const COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE := "res://tests/test_combat_to_alert_requires_no_contact_and_search_progress.tscn"
+const FIRST_SHOT_DELAY_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE := "res://tests/test_first_shot_delay_starts_on_first_valid_firing_solution.tscn"
+const FIRST_SHOT_TIMER_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE := "res://tests/test_first_shot_timer_starts_on_first_valid_firing_solution.tscn"
+const FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE := "res://tests/test_first_shot_timer_pause_and_reset_after_2_5s.tscn"
+const TELEGRAPH_PROFILE_PRODUCTION_VS_DEBUG_TEST_SCENE := "res://tests/test_telegraph_profile_production_vs_debug.tscn"
+const ENEMY_DAMAGE_IS_EXACTLY_1HP_PER_SUCCESSFUL_SHOT_TEST_SCENE := "res://tests/test_enemy_damage_is_exactly_1hp_per_successful_shot.tscn"
+const ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE := "res://tests/test_enemy_fire_cooldown_min_guard.tscn"
+const FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE := "res://tests/test_friendly_block_prevents_fire_and_triggers_reposition.tscn"
+const SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE := "res://tests/test_shadow_flashlight_rule_blocks_or_allows_fire.tscn"
+const SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE := "res://tests/test_shadow_single_source_of_truth_nav_and_detection.tscn"
+const SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE := "res://tests/test_shadow_policy_hard_block_without_grant.tscn"
+const STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE := "res://tests/test_stall_definition_reproducible_thresholds.tscn"
+const NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE := "res://tests/test_nearest_reachable_fallback_by_nav_distance.tscn"
+const ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE := "res://tests/test_zone_director_single_owner_transitions.tscn"
+const ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE := "res://tests/test_zone_hysteresis_hold_and_no_event_decay.tscn"
+const ZONE_PROFILE_MODIFIERS_EXACT_VALUES_TEST_SCENE := "res://tests/test_zone_profile_modifiers_exact_values.tscn"
+const CONFIRM_5S_INVARIANT_ACROSS_ZONE_PROFILES_TEST_SCENE := "res://tests/test_confirm_5s_invariant_across_zone_profiles.tscn"
+const WAVE_CALL_PERMISSION_MATRIX_AND_COOLDOWNS_TEST_SCENE := "res://tests/test_wave_call_permission_matrix_and_cooldowns.tscn"
 const COMBAT_NO_DEGRADE_TEST_SCENE := "res://tests/test_combat_no_degrade.tscn"
 const COMBAT_UTILITY_INTENT_AGGRESSIVE_TEST_SCENE := "res://tests/test_combat_utility_intent_aggressive.tscn"
 const MAIN_MENU_STEALTH_ENTRY_TEST_SCENE := "res://tests/test_main_menu_stealth_entry.tscn"
@@ -65,6 +100,7 @@ const LEVEL_BOOTSTRAP_CONTROLLER_TEST_SCENE := "res://tests/test_level_bootstrap
 const MISSION_TRANSITION_GATE_TEST_SCENE := "res://tests/test_mission_transition_gate.tscn"
 const EVENT_BUS_BACKPRESSURE_TEST_SCENE := "res://tests/test_event_bus_backpressure.tscn"
 const COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE := "res://tests/test_3zone_combat_transition_stress.tscn"
+const AI_LONG_RUN_STRESS_TEST_SCENE := "res://tests/test_ai_long_run_stress.tscn"
 
 func _ready() -> void:
 	print("=" .repeat(60))
@@ -129,7 +165,7 @@ func _run_tests() -> void:
 
 	print("\n--- SECTION 2b: Phase 0 stealth foundation ---")
 
-	_test("GameConfig.stealth_canon has all 7 Phase 0 keys", func():
+	_test("GameConfig.stealth_canon has all 8 Phase 0 keys", func():
 		if not (GameConfig.stealth_canon is Dictionary):
 			return false
 		var canon := GameConfig.stealth_canon as Dictionary
@@ -137,6 +173,7 @@ func _run_tests() -> void:
 			"confirm_time_to_engage",
 			"confirm_decay_rate",
 			"confirm_grace_window",
+			"minimum_hold_alert_sec",
 			"shadow_is_binary",
 			"flashlight_works_in_alert",
 			"flashlight_works_in_combat",
@@ -513,6 +550,9 @@ func _run_tests() -> void:
 	_test("3zone combat transition stress test scene exists", func():
 		return load(COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE) is PackedScene
 	)
+	_test("AI long-run stress test scene exists", func():
+		return load(AI_LONG_RUN_STRESS_TEST_SCENE) is PackedScene
+	)
 
 	await _run_embedded_scene_suite("Config validator AI balance suite", CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy awareness suite", AWARENESS_TEST_SCENE)
@@ -546,6 +586,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("DebugUI layout no overlap suite", DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE)
 	await _run_embedded_scene_suite("EventBus backpressure suite", EVENT_BUS_BACKPRESSURE_TEST_SCENE)
 	await _run_embedded_scene_suite("3zone combat transition stress suite", COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE)
+	await _run_embedded_scene_suite("AI long-run stress suite", AI_LONG_RUN_STRESS_TEST_SCENE)
 
 	print("\n--- SECTION 18b: Stealth phases 1-7 suites ---")
 
@@ -557,6 +598,111 @@ func _run_tests() -> void:
 	)
 	_test("Combat room alert sync test scene exists", func():
 		return load(COMBAT_ROOM_ALERT_SYNC_TEST_SCENE) is PackedScene
+	)
+	_test("AI transition single owner test scene exists", func():
+		return load(AI_TRANSITION_SINGLE_OWNER_TEST_SCENE) is PackedScene
+	)
+	_test("AI no duplicate state change per tick test scene exists", func():
+		return load(AI_NO_DUPLICATE_STATE_CHANGE_PER_TICK_TEST_SCENE) is PackedScene
+	)
+	_test("3zone player weapon switch test scene exists", func():
+		return load(THREE_ZONE_PLAYER_WEAPON_SWITCH_TEST_SCENE) is PackedScene
+	)
+	_test("3zone player shotgun fire pipeline test scene exists", func():
+		return load(THREE_ZONE_PLAYER_SHOTGUN_FIRE_PIPELINE_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy shotgun fire block reasons test scene exists", func():
+		return load(ENEMY_SHOTGUN_FIRE_BLOCK_REASONS_TEST_SCENE) is PackedScene
+	)
+	_test("Alert->Combat requires 5s confirm test scene exists", func():
+		return load(ALERT_TO_COMBAT_REQUIRES_5S_CONFIRM_TEST_SCENE) is PackedScene
+	)
+	_test("Peek corner confirm threshold test scene exists", func():
+		return load(PEEK_CORNER_CONFIRM_THRESHOLD_TEST_SCENE) is PackedScene
+	)
+	_test("No combat latch before confirm complete test scene exists", func():
+		return load(NO_COMBAT_LATCH_BEFORE_CONFIRM_COMPLETE_TEST_SCENE) is PackedScene
+	)
+	_test("Last seen only in suspicious/alert test scene exists", func():
+		return load(LAST_SEEN_ONLY_IN_SUSPICIOUS_ALERT_TEST_SCENE) is PackedScene
+	)
+	_test("Teammate call dedup/cooldown test scene exists", func():
+		return load(TEAMMATE_CALL_DEDUP_AND_COOLDOWN_TEST_SCENE) is PackedScene
+	)
+	_test("Alert call only on state entry test scene exists", func():
+		return load(ALERT_CALL_ONLY_ON_STATE_ENTRY_TEST_SCENE) is PackedScene
+	)
+	_test("Alert degrade hold/grace/decay test scene exists", func():
+		return load(ALERT_DEGRADE_HOLD_GRACE_DECAY_TEST_SCENE) is PackedScene
+	)
+	_test("Suspicion channels vs confirm channel test scene exists", func():
+		return load(SUSPICION_CHANNELS_VS_CONFIRM_CHANNEL_TEST_SCENE) is PackedScene
+	)
+	_test("Teammate call room-graph gate test scene exists", func():
+		return load(TEAMMATE_CALL_ROOM_GRAPH_GATE_TEST_SCENE) is PackedScene
+	)
+	_test("Combat role lock/reassign triggers test scene exists", func():
+		return load(COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE) is PackedScene
+	)
+	_test("Combat search per-room budget/total cap test scene exists", func():
+		return load(COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE) is PackedScene
+	)
+	_test("Combat next-room scoring test scene exists", func():
+		return load(COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE) is PackedScene
+	)
+	_test("Combat->Alert search/no-contact gate test scene exists", func():
+		return load(COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE) is PackedScene
+	)
+	_test("First-shot-delay on first valid firing solution test scene exists", func():
+		return load(FIRST_SHOT_DELAY_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE) is PackedScene
+	)
+	_test("First-shot timer starts on first valid contact test scene exists", func():
+		return load(FIRST_SHOT_TIMER_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE) is PackedScene
+	)
+	_test("First-shot timer pause/reset 2.5s test scene exists", func():
+		return load(FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE) is PackedScene
+	)
+	_test("Telegraph profile production/debug test scene exists", func():
+		return load(TELEGRAPH_PROFILE_PRODUCTION_VS_DEBUG_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy damage exactly 1hp per successful shot test scene exists", func():
+		return load(ENEMY_DAMAGE_IS_EXACTLY_1HP_PER_SUCCESSFUL_SHOT_TEST_SCENE) is PackedScene
+	)
+	_test("Enemy fire cooldown min guard test scene exists", func():
+		return load(ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE) is PackedScene
+	)
+	_test("Friendly block prevents fire and triggers reposition test scene exists", func():
+		return load(FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE) is PackedScene
+	)
+	_test("Shadow flashlight rule blocks/allows fire test scene exists", func():
+		return load(SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE) is PackedScene
+	)
+	_test("Shadow single source of truth nav+detection test scene exists", func():
+		return load(SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE) is PackedScene
+	)
+	_test("Shadow policy hard block without grant test scene exists", func():
+		return load(SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE) is PackedScene
+	)
+	_test("Stall definition reproducible thresholds test scene exists", func():
+		return load(STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE) is PackedScene
+	)
+	_test("Nearest reachable fallback by nav distance test scene exists", func():
+		return load(NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE) is PackedScene
+	)
+	_test("ZoneDirector single-owner transitions test scene exists", func():
+		return load(ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE) is PackedScene
+	)
+	_test("Zone hysteresis hold/no-event decay test scene exists", func():
+		return load(ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE) is PackedScene
+	)
+	_test("Zone profile exact values test scene exists", func():
+		return load(ZONE_PROFILE_MODIFIERS_EXACT_VALUES_TEST_SCENE) is PackedScene
+	)
+	_test("Confirm 5s invariant across zone profiles test scene exists", func():
+		return load(CONFIRM_5S_INVARIANT_ACROSS_ZONE_PROFILES_TEST_SCENE) is PackedScene
+	)
+	_test("Wave call permission matrix/cooldowns test scene exists", func():
+		return load(WAVE_CALL_PERMISSION_MATRIX_AND_COOLDOWNS_TEST_SCENE) is PackedScene
 	)
 	_test("Combat no degrade test scene exists", func():
 		return load(COMBAT_NO_DEGRADE_TEST_SCENE) is PackedScene
@@ -601,6 +747,41 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Stealth room combat fire suite", STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE)
 	await _run_embedded_scene_suite("Stealth room LKP search suite", STEALTH_ROOM_LKP_SEARCH_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat room alert sync suite", COMBAT_ROOM_ALERT_SYNC_TEST_SCENE)
+	await _run_embedded_scene_suite("AI transition single owner suite", AI_TRANSITION_SINGLE_OWNER_TEST_SCENE)
+	await _run_embedded_scene_suite("AI no duplicate state change per tick suite", AI_NO_DUPLICATE_STATE_CHANGE_PER_TICK_TEST_SCENE)
+	await _run_embedded_scene_suite("3zone player weapon switch suite", THREE_ZONE_PLAYER_WEAPON_SWITCH_TEST_SCENE)
+	await _run_embedded_scene_suite("3zone player shotgun fire pipeline suite", THREE_ZONE_PLAYER_SHOTGUN_FIRE_PIPELINE_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy shotgun fire block reasons suite", ENEMY_SHOTGUN_FIRE_BLOCK_REASONS_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert->Combat requires 5s confirm suite", ALERT_TO_COMBAT_REQUIRES_5S_CONFIRM_TEST_SCENE)
+	await _run_embedded_scene_suite("Peek corner confirm threshold suite", PEEK_CORNER_CONFIRM_THRESHOLD_TEST_SCENE)
+	await _run_embedded_scene_suite("No combat latch before confirm complete suite", NO_COMBAT_LATCH_BEFORE_CONFIRM_COMPLETE_TEST_SCENE)
+	await _run_embedded_scene_suite("Last seen only in suspicious/alert suite", LAST_SEEN_ONLY_IN_SUSPICIOUS_ALERT_TEST_SCENE)
+	await _run_embedded_scene_suite("Teammate call dedup/cooldown suite", TEAMMATE_CALL_DEDUP_AND_COOLDOWN_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert call only on state entry suite", ALERT_CALL_ONLY_ON_STATE_ENTRY_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert degrade hold/grace/decay suite", ALERT_DEGRADE_HOLD_GRACE_DECAY_TEST_SCENE)
+	await _run_embedded_scene_suite("Suspicion channels vs confirm channel suite", SUSPICION_CHANNELS_VS_CONFIRM_CHANNEL_TEST_SCENE)
+	await _run_embedded_scene_suite("Teammate call room-graph gate suite", TEAMMATE_CALL_ROOM_GRAPH_GATE_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat role lock/reassign triggers suite", COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat search per-room budget/total cap suite", COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat next-room scoring suite", COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat->Alert search/no-contact gate suite", COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE)
+	await _run_embedded_scene_suite("First-shot-delay on first valid firing solution suite", FIRST_SHOT_DELAY_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE)
+	await _run_embedded_scene_suite("First-shot timer starts on first valid contact suite", FIRST_SHOT_TIMER_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE)
+	await _run_embedded_scene_suite("First-shot timer pause/reset 2.5s suite", FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE)
+	await _run_embedded_scene_suite("Telegraph profile production/debug suite", TELEGRAPH_PROFILE_PRODUCTION_VS_DEBUG_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy damage exactly 1hp per successful shot suite", ENEMY_DAMAGE_IS_EXACTLY_1HP_PER_SUCCESSFUL_SHOT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy fire cooldown min guard suite", ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE)
+	await _run_embedded_scene_suite("Friendly block prevents fire + reposition suite", FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow flashlight rule blocks/allows fire suite", SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow single source of truth nav+detection suite", SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow policy hard block without grant suite", SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE)
+	await _run_embedded_scene_suite("Stall definition reproducible thresholds suite", STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
+	await _run_embedded_scene_suite("Nearest reachable fallback by nav distance suite", NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE)
+	await _run_embedded_scene_suite("ZoneDirector single-owner transitions suite", ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE)
+	await _run_embedded_scene_suite("Zone hysteresis hold/no-event decay suite", ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE)
+	await _run_embedded_scene_suite("Zone profile exact values suite", ZONE_PROFILE_MODIFIERS_EXACT_VALUES_TEST_SCENE)
+	await _run_embedded_scene_suite("Confirm 5s invariant across zone profiles suite", CONFIRM_5S_INVARIANT_ACROSS_ZONE_PROFILES_TEST_SCENE)
+	await _run_embedded_scene_suite("Wave call permission matrix/cooldowns suite", WAVE_CALL_PERMISSION_MATRIX_AND_COOLDOWNS_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat no degrade suite", COMBAT_NO_DEGRADE_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat utility intent aggressive suite", COMBAT_UTILITY_INTENT_AGGRESSIVE_TEST_SCENE)
 	await _run_embedded_scene_suite("Main menu stealth entry suite", MAIN_MENU_STEALTH_ENTRY_TEST_SCENE)

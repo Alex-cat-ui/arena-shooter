@@ -24,14 +24,11 @@ func run_suite() -> Dictionary:
 	print("ZONE DIRECTOR TEST")
 	print("============================================================")
 
-	_test_zone_initial_state_calm()
-	_test_lockdown_sets_zone()
-	_test_lockdown_never_resets()
-	_test_spread_elevated_at_2s()
-	_test_spread_far_elevated_at_5s()
-	_test_reinforcement_cap_1_wave()
-	_test_reinforcement_cap_2_enemies()
-	_test_killing_does_not_reset_zone()
+	await _test_zone_initial_state_calm()
+	await _test_room_alert_event_promotes_to_elevated()
+	await _test_room_combat_event_promotes_to_lockdown()
+	await _test_lockdown_and_elevated_decay_hysteresis()
+	await _test_transition_throttle_no_multiple_transitions_within_2s()
 
 	_t.summary("ZONE DIRECTOR RESULTS")
 	return {
@@ -46,78 +43,61 @@ func _test_zone_initial_state_calm() -> void:
 	var ok: bool = director.get_zone_state(0) == CALM and director.get_zone_state(1) == CALM and director.get_zone_state(2) == CALM
 	_t.run_test("zone_initial_state_calm", ok)
 	director.queue_free()
+	await get_tree().process_frame
 
 
-func _test_lockdown_sets_zone() -> void:
-	var director := _new_director(_chain_zone_config(), _chain_zone_edges())
-	director.trigger_lockdown(0)
-	_t.run_test("lockdown_sets_zone", director.get_zone_state(0) == LOCKDOWN)
-	director.queue_free()
-
-
-func _test_lockdown_never_resets() -> void:
-	var director := _new_director(_chain_zone_config(), _chain_zone_edges())
-	director.trigger_lockdown(0)
-	_advance(director, 999.0)
-	_t.run_test("lockdown_never_resets", director.get_zone_state(0) == LOCKDOWN)
-	director.queue_free()
-
-
-func _test_spread_elevated_at_2s() -> void:
+func _test_room_alert_event_promotes_to_elevated() -> void:
 	var director := _new_director(_pair_zone_config(), _pair_zone_edges())
-	director.trigger_lockdown(0)
-	_advance(director, 1.9)
-	var before: bool = bool(director.get_zone_state(1) == CALM)
+	EventBus.emit_enemy_state_changed(1001, "CALM", "ALERT", 0, "vision")
+	await _flush_event_bus_frames()
+	_t.run_test("room_alert_event_promotes_to_elevated", director.get_zone_state(0) == ELEVATED)
+	director.queue_free()
+	await get_tree().process_frame
+
+
+func _test_room_combat_event_promotes_to_lockdown() -> void:
+	var director := _new_director(_pair_zone_config(), _pair_zone_edges())
+	EventBus.emit_enemy_state_changed(1002, "ALERT", "COMBAT", 0, "confirmed_contact")
+	await _flush_event_bus_frames()
+	_t.run_test("room_combat_event_promotes_to_lockdown", director.get_zone_state(0) == LOCKDOWN)
+	director.queue_free()
+	await get_tree().process_frame
+
+
+func _test_lockdown_and_elevated_decay_hysteresis() -> void:
+	var director := _new_director(_pair_zone_config(), _pair_zone_edges())
+	EventBus.emit_enemy_state_changed(1003, "ALERT", "COMBAT", 0, "confirmed_contact")
+	await _flush_event_bus_frames()
+	_advance(director, 23.9)
+	var before_lockdown_decay: bool = director.get_zone_state(0) == LOCKDOWN
 	_advance(director, 0.2)
-	var after: bool = bool(director.get_zone_state(1) == ELEVATED)
-	_t.run_test("spread_elevated_at_2s", before and after)
-	director.queue_free()
-
-
-func _test_spread_far_elevated_at_5s() -> void:
-	var director := _new_director(_chain_zone_config(), _chain_zone_edges())
-	director.trigger_lockdown(0)
-	_advance(director, 4.9)
-	var before: bool = bool(director.get_zone_state(2) == CALM)
+	var after_lockdown_decay: bool = director.get_zone_state(0) == ELEVATED
+	_advance(director, 15.9)
+	var before_calm_decay: bool = director.get_zone_state(0) == ELEVATED
 	_advance(director, 0.2)
-	var after: bool = bool(director.get_zone_state(2) == ELEVATED)
-	_t.run_test("spread_far_elevated_at_5s", before and after)
+	var after_calm_decay: bool = director.get_zone_state(0) == CALM
+	_t.run_test(
+		"lockdown_and_elevated_decay_hysteresis",
+		before_lockdown_decay and after_lockdown_decay and before_calm_decay and after_calm_decay
+	)
 	director.queue_free()
+	await get_tree().process_frame
 
 
-func _test_reinforcement_cap_1_wave() -> void:
+func _test_transition_throttle_no_multiple_transitions_within_2s() -> void:
 	var director := _new_director(_pair_zone_config(), _pair_zone_edges())
-	var first_allowed: bool = director.can_spawn_reinforcement(0)
-	director.register_reinforcement_wave(0, 1)
-	var second_allowed: bool = director.can_spawn_reinforcement(0)
-	_t.run_test("reinforcement_cap_1_wave", first_allowed and not second_allowed)
+	EventBus.emit_enemy_state_changed(1004, "CALM", "ALERT", 0, "vision")
+	await _flush_event_bus_frames()
+	EventBus.emit_enemy_state_changed(1004, "ALERT", "COMBAT", 0, "confirmed_contact")
+	await _flush_event_bus_frames()
+	var blocked_by_throttle: bool = director.get_zone_state(0) == ELEVATED
+	_advance(director, 2.1)
+	EventBus.emit_enemy_state_changed(1004, "ALERT", "COMBAT", 0, "confirmed_contact")
+	await _flush_event_bus_frames()
+	var accepted_after_window: bool = director.get_zone_state(0) == LOCKDOWN
+	_t.run_test("transition_throttle_no_multiple_transitions_within_2s", blocked_by_throttle and accepted_after_window)
 	director.queue_free()
-
-
-func _test_reinforcement_cap_2_enemies() -> void:
-	var original_zone_system := _clone_zone_system()
-	if GameConfig:
-		GameConfig.zone_system["max_reinforcement_waves_per_zone"] = 99
-		GameConfig.zone_system["max_reinforcement_enemies_per_zone"] = 2
-
-	var director := _new_director(_pair_zone_config(), _pair_zone_edges())
-	director.register_reinforcement_wave(0, 2)
-	var third_blocked: bool = not director.can_spawn_reinforcement(0)
-	_t.run_test("reinforcement_cap_2_enemies", third_blocked)
-	director.queue_free()
-
-	if GameConfig:
-		GameConfig.zone_system = original_zone_system
-
-
-func _test_killing_does_not_reset_zone() -> void:
-	var director := _new_director(_pair_zone_config(), _pair_zone_edges())
-	director.trigger_lockdown(0)
-	director.register_reinforcement_wave(0, 2)
-	_advance(director, 30.0)
-	director.trigger_elevated(0)
-	_t.run_test("killing_does_not_reset_zone", director.get_zone_state(0) == LOCKDOWN)
-	director.queue_free()
+	await get_tree().process_frame
 
 
 func _new_director(zone_config: Array[Dictionary], zone_edges: Array[Array]) -> Node:
@@ -135,10 +115,9 @@ func _advance(director: Node, total_sec: float, step_sec: float = 0.1) -> void:
 		remaining -= dt
 
 
-func _clone_zone_system() -> Dictionary:
-	if GameConfig and GameConfig.zone_system is Dictionary:
-		return (GameConfig.zone_system as Dictionary).duplicate(true)
-	return {}
+func _flush_event_bus_frames(frames: int = 3) -> void:
+	for _i in range(frames):
+		await get_tree().process_frame
 
 
 func _pair_zone_config() -> Array[Dictionary]:

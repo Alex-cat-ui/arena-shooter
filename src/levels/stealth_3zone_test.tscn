@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3]
+[gd_scene load_steps=11 format=3]
 
 [ext_resource type="Script" path="res://src/levels/stealth_3zone_test_controller.gd" id="1_controller"]
 [ext_resource type="PackedScene" path="res://scenes/entities/player.tscn" id="2_player_scene"]
@@ -9,6 +9,7 @@
 [ext_resource type="Script" path="res://src/systems/enemy_aggro_coordinator.gd" id="7_enemy_aggro_coordinator_script"]
 [ext_resource type="Script" path="res://src/systems/combat_system.gd" id="8_combat_system_script"]
 [ext_resource type="Script" path="res://src/systems/projectile_system.gd" id="9_projectile_system_script"]
+[ext_resource type="Script" path="res://src/systems/ability_system.gd" id="10_ability_system_script"]
 
 [node name="Stealth3ZoneTest" type="Node2D"]
 
@@ -67,6 +68,9 @@ script = ExtResource("8_combat_system_script")
 
 [node name="ProjectileSystem" type="Node" parent="Systems"]
 script = ExtResource("9_projectile_system_script")
+
+[node name="AbilitySystem" type="Node" parent="Systems"]
+script = ExtResource("10_ability_system_script")
 
 [node name="Projectiles" type="Node2D" parent="."]
 

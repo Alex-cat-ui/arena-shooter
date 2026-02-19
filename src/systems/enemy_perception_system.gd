@@ -5,10 +5,15 @@ extends RefCounted
 
 var owner: Node2D = null
 var _player_node: Node2D = null
+var _navigation_service: Node = null
 
 
 func _init(p_owner: Node2D) -> void:
 	owner = p_owner
+
+
+func set_navigation_service(nav_service: Node) -> void:
+	_navigation_service = nav_service
 
 
 func has_player() -> bool:
@@ -137,7 +142,11 @@ func _compute_visibility_snapshot(origin: Vector2, max_distance: float) -> Dicti
 		distance_factor = 1.0 - (distance_to_player / max_distance)
 
 	var shadow_mul := 1.0
-	if RuntimeState:
+	var nav_service := _resolve_navigation_service()
+	if nav_service and nav_service.has_method("is_point_in_shadow"):
+		var in_shadow_variant: Variant = nav_service.call("is_point_in_shadow", _player_node.global_position)
+		shadow_mul = 0.0 if bool(in_shadow_variant) else 1.0
+	elif RuntimeState:
 		shadow_mul = clampf(float(RuntimeState.player_visibility_mul), 0.0, 1.0)
 
 	out["distance_to_player"] = distance_to_player
@@ -145,3 +154,17 @@ func _compute_visibility_snapshot(origin: Vector2, max_distance: float) -> Dicti
 	out["shadow_mul"] = shadow_mul
 	out["visibility_factor"] = clampf(distance_factor * shadow_mul, 0.0, 1.0)
 	return out
+
+
+func _resolve_navigation_service() -> Node:
+	if _navigation_service and is_instance_valid(_navigation_service):
+		return _navigation_service
+	if owner == null:
+		return null
+	if "nav_system" in owner:
+		var nav_variant: Variant = owner.get("nav_system")
+		var nav_node := nav_variant as Node
+		if nav_node and is_instance_valid(nav_node):
+			_navigation_service = nav_node
+			return _navigation_service
+	return null

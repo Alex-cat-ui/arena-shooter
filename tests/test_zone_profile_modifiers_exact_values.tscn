@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_zone_profile_modifiers_exact_values.gd" id="1"]
+
+[node name="TestZoneProfileModifiersExactValues" type="Node"]
+script = ExtResource("1")

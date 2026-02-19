@@ -16,6 +16,7 @@ var _pair_doors: Dictionary = {}      # "a|b" -> Array[Vector2]
 var _rng := RandomNumberGenerator.new()
 const DOOR_NAV_OVERLAP_PX := 16.0
 const NAV_CARVE_EPSILON := 0.5
+const POLICY_SAMPLE_STEP_PX := 12.0
 var _nav_regions: Array[NavigationRegion2D] = []
 var _room_to_region: Dictionary = {} # room_id -> NavigationRegion2D
 
@@ -42,6 +43,77 @@ func set_zone_director(director: Node) -> void:
 	_zone_director_cache = director
 	_zone_director_checked = true
 	_configure_existing_enemies()
+
+
+func build_zone_config_from_layout() -> Array:
+	var zone_config: Array[Dictionary] = []
+	var zone_edges: Array[Array] = []
+	if layout == null:
+		return [zone_config, zone_edges]
+
+	if _room_graph.is_empty():
+		rebuild_for_layout(layout)
+
+	var void_ids := _extract_void_room_ids(layout)
+	var void_lookup: Dictionary = {}
+	for rid_variant in void_ids:
+		void_lookup[int(rid_variant)] = true
+
+	var configured_zone_ids: Dictionary = {}
+	var rooms: Array = []
+	if layout is Dictionary:
+		rooms = ((layout as Dictionary).get("rooms", []) as Array)
+	elif "rooms" in layout:
+		rooms = layout.rooms as Array
+
+	for i in range(rooms.size()):
+		if void_lookup.has(i):
+			continue
+		var room_id := i
+		var room_dict := rooms[i] as Dictionary
+		if room_dict and room_dict.has("id"):
+			room_id = int(room_dict.get("id", i))
+		if room_id < 0 or void_lookup.has(room_id):
+			continue
+		if configured_zone_ids.has(room_id):
+			continue
+		configured_zone_ids[room_id] = true
+		zone_config.append({
+			"id": room_id,
+			"rooms": [room_id],
+			"zone_id": room_id,
+			"room_ids": [room_id],
+		})
+
+	for room_key_variant in _room_graph.keys():
+		var room_id := int(room_key_variant)
+		if room_id < 0 or void_lookup.has(room_id):
+			continue
+		if configured_zone_ids.has(room_id):
+			continue
+		configured_zone_ids[room_id] = true
+		zone_config.append({
+			"id": room_id,
+			"rooms": [room_id],
+			"zone_id": room_id,
+			"room_ids": [room_id],
+		})
+
+	var edge_seen: Dictionary = {}
+	for room_key_variant in _room_graph.keys():
+		var a := int(room_key_variant)
+		if a < 0 or void_lookup.has(a):
+			continue
+		for neighbor_variant in (_room_graph.get(room_key_variant, []) as Array):
+			var b := int(neighbor_variant)
+			if b < 0 or a == b or void_lookup.has(b):
+				continue
+			var key := _pair_key(a, b)
+			if edge_seen.has(key):
+				continue
+			edge_seen[key] = true
+			zone_edges.append([mini(a, b), maxi(a, b)])
+	return [zone_config, zone_edges]
 
 
 func rebuild_for_layout(p_layout) -> void:
@@ -111,16 +183,8 @@ func build_from_layout(p_layout, parent: Node2D) -> void:
 	rebuild_for_layout(layout)
 
 	var void_ids: Array = []
-	if layout is Dictionary:
-		var layout_dict := layout as Dictionary
-		if layout_dict.has("_void_ids"):
-			void_ids = layout_dict.get("_void_ids", []) as Array
-	elif layout is Object:
-		for prop_variant in layout.get_property_list():
-			var prop := prop_variant as Dictionary
-			if String(prop.get("name", "")) == "_void_ids":
-				void_ids = layout.get("_void_ids") as Array
-				break
+	for rid_variant in _extract_void_room_ids(layout):
+		void_ids.append(int(rid_variant))
 
 	# Collect all door overlap rects per room first so each room bakes once.
 	var door_overlaps_per_room: Dictionary = {}
@@ -184,13 +248,10 @@ func is_point_in_shadow(point: Vector2) -> bool:
 	if tree == null:
 		return false
 	for zone_variant in tree.get_nodes_in_group("shadow_zones"):
-		var zone := zone_variant as Node
+		var zone := zone_variant as ShadowZone
 		if zone == null:
 			continue
-		if not zone.has_method("contains_point"):
-			continue
-		var contains_variant: Variant = zone.call("contains_point", point)
-		if bool(contains_variant):
+		if zone.contains_point(point):
 			return true
 	return false
 
@@ -272,6 +333,27 @@ func get_room_center(room_id: int) -> Vector2:
 		return Vector2.ZERO
 	var room := layout.rooms[room_id] as Dictionary
 	return room.get("center", Vector2.ZERO) as Vector2
+
+
+func get_room_rect(room_id: int) -> Rect2:
+	if not layout or not bool(layout.valid):
+		return Rect2()
+	if room_id < 0 or room_id >= layout.rooms.size():
+		return Rect2()
+	var room := layout.rooms[room_id] as Dictionary
+	var rects := room.get("rects", []) as Array
+	if rects.is_empty():
+		return Rect2()
+	var best := rects[0] as Rect2
+	for rect_variant in rects:
+		var r := rect_variant as Rect2
+		if r.get_area() > best.get_area():
+			best = r
+	return best
+
+
+func get_door_center_between(room_a: int, room_b: int, anchor: Vector2) -> Vector2:
+	return _select_door_center(room_a, room_b, anchor)
 
 
 func _is_enemy_flashlight_active(enemy: Node) -> bool:
@@ -366,30 +448,64 @@ func random_point_in_room(room_id: int, margin: float = 20.0) -> Vector2:
 
 
 func build_path_points(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
+	var reachable_path := build_reachable_path_points(from_pos, to_pos)
+	if not reachable_path.is_empty():
+		return reachable_path
+	return [to_pos]
+
+
+func build_reachable_path_points(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Array[Vector2]:
 	var map_rid := get_navigation_map_rid()
 	if map_rid.is_valid():
 		var raw_path: PackedVector2Array = NavigationServer2D.map_get_path(map_rid, from_pos, to_pos, true)
-		if not raw_path.is_empty():
-			var out: Array[Vector2] = []
-			for p in raw_path:
-				out.append(p)
-			if out.is_empty() or out[out.size() - 1].distance_to(to_pos) > 0.5:
-				out.append(to_pos)
-			return out
-	return _build_room_graph_path_points(from_pos, to_pos)
+		if raw_path.is_empty():
+			return []
+		var out: Array[Vector2] = []
+		for p in raw_path:
+			out.append(p)
+		if out.is_empty() or out[out.size() - 1].distance_to(to_pos) > 0.5:
+			out.append(to_pos)
+		if enemy != null and _path_crosses_policy_block(enemy, from_pos, out):
+			return []
+		return out
+	var room_graph_path := _build_room_graph_path_points_reachable(from_pos, to_pos)
+	if room_graph_path.is_empty():
+		return []
+	if enemy != null and _path_crosses_policy_block(enemy, from_pos, room_graph_path):
+		return []
+	return room_graph_path
+
+
+func nav_path_length(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> float:
+	var path := build_reachable_path_points(from_pos, to_pos, enemy)
+	if path.is_empty():
+		return INF
+	var total := 0.0
+	var prev := from_pos
+	for point in path:
+		total += prev.distance_to(point)
+		prev = point
+	return total
 
 
 func _build_room_graph_path_points(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
+	var path := _build_room_graph_path_points_reachable(from_pos, to_pos)
+	if not path.is_empty():
+		return path
+	return [to_pos]
+
+
+func _build_room_graph_path_points_reachable(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
 	var from_room := room_id_at_point(from_pos)
 	var to_room := room_id_at_point(to_pos)
 	if from_room < 0 or to_room < 0:
-		return [to_pos]
+		return []
 	if from_room == to_room:
 		return [to_pos]
 
 	var room_path := _bfs_room_path(from_room, to_room)
 	if room_path.size() < 2:
-		return [to_pos]
+		return []
 
 	var waypoints: Array[Vector2] = []
 	var anchor := from_pos
@@ -401,6 +517,22 @@ func _build_room_graph_path_points(from_pos: Vector2, to_pos: Vector2) -> Array[
 		anchor = door_center
 	waypoints.append(to_pos)
 	return waypoints
+
+
+func _path_crosses_policy_block(enemy: Node, from_pos: Vector2, path_points: Array[Vector2]) -> bool:
+	if enemy == null:
+		return false
+	var prev := from_pos
+	for point in path_points:
+		var segment_len := prev.distance_to(point)
+		var steps := maxi(int(ceil(segment_len / POLICY_SAMPLE_STEP_PX)), 1)
+		for step in range(1, steps + 1):
+			var t := float(step) / float(steps)
+			var sample := prev.lerp(point, t)
+			if not can_enemy_traverse_point(enemy, sample):
+				return true
+		prev = point
+	return false
 
 
 func _on_player_shot(_weapon: String, position: Vector3, _direction: Vector3) -> void:
@@ -762,3 +894,22 @@ static func _merge_overlapping_outlines(existing_outlines: Array, addition: Pack
 				j = i + 1
 			i += 1
 	return pending
+
+
+func _extract_void_room_ids(source_layout) -> Array[int]:
+	var void_ids: Array[int] = []
+	if source_layout == null:
+		return void_ids
+	if source_layout is Dictionary:
+		for rid_variant in ((source_layout as Dictionary).get("_void_ids", []) as Array):
+			void_ids.append(int(rid_variant))
+		return void_ids
+	if source_layout is Object:
+		for prop_variant in source_layout.get_property_list():
+			var prop := prop_variant as Dictionary
+			if String(prop.get("name", "")) != "_void_ids":
+				continue
+			for rid_variant in (source_layout.get("_void_ids") as Array):
+				void_ids.append(int(rid_variant))
+			break
+	return void_ids

@@ -1,19 +1,26 @@
 ## enemy_aggro_coordinator.gd
-## Centralized group aggro coordination (room ALERT + one-hop COMBAT reinforcement).
+## Centralized group aggro coordination (room ALERT + one-hop ALERT reinforcement).
 class_name EnemyAggroCoordinator
 extends Node
 
 const ALERT_STATE := "ALERT"
 const COMBAT_STATE := "COMBAT"
 const REASON_ROOM_ALERT_PROPAGATION := "room_alert_propagation"
-const REASON_VISION := "vision"
-const REASON_NOISE_ESCALATED := "noise_escalated"
-const REASON_CONFIRMED_CONTACT := "confirmed_contact"
+const REASON_REINFORCEMENT := "reinforcement"
+const REASON_TEAMMATE_CALL := "teammate_call"
+const TEAMMATE_CALL_SOURCE_COOLDOWN_SEC := 8.0
+const TEAMMATE_CALL_TARGET_COOLDOWN_SEC := 6.0
 
 var navigation_service: Node = null
 var entities_container: Node = null
 var player_node: Node2D = null
 var zone_director: Node = null
+var _next_teammate_call_id: int = 1
+var _next_reinforcement_call_id: int = 1
+var _source_last_call_sec: Dictionary = {} # source_enemy_id -> last emitted sec
+var _target_last_accept_sec: Dictionary = {} # target_enemy_id -> last accepted sec
+var _target_call_dedup: Dictionary = {} # "target_id|call_id" -> true
+var _debug_time_override_sec: float = -1.0
 
 
 func initialize(p_entities_container: Node = null, p_navigation_service: Node = null, p_player_node: Node = null) -> void:
@@ -40,17 +47,133 @@ func _connect_event_bus_signals() -> void:
 		return
 	if EventBus.has_signal("enemy_state_changed") and not EventBus.enemy_state_changed.is_connected(_on_enemy_state_changed):
 		EventBus.enemy_state_changed.connect(_on_enemy_state_changed)
+	if EventBus.has_signal("enemy_teammate_call") and not EventBus.enemy_teammate_call.is_connected(_on_enemy_teammate_call):
+		EventBus.enemy_teammate_call.connect(_on_enemy_teammate_call)
 
 
-func _on_enemy_state_changed(enemy_id: int, _from_state: String, to_state: String, room_id: int, reason: String) -> void:
+func _on_enemy_state_changed(enemy_id: int, from_state: String, to_state: String, room_id: int, reason: String) -> void:
 	if not navigation_service:
 		return
 	if room_id < 0:
 		return
-	if to_state == ALERT_STATE:
-		_propagate_room_alert(enemy_id, room_id, reason)
-	elif to_state == COMBAT_STATE:
-		_call_reinforcements(enemy_id, room_id, reason)
+	if to_state != ALERT_STATE:
+		return
+	if from_state != "SUSPICIOUS":
+		return
+	if not _is_valid_teammate_call_source(reason):
+		return
+	_emit_teammate_call(enemy_id, room_id)
+	_call_reinforcements(enemy_id, room_id, reason, to_state)
+
+
+func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, _timestamp_sec: float) -> void:
+	if source_enemy_id <= 0 or source_room_id < 0 or call_id <= 0:
+		return
+	for enemy_variant in _get_all_enemies():
+		var enemy := enemy_variant as Node
+		if enemy == null:
+			continue
+		var target_enemy_id := int(enemy.get("entity_id")) if "entity_id" in enemy else -1
+		if target_enemy_id <= 0 or target_enemy_id == source_enemy_id:
+			continue
+		var dedup_key := _teammate_call_dedup_key(target_enemy_id, call_id)
+		if _target_call_dedup.has(dedup_key):
+			continue
+		var target_room_id := _resolve_enemy_room_id(enemy)
+		if not _teammate_call_room_gate(source_room_id, target_room_id):
+			continue
+		_target_call_dedup[dedup_key] = true
+		if not _can_target_accept_teammate_call(target_enemy_id):
+			continue
+		if not enemy.has_method("apply_teammate_call"):
+			continue
+		var accepted_variant: Variant = enemy.call("apply_teammate_call", source_enemy_id, source_room_id, call_id)
+		var accepted := bool(accepted_variant)
+		if accepted:
+			_target_last_accept_sec[target_enemy_id] = _now_sec()
+			var director := _resolve_zone_director()
+			if director and director.has_method("record_accepted_teammate_call"):
+				director.record_accepted_teammate_call(source_room_id, target_room_id)
+
+
+func _is_valid_teammate_call_source(reason: String) -> bool:
+	if reason == "":
+		return false
+	if reason == REASON_ROOM_ALERT_PROPAGATION:
+		return false
+	if reason == REASON_REINFORCEMENT:
+		return false
+	if reason == REASON_TEAMMATE_CALL:
+		return false
+	return true
+
+
+func _emit_teammate_call(source_enemy_id: int, source_room_id: int) -> void:
+	if not EventBus or not EventBus.has_method("emit_enemy_teammate_call"):
+		return
+	if source_enemy_id <= 0 or source_room_id < 0:
+		return
+	if not _can_source_emit_teammate_call(source_enemy_id):
+		return
+	var call_id := _next_teammate_call_id
+	_next_teammate_call_id += 1
+	var now_sec := _now_sec()
+	_source_last_call_sec[source_enemy_id] = now_sec
+	EventBus.emit_enemy_teammate_call(source_enemy_id, source_room_id, call_id, now_sec)
+
+
+func _can_source_emit_teammate_call(source_enemy_id: int) -> bool:
+	var now_sec := _now_sec()
+	var last_sec := float(_source_last_call_sec.get(source_enemy_id, -999999.0))
+	return now_sec - last_sec >= TEAMMATE_CALL_SOURCE_COOLDOWN_SEC
+
+
+func _can_target_accept_teammate_call(target_enemy_id: int) -> bool:
+	var now_sec := _now_sec()
+	var last_sec := float(_target_last_accept_sec.get(target_enemy_id, -999999.0))
+	return now_sec - last_sec >= TEAMMATE_CALL_TARGET_COOLDOWN_SEC
+
+
+func _teammate_call_room_gate(source_room_id: int, target_room_id: int) -> bool:
+	if source_room_id < 0 or target_room_id < 0:
+		return false
+	if source_room_id == target_room_id:
+		return true
+	if navigation_service and navigation_service.has_method("is_adjacent"):
+		return bool(navigation_service.is_adjacent(source_room_id, target_room_id))
+	if navigation_service and navigation_service.has_method("get_neighbors"):
+		var neighbors := navigation_service.get_neighbors(source_room_id) as Array
+		return neighbors.has(target_room_id)
+	return false
+
+
+func _teammate_call_dedup_key(target_enemy_id: int, call_id: int) -> String:
+	return "%d|%d" % [target_enemy_id, call_id]
+
+
+func _get_all_enemies() -> Array:
+	var result: Array = []
+	if not entities_container:
+		return result
+	for child_variant in entities_container.get_children():
+		var enemy := child_variant as Node
+		if enemy and enemy.is_in_group("enemies"):
+			result.append(enemy)
+	return result
+
+
+func _now_sec() -> float:
+	if _debug_time_override_sec >= 0.0:
+		return _debug_time_override_sec
+	return Time.get_ticks_msec() / 1000.0
+
+
+func debug_set_time_override_sec(time_sec: float) -> void:
+	_debug_time_override_sec = maxf(time_sec, 0.0)
+
+
+func debug_clear_time_override_sec() -> void:
+	_debug_time_override_sec = -1.0
 
 
 func _propagate_room_alert(source_enemy_id: int, source_room_id: int, reason: String) -> void:
@@ -71,11 +194,26 @@ func _propagate_room_alert(source_enemy_id: int, source_room_id: int, reason: St
 			enemy.apply_room_alert_propagation(source_enemy_id, source_room_id)
 
 
-func _call_reinforcements(source_enemy_id: int, source_room_id: int, reason: String) -> void:
+func _call_reinforcements(source_enemy_id: int, source_room_id: int, reason: String, source_awareness_state: String = ALERT_STATE) -> void:
 	if not _is_valid_reinforcement_source(reason):
 		return
 	if not EventBus or not EventBus.has_method("emit_enemy_reinforcement_called"):
 		return
+	var director := _resolve_zone_director()
+	if director:
+		if not director.has_method("validate_reinforcement_call"):
+			return
+		var call_id := _next_reinforcement_call_id
+		_next_reinforcement_call_id += 1
+		var validation: Dictionary = director.validate_reinforcement_call(
+			source_enemy_id,
+			source_room_id,
+			source_awareness_state,
+			call_id,
+			_now_sec()
+		) as Dictionary
+		if not bool(validation.get("accepted", false)):
+			return
 
 	var target_room_ids := _select_reinforcement_rooms(source_room_id)
 	if target_room_ids.is_empty():
@@ -87,7 +225,15 @@ func _call_reinforcements(source_enemy_id: int, source_room_id: int, reason: Str
 
 
 func _is_valid_reinforcement_source(reason: String) -> bool:
-	return reason == REASON_VISION or reason == REASON_NOISE_ESCALATED or reason == REASON_CONFIRMED_CONTACT
+	if reason == "":
+		return false
+	if reason == REASON_ROOM_ALERT_PROPAGATION:
+		return false
+	if reason == REASON_REINFORCEMENT:
+		return false
+	if reason == REASON_TEAMMATE_CALL:
+		return false
+	return true
 
 
 func _select_reinforcement_rooms(source_room_id: int) -> Array[int]:

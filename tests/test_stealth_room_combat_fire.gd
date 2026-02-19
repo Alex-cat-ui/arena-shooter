@@ -2,8 +2,8 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
-const COMBAT_FIRST_ATTACK_DELAY_MIN_FRAMES := 72 # 1.2s @ 60 FPS
-const COMBAT_FIRST_ATTACK_DELAY_MAX_FRAMES := 132 # 2.2s @ 60 FPS (queue/frame tolerance)
+const COMBAT_FIRST_ATTACK_AND_TELEGRAPH_MIN_FRAMES := 76 # 1.2s + 0.10s @ 60 FPS with frame tolerance
+const COMBAT_FIRST_ATTACK_AND_TELEGRAPH_MAX_FRAMES := 150 # 2.0s + 0.18s + queue/frame tolerance
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -12,6 +12,7 @@ var _shotgun_shot_count: int = 0
 var _player_damaged_count: int = 0
 var _first_fire_frame: int = -1
 var _damage_amounts: Array[int] = []
+var _saved_ai_fire_profile_mode: String = "auto"
 
 
 func _ready() -> void:
@@ -43,6 +44,9 @@ func _test_player_loadout_and_enemy_fire() -> void:
 	_player_damaged_count = 0
 	_first_fire_frame = -1
 	_damage_amounts.clear()
+	if GameConfig:
+		_saved_ai_fire_profile_mode = String(GameConfig.ai_fire_profile_mode)
+		GameConfig.ai_fire_profile_mode = "production"
 	if EventBus and EventBus.has_signal("enemy_shot") and not EventBus.enemy_shot.is_connected(_on_enemy_shot):
 		EventBus.enemy_shot.connect(_on_enemy_shot)
 	if EventBus and EventBus.has_signal("player_damaged") and not EventBus.player_damaged.is_connected(_on_player_damaged):
@@ -63,6 +67,8 @@ func _test_player_loadout_and_enemy_fire() -> void:
 	if controller == null or player == null or enemy == null:
 		room.queue_free()
 		await get_tree().process_frame
+		if GameConfig:
+			GameConfig.ai_fire_profile_mode = _saved_ai_fire_profile_mode
 		return
 
 	_t.run_test("stealth fire: player ability system wired", "ability_system" in player and player.ability_system != null)
@@ -95,8 +101,8 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		not bool(enemy.get("_suspicion_test_profile_enabled"))
 	)
 	_t.run_test(
-		"stealth fire: combat first-attack delay armed in 1.2-2.0s range",
-		armed_delay_sec >= 1.2 and armed_delay_sec <= 2.0
+		"stealth fire: first-attack delay is not armed before first valid firing solution",
+		not bool(enemy.get("_combat_first_shot_delay_armed")) and armed_delay_sec <= 0.0
 	)
 
 	# Face enemy toward player (player is to the LEFT at x=-240, enemy at x=260).
@@ -117,7 +123,7 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		await get_tree().process_frame
 		if _first_fire_frame < 0 and float(enemy.get("_shot_cooldown")) > 0.0:
 			_first_fire_frame = i + 1
-		if _first_fire_frame > 0 and _first_fire_frame < COMBAT_FIRST_ATTACK_DELAY_MIN_FRAMES:
+		if _first_fire_frame > 0 and _first_fire_frame < COMBAT_FIRST_ATTACK_AND_TELEGRAPH_MIN_FRAMES:
 			fired_too_early = true
 		if _shot_count > 0 and _player_damaged_count > 0:
 			break
@@ -136,10 +142,10 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		_shot_count >= 1 and not bool(enemy.get("_suspicion_test_profile_enabled"))
 	)
 	_t.run_test(
-		"stealth fire: first combat shot occurs after min delay and within expected window",
+		"stealth fire: first combat shot honors first-shot timer + telegraph window",
 		not fired_too_early
-		and _first_fire_frame >= COMBAT_FIRST_ATTACK_DELAY_MIN_FRAMES
-		and _first_fire_frame <= COMBAT_FIRST_ATTACK_DELAY_MAX_FRAMES
+		and _first_fire_frame >= COMBAT_FIRST_ATTACK_AND_TELEGRAPH_MIN_FRAMES
+		and _first_fire_frame <= COMBAT_FIRST_ATTACK_AND_TELEGRAPH_MAX_FRAMES
 	)
 	var damage_all_one := _damage_amounts.size() >= 1
 	for amount in _damage_amounts:
@@ -151,6 +157,8 @@ func _test_player_loadout_and_enemy_fire() -> void:
 
 	room.queue_free()
 	await get_tree().process_frame
+	if GameConfig:
+		GameConfig.ai_fire_profile_mode = _saved_ai_fire_profile_mode
 	if EventBus and EventBus.has_signal("enemy_shot") and EventBus.enemy_shot.is_connected(_on_enemy_shot):
 		EventBus.enemy_shot.disconnect(_on_enemy_shot)
 	if EventBus and EventBus.has_signal("player_damaged") and EventBus.player_damaged.is_connected(_on_player_damaged):

@@ -121,7 +121,8 @@ func run_suite() -> Dictionary:
 	enemy.set_tactical_systems(alert_system, squad_system)
 
 	var start_pos: Vector2 = enemy.global_position
-	EventBus.emit_enemy_player_spotted(9001, Vector3(enemy.global_position.x, enemy.global_position.y, 0.0))
+	if enemy.has_method("debug_force_awareness_state"):
+		enemy.debug_force_awareness_state("COMBAT")
 	await get_tree().process_frame
 
 	for _i in range(240):

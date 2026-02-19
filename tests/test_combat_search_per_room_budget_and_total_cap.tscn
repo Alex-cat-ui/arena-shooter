@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_combat_search_per_room_budget_and_total_cap.gd" id="1"]
+
+[node name="TestCombatSearchPerRoomBudgetAndTotalCap" type="Node"]
+script = ExtResource("1")

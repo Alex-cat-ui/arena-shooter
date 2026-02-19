@@ -26,6 +26,7 @@ EventBus="*res://src/systems/event_bus.gd"
 GameConfig="*res://src/core/game_config.gd"
 RuntimeState="*res://src/core/runtime_state.gd"
 StateManager="*res://src/core/state_manager.gd"
+AIWatchdog="*res://src/systems/ai_watchdog.gd"
 
 [display]
 

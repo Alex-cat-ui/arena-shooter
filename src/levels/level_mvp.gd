@@ -174,6 +174,8 @@ func _process(delta: float) -> void:
 
 	if _ctx.runtime_budget_controller and _ctx.runtime_budget_controller.has_method("process_frame"):
 		_ctx.runtime_budget_controller.process_frame(_ctx, delta)
+	if _ctx.zone_director and _ctx.zone_director.has_method("update"):
+		_ctx.zone_director.update(delta)
 
 	if _ctx.combat_system:
 		_ctx.combat_system.update(delta)
