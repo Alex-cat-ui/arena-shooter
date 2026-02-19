@@ -46,6 +46,7 @@ const AI_TRANSITION_SINGLE_OWNER_TEST_SCENE := "res://tests/test_ai_transition_s
 const AI_NO_DUPLICATE_STATE_CHANGE_PER_TICK_TEST_SCENE := "res://tests/test_ai_no_duplicate_state_change_per_tick.tscn"
 const THREE_ZONE_PLAYER_WEAPON_SWITCH_TEST_SCENE := "res://tests/test_3zone_player_weapon_switch_to_shotgun.tscn"
 const THREE_ZONE_PLAYER_SHOTGUN_FIRE_PIPELINE_TEST_SCENE := "res://tests/test_3zone_player_shotgun_fire_pipeline.tscn"
+const THREE_ZONE_ENEMY_EACH_SPAWN_FIRES_SHOTGUN_TEST_SCENE := "res://tests/test_3zone_enemy_each_spawn_fires_shotgun.tscn"
 const ENEMY_SHOTGUN_FIRE_BLOCK_REASONS_TEST_SCENE := "res://tests/test_enemy_shotgun_fire_block_reasons.tscn"
 const ALERT_TO_COMBAT_REQUIRES_5S_CONFIRM_TEST_SCENE := "res://tests/test_alert_to_combat_requires_5s_continuous_confirm.tscn"
 const PEEK_CORNER_CONFIRM_THRESHOLD_TEST_SCENE := "res://tests/test_peek_corner_confirm_threshold.tscn"
@@ -76,6 +77,10 @@ const FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE := "res://
 const SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE := "res://tests/test_shadow_flashlight_rule_blocks_or_allows_fire.tscn"
 const SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE := "res://tests/test_shadow_single_source_of_truth_nav_and_detection.tscn"
 const SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE := "res://tests/test_shadow_policy_hard_block_without_grant.tscn"
+const SHADOW_ENEMY_STUCK_WHEN_INSIDE_SHADOW_TEST_SCENE := "res://tests/test_shadow_enemy_stuck_when_inside_shadow.tscn"
+const SHADOW_ENEMY_UNSTUCK_AFTER_FLASHLIGHT_ACTIVATION_TEST_SCENE := "res://tests/test_shadow_enemy_unstuck_after_flashlight_activation.tscn"
+const SHADOW_STALL_ESCAPES_TO_LIGHT_TEST_SCENE := "res://tests/test_shadow_stall_escapes_to_light.tscn"
+const DOOR_ENEMY_OBLIQUE_OPEN_THEN_CROSS_NO_WALL_STALL_TEST_SCENE := "res://tests/test_door_enemy_oblique_open_then_cross_no_wall_stall.tscn"
 const STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE := "res://tests/test_stall_definition_reproducible_thresholds.tscn"
 const NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE := "res://tests/test_nearest_reachable_fallback_by_nav_distance.tscn"
 const ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE := "res://tests/test_zone_director_single_owner_transitions.tscn"
@@ -627,6 +632,9 @@ func _run_tests() -> void:
 	_test("3zone player shotgun fire pipeline test scene exists", func():
 		return _scene_exists(THREE_ZONE_PLAYER_SHOTGUN_FIRE_PIPELINE_TEST_SCENE)
 	)
+	_test("3zone each enemy spawn fires shotgun test scene exists", func():
+		return _scene_exists(THREE_ZONE_ENEMY_EACH_SPAWN_FIRES_SHOTGUN_TEST_SCENE)
+	)
 	_test("Enemy shotgun fire block reasons test scene exists", func():
 		return _scene_exists(ENEMY_SHOTGUN_FIRE_BLOCK_REASONS_TEST_SCENE)
 	)
@@ -704,6 +712,18 @@ func _run_tests() -> void:
 	)
 	_test("Shadow policy hard block without grant test scene exists", func():
 		return _scene_exists(SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE)
+	)
+	_test("Shadow enemy stuck when inside shadow test scene exists", func():
+		return _scene_exists(SHADOW_ENEMY_STUCK_WHEN_INSIDE_SHADOW_TEST_SCENE)
+	)
+	_test("Shadow enemy unstuck after flashlight activation test scene exists", func():
+		return _scene_exists(SHADOW_ENEMY_UNSTUCK_AFTER_FLASHLIGHT_ACTIVATION_TEST_SCENE)
+	)
+	_test("Shadow stall escapes to light test scene exists", func():
+		return _scene_exists(SHADOW_STALL_ESCAPES_TO_LIGHT_TEST_SCENE)
+	)
+	_test("Door enemy oblique open then cross no wall stall test scene exists", func():
+		return _scene_exists(DOOR_ENEMY_OBLIQUE_OPEN_THEN_CROSS_NO_WALL_STALL_TEST_SCENE)
 	)
 	_test("Stall definition reproducible thresholds test scene exists", func():
 		return _scene_exists(STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
@@ -791,6 +811,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("AI no duplicate state change per tick suite", AI_NO_DUPLICATE_STATE_CHANGE_PER_TICK_TEST_SCENE)
 	await _run_embedded_scene_suite("3zone player weapon switch suite", THREE_ZONE_PLAYER_WEAPON_SWITCH_TEST_SCENE)
 	await _run_embedded_scene_suite("3zone player shotgun fire pipeline suite", THREE_ZONE_PLAYER_SHOTGUN_FIRE_PIPELINE_TEST_SCENE)
+	await _run_embedded_scene_suite("3zone each enemy spawn fires shotgun suite", THREE_ZONE_ENEMY_EACH_SPAWN_FIRES_SHOTGUN_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy shotgun fire block reasons suite", ENEMY_SHOTGUN_FIRE_BLOCK_REASONS_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert->Combat requires 5s confirm suite", ALERT_TO_COMBAT_REQUIRES_5S_CONFIRM_TEST_SCENE)
 	await _run_embedded_scene_suite("Peek corner confirm threshold suite", PEEK_CORNER_CONFIRM_THRESHOLD_TEST_SCENE)
@@ -817,6 +838,10 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Shadow flashlight rule blocks/allows fire suite", SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow single source of truth nav+detection suite", SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow policy hard block without grant suite", SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow enemy stuck when inside shadow suite", SHADOW_ENEMY_STUCK_WHEN_INSIDE_SHADOW_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow enemy unstuck after flashlight activation suite", SHADOW_ENEMY_UNSTUCK_AFTER_FLASHLIGHT_ACTIVATION_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow stall escapes to light suite", SHADOW_STALL_ESCAPES_TO_LIGHT_TEST_SCENE)
+	await _run_embedded_scene_suite("Door enemy oblique open then cross no wall stall suite", DOOR_ENEMY_OBLIQUE_OPEN_THEN_CROSS_NO_WALL_STALL_TEST_SCENE)
 	await _run_embedded_scene_suite("Stall definition reproducible thresholds suite", STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit intent-only runtime suite", PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit stall/fallback invariants suite", PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE)

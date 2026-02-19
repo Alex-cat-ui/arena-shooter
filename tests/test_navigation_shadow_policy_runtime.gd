@@ -53,6 +53,7 @@ func _test_shadow_policy_contracts() -> void:
 
 	var enemy_dark := FakeEnemy.new()
 	enemy_dark.flashlight_active = false
+	enemy_dark.global_position = Vector2(200.0, 0.0)
 	add_child(enemy_dark)
 
 	var enemy_lit := FakeEnemy.new()
@@ -60,7 +61,9 @@ func _test_shadow_policy_contracts() -> void:
 	add_child(enemy_lit)
 
 	_t.run_test("is_point_in_shadow detects point inside shadow zone", nav.is_point_in_shadow(Vector2.ZERO))
-	_t.run_test("shadow blocks traversal without flashlight", not nav.can_enemy_traverse_point(enemy_dark, Vector2.ZERO))
+	_t.run_test("shadow blocks entry without flashlight when enemy is outside shadow", not nav.can_enemy_traverse_point(enemy_dark, Vector2.ZERO))
+	enemy_dark.global_position = Vector2.ZERO
+	_t.run_test("enemy already in shadow can keep moving to escape", nav.can_enemy_traverse_point(enemy_dark, Vector2(20.0, 0.0)))
 	_t.run_test("flashlight grants traversal override in shadow", nav.can_enemy_traverse_point(enemy_lit, Vector2.ZERO))
 	_t.run_test("outside shadow remains traversable", nav.can_enemy_traverse_point(enemy_dark, Vector2(300.0, 300.0)))
 

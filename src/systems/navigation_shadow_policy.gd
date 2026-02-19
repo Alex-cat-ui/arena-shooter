@@ -13,9 +13,12 @@ func _init(service: Node) -> void:
 func can_enemy_traverse_point(enemy: Node, point: Vector2) -> bool:
 	if enemy == null:
 		return true
+	var point_in_shadow := is_point_in_shadow(point)
+	if not point_in_shadow:
+		return true
 	if is_enemy_flashlight_active(enemy):
 		return true
-	return not is_point_in_shadow(point)
+	return _enemy_is_currently_inside_shadow(enemy)
 
 
 func is_point_in_shadow(point: Vector2) -> bool:
@@ -45,3 +48,10 @@ func is_enemy_flashlight_active(enemy: Node) -> bool:
 			var snapshot := snapshot_variant as Dictionary
 			return bool(snapshot.get("flashlight_active", false))
 	return false
+
+
+func _enemy_is_currently_inside_shadow(enemy: Node) -> bool:
+	var enemy_node := enemy as Node2D
+	if enemy_node == null:
+		return false
+	return is_point_in_shadow(enemy_node.global_position)

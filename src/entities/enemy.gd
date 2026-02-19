@@ -1219,6 +1219,18 @@ func set_flashlight_hit_for_detection(hit: bool) -> void:
 
 
 func is_flashlight_active_for_navigation() -> bool:
+	var awareness_state := ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	if _awareness and _awareness.has_method("get_awareness_state"):
+		awareness_state = int(_awareness.get_awareness_state())
+	var state_is_alert := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
+	var state_is_combat := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT or _combat_latched
+	var alert_allowed := state_is_alert and _flashlight_policy_active_in_alert()
+	var combat_allowed := state_is_combat and _flashlight_policy_active_in_combat()
+	var lockdown_allowed := _is_zone_lockdown() and _flashlight_policy_active_in_lockdown()
+	if _suspicion_test_profile_enabled or _is_canon_confirm_mode():
+		return alert_allowed or combat_allowed or lockdown_allowed
+	if has_meta("flashlight_active"):
+		return bool(get_meta("flashlight_active"))
 	return _debug_last_flashlight_active
 
 
@@ -1288,6 +1300,7 @@ func get_debug_detection_snapshot() -> Dictionary:
 		"shotgun_fire_requested": _debug_last_shotgun_fire_requested,
 		"shotgun_fire_attempted": _debug_last_shotgun_fire_attempted,
 		"shotgun_fire_success": _debug_last_shotgun_fire_success,
+		"weapon_name": WEAPON_SHOTGUN,
 		"shotgun_cooldown_left": _shot_cooldown,
 		"fire_valid_contact_for_fire": _debug_last_valid_contact_for_fire,
 		"fire_los": _debug_last_fire_los,

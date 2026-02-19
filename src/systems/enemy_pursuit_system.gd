@@ -31,6 +31,10 @@ const STALL_CHECK_INTERVAL_SEC := 0.1
 const STALL_SPEED_THRESHOLD_PX_PER_SEC := 8.0
 const STALL_PATH_PROGRESS_THRESHOLD_PX := 12.0
 const STALL_HARD_CONSECUTIVE_WINDOWS := 2
+const SHADOW_ESCAPE_RING_MIN_RADIUS_PX := 48.0
+const SHADOW_ESCAPE_RING_STEP_RADIUS_PX := 40.0
+const SHADOW_ESCAPE_RING_COUNT := 4
+const SHADOW_ESCAPE_SAMPLES_PER_RING := 12
 
 var owner: CharacterBody2D = null
 var sprite: Sprite2D = null
@@ -74,6 +78,8 @@ var _stall_consecutive_windows: int = 0
 var _hard_stall: bool = false
 var _last_stall_speed_avg: float = 0.0
 var _last_stall_path_progress: float = 0.0
+var _shadow_escape_active: bool = false
+var _shadow_escape_target: Vector2 = Vector2.ZERO
 
 
 func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -> void:
@@ -132,6 +138,8 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_policy_fallback_target = Vector2.ZERO
 	_last_valid_path_node = Vector2.ZERO
 	_active_move_target = Vector2.ZERO
+	_shadow_escape_active = false
+	_shadow_escape_target = Vector2.ZERO
 	_reset_stall_monitor()
 	if _patrol:
 		_patrol.configure(nav_system, home_room_id)
@@ -249,26 +257,27 @@ func _execute_move_to_target(
 	speed_scale: float,
 	repath_interval_override_sec: float = -1.0
 ) -> bool:
-	if target == Vector2.ZERO:
+	var movement_target := _resolve_movement_target_with_shadow_escape(target)
+	if movement_target == Vector2.ZERO:
 		_stop_motion(delta)
 		_mark_path_failed("no_target")
 		_reset_stall_monitor()
 		return false
-	if _active_move_target == Vector2.ZERO or _active_move_target.distance_to(target) > 0.5:
+	if _active_move_target == Vector2.ZERO or _active_move_target.distance_to(movement_target) > 0.5:
 		_reset_stall_monitor()
-	_active_move_target = target
+	_active_move_target = movement_target
 	var repath_interval := repath_interval_override_sec
 	if repath_interval <= 0.0:
 		repath_interval = _pursuit_cfg_float("path_repath_interval_sec", PATH_REPATH_INTERVAL_SEC)
 	_repath_timer -= delta
 	if _repath_timer <= 0.0 or _path_policy_blocked:
 		_repath_timer = repath_interval
-		if not _attempt_replan_with_policy(target):
-			if not _handle_replan_failure(target):
+		if not _attempt_replan_with_policy(movement_target):
+			if not _handle_replan_failure(movement_target) and not _attempt_shadow_escape_recovery():
 				_stop_motion(delta)
 				_mark_path_failed("replan_failed")
 				return false
-	if not _has_active_path_to(target):
+	if not _has_active_path_to(movement_target):
 		_mark_path_failed("path_unavailable")
 		_stop_motion(delta)
 		return false
@@ -276,19 +285,24 @@ func _execute_move_to_target(
 	if not moved and _path_policy_blocked:
 		_mark_path_failed("policy_blocked")
 		_repath_timer = 0.0
-		if not _attempt_replan_with_policy(target):
-			_handle_replan_failure(target)
-	if _update_stall_monitor(delta, target):
+		if not _attempt_replan_with_policy(movement_target):
+			_handle_replan_failure(movement_target)
+			_attempt_shadow_escape_recovery()
+	if _update_stall_monitor(delta, movement_target):
 		_mark_path_failed("hard_stall")
 		_repath_timer = 0.0
-		if not _attempt_replan_with_policy(target):
-			_handle_replan_failure(target)
-	if owner.global_position.distance_to(target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
+		if not _attempt_replan_with_policy(movement_target):
+			_handle_replan_failure(movement_target)
+			_attempt_shadow_escape_recovery()
+	if owner.global_position.distance_to(movement_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
 		_stop_motion(delta)
 		_policy_replan_attempts = 0
 		_policy_fallback_used = false
 		_policy_fallback_target = Vector2.ZERO
 		_reset_stall_monitor()
+		if _shadow_escape_active and owner.global_position.distance_to(_shadow_escape_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
+			_shadow_escape_active = false
+			_shadow_escape_target = Vector2.ZERO
 	return not _last_path_failed
 
 
@@ -426,9 +440,7 @@ func _follow_waypoints(speed_scale: float, delta: float) -> bool:
 		else:
 			_stop_motion(delta)
 		if owner.get_slide_collision_count() > 0:
-			var blocked_door_system := _get_door_system()
-			if blocked_door_system and blocked_door_system.has_method("try_enemy_open_nearest"):
-				blocked_door_system.try_enemy_open_nearest(owner.global_position)
+			_try_open_blocking_door_and_force_repath()
 		if nav_system and nav_system.has_method("room_id_at_point"):
 			var nav_rid := int(nav_system.room_id_at_point(owner.global_position))
 			if nav_rid >= 0:
@@ -451,9 +463,7 @@ func _follow_waypoints(speed_scale: float, delta: float) -> bool:
 	var moved := _move_in_direction(dir, speed_scale, delta)
 	# After move_and_slide, check if blocked by door.
 	if owner.get_slide_collision_count() > 0:
-		var door_system := _get_door_system()
-		if door_system and door_system.has_method("try_enemy_open_nearest"):
-			door_system.try_enemy_open_nearest(owner.global_position)
+		_try_open_blocking_door_and_force_repath()
 	if nav_system and nav_system.has_method("room_id_at_point"):
 		var rid := int(nav_system.room_id_at_point(owner.global_position))
 		if rid >= 0:
@@ -566,6 +576,19 @@ func _get_door_system() -> Node:
 	return _door_system_cache
 
 
+func _try_open_blocking_door_and_force_repath() -> void:
+	var door_system := _get_door_system()
+	if door_system == null or not door_system.has_method("try_enemy_open_nearest"):
+		return
+	var opened := bool(door_system.call("try_enemy_open_nearest", owner.global_position))
+	if not opened:
+		return
+	# Door state changed this frame; force immediate replan to avoid wall-stall.
+	_repath_timer = 0.0
+	_path_policy_blocked = false
+	_last_policy_blocked_segment = -1
+
+
 func _mark_path_failed(reason: String) -> void:
 	_last_path_failed = true
 	if _last_path_failed_reason == "":
@@ -647,6 +670,10 @@ func _validate_path_policy(from_pos: Vector2, path_points: Array[Vector2]) -> Di
 
 
 func _resolve_nearest_reachable_fallback(target_pos: Vector2) -> Vector2:
+	if _is_owner_in_shadow_without_flashlight():
+		var shadow_escape_target := _resolve_shadow_escape_target()
+		if shadow_escape_target != Vector2.ZERO:
+			return shadow_escape_target
 	var candidates := _sample_fallback_candidates(target_pos)
 	var best_result := _select_nearest_reachable_candidate(target_pos, candidates)
 	if bool(best_result.get("found", false)):
@@ -654,6 +681,78 @@ func _resolve_nearest_reachable_fallback(target_pos: Vector2) -> Vector2:
 	if _last_valid_path_node != Vector2.ZERO:
 		return _last_valid_path_node
 	return Vector2.ZERO
+
+
+func _resolve_movement_target_with_shadow_escape(target: Vector2) -> Vector2:
+	if target == Vector2.ZERO:
+		return Vector2.ZERO
+	if not _shadow_escape_active:
+		return target
+	if _shadow_escape_target == Vector2.ZERO:
+		_shadow_escape_active = false
+		return target
+	if not _is_owner_in_shadow_without_flashlight():
+		_shadow_escape_active = false
+		_shadow_escape_target = Vector2.ZERO
+		return target
+	return _shadow_escape_target
+
+
+func _attempt_shadow_escape_recovery() -> bool:
+	if not _is_owner_in_shadow_without_flashlight():
+		return false
+	var escape_target := _resolve_shadow_escape_target()
+	if escape_target == Vector2.ZERO:
+		return false
+	_shadow_escape_active = true
+	_shadow_escape_target = escape_target
+	_policy_replan_attempts = 0
+	_policy_fallback_used = true
+	_policy_fallback_target = escape_target
+	_active_move_target = Vector2.ZERO
+	_repath_timer = 0.0
+	_reset_stall_monitor()
+	if _plan_path_to(escape_target):
+		return true
+	_shadow_escape_active = false
+	_shadow_escape_target = Vector2.ZERO
+	return false
+
+
+func _resolve_shadow_escape_target() -> Vector2:
+	var candidates := _sample_shadow_escape_candidates()
+	if candidates.is_empty():
+		return Vector2.ZERO
+	var best_result := _select_nearest_reachable_candidate(owner.global_position, candidates)
+	if bool(best_result.get("found", false)):
+		return best_result.get("point", Vector2.ZERO) as Vector2
+	return Vector2.ZERO
+
+
+func _sample_shadow_escape_candidates() -> Array[Vector2]:
+	var candidates: Array[Vector2] = []
+	if nav_system == null or not nav_system.has_method("is_point_in_shadow"):
+		return candidates
+	var origin := owner.global_position
+	for ring_idx in range(SHADOW_ESCAPE_RING_COUNT):
+		var radius := SHADOW_ESCAPE_RING_MIN_RADIUS_PX + SHADOW_ESCAPE_RING_STEP_RADIUS_PX * float(ring_idx)
+		for sample_idx in range(SHADOW_ESCAPE_SAMPLES_PER_RING):
+			var angle := TAU * (float(sample_idx) / float(SHADOW_ESCAPE_SAMPLES_PER_RING))
+			var candidate := origin + Vector2.RIGHT.rotated(angle) * radius
+			if bool(nav_system.call("is_point_in_shadow", candidate)):
+				continue
+			candidates.append(candidate)
+	return candidates
+
+
+func _is_owner_in_shadow_without_flashlight() -> bool:
+	if nav_system == null or not nav_system.has_method("is_point_in_shadow"):
+		return false
+	if not bool(nav_system.call("is_point_in_shadow", owner.global_position)):
+		return false
+	if owner and owner.has_method("is_flashlight_active_for_navigation"):
+		return not bool(owner.call("is_flashlight_active_for_navigation"))
+	return true
 
 
 func _sample_fallback_candidates(target_pos: Vector2) -> Array[Vector2]:
@@ -791,6 +890,8 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"stall_consecutive_windows": _stall_consecutive_windows,
 		"stall_speed_avg": _last_stall_speed_avg,
 		"stall_path_progress": _last_stall_path_progress,
+		"shadow_escape_active": _shadow_escape_active,
+		"shadow_escape_target": _shadow_escape_target,
 	}
 
 

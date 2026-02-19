@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_door_enemy_oblique_open_then_cross_no_wall_stall.gd" id="1_script"]
+
+[node name="TestDoorEnemyObliqueOpenThenCrossNoWallStall" type="Node"]
+script = ExtResource("1_script")
