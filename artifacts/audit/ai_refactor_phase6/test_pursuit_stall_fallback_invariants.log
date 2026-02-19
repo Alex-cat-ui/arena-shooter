@@ -1,0 +1,14 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+
+============================================================
+PURSUIT STALL/FALLBACK INVARIANTS TEST
+============================================================
+[PASS] two consecutive stalled windows trigger hard_stall
+[PASS] non-stalled window clears hard_stall
+[PASS] fallback selection deterministic for same inputs
+[PASS] fallback selects reachable candidate
+
+============================================================
+PURSUIT STALL/FALLBACK INVARIANTS RESULTS: 4/4 passed
+============================================================

@@ -47,6 +47,7 @@ var facing_dir: Vector2 = Vector2.RIGHT
 var _target_facing_dir: Vector2 = Vector2.RIGHT
 
 var _roam_target: Vector2 = Vector2.ZERO
+var _roam_target_valid: bool = false
 var _roam_wait_timer: float = 0.0
 var _waypoints: Array[Vector2] = []
 var _repath_timer: float = 0.0
@@ -70,7 +71,9 @@ var _policy_replan_attempts: int = 0
 var _policy_fallback_used: bool = false
 var _policy_fallback_target: Vector2 = Vector2.ZERO
 var _last_valid_path_node: Vector2 = Vector2.ZERO
+var _last_valid_path_node_valid: bool = false
 var _active_move_target: Vector2 = Vector2.ZERO
+var _active_move_target_valid: bool = false
 var _stall_clock: float = 0.0
 var _stall_check_timer: float = 0.0
 var _stall_samples: Array[Dictionary] = []
@@ -80,6 +83,7 @@ var _last_stall_speed_avg: float = 0.0
 var _last_stall_path_progress: float = 0.0
 var _shadow_escape_active: bool = false
 var _shadow_escape_target: Vector2 = Vector2.ZERO
+var _shadow_escape_target_valid: bool = false
 
 
 func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -> void:
@@ -117,6 +121,7 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	owner.set_meta("room_id", p_home_room_id)
 	_waypoints.clear()
 	_roam_target = Vector2.ZERO
+	_roam_target_valid = false
 	_roam_wait_timer = 0.0
 	_repath_timer = 0.0
 	_last_seen_pos = Vector2.ZERO
@@ -137,9 +142,12 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_policy_fallback_used = false
 	_policy_fallback_target = Vector2.ZERO
 	_last_valid_path_node = Vector2.ZERO
+	_last_valid_path_node_valid = false
 	_active_move_target = Vector2.ZERO
+	_active_move_target_valid = false
 	_shadow_escape_active = false
 	_shadow_escape_target = Vector2.ZERO
+	_shadow_escape_target_valid = false
 	_reset_stall_monitor()
 	if _patrol:
 		_patrol.configure(nav_system, home_room_id)
@@ -178,6 +186,7 @@ func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Dictionary:
 	var request_fire := false
 	var intent_type := int(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
+	var has_target := intent.has("target")
 	var target := intent.get("target", owner.global_position) as Vector2
 	var movement_intent := false
 	var player_pos := context.get("player_pos", target) as Vector2
@@ -206,29 +215,33 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 			_update_idle_roam(delta)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE:
 			movement_intent = true
-			if target != Vector2.ZERO:
+			if has_target:
 				_set_last_seen(target)
 			var investigate_arrive_px := _pursuit_cfg_float("last_seen_reached_px", LAST_SEEN_REACHED_PX)
-			if target == Vector2.ZERO:
+			if not has_target:
 				_execute_search(delta, context.get("last_seen_pos", owner.global_position) as Vector2)
 			elif owner.global_position.distance_to(target) <= investigate_arrive_px:
 				_execute_search(delta, target)
 			else:
-				_execute_move_to_target(delta, target, 1.0)
+				_execute_move_to_target(delta, target, 1.0, -1.0, has_target)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH:
 			_execute_search(delta, target)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT:
 			movement_intent = true
-			_execute_move_to_target(delta, target, 0.95)
+			_execute_move_to_target(delta, target, 0.95, -1.0, has_target)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE:
 			_stop_motion(delta)
 			face_towards(player_pos if has_los else target)
 			request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH:
 			movement_intent = true
-			var push_target := target if target != Vector2.ZERO else player_pos
+			var push_has_target := has_target
+			var push_target := target
+			if not push_has_target:
+				push_target = player_pos
+				push_has_target = true
 			var repath_override := _combat_no_los_repath_interval_sec() if combat_no_los else -1.0
-			_execute_move_to_target(delta, push_target, 1.0, repath_override)
+			_execute_move_to_target(delta, push_target, 1.0, repath_override, push_has_target)
 			face_towards(push_target)
 			request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT:
@@ -236,8 +249,12 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 			_execute_retreat_from(delta, player_pos)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME:
 			movement_intent = true
-			var home_target := target if target != Vector2.ZERO else _pick_home_return_target()
-			_execute_move_to_target(delta, home_target, 0.9)
+			var home_has_target := has_target
+			var home_target := target
+			if not home_has_target:
+				home_target = _pick_home_return_target()
+				home_has_target = true
+			_execute_move_to_target(delta, home_target, 0.9, -1.0, home_has_target)
 		_:
 			_update_idle_roam(delta)
 
@@ -255,17 +272,20 @@ func _execute_move_to_target(
 	delta: float,
 	target: Vector2,
 	speed_scale: float,
-	repath_interval_override_sec: float = -1.0
+	repath_interval_override_sec: float = -1.0,
+	has_target: bool = true
 ) -> bool:
-	var movement_target := _resolve_movement_target_with_shadow_escape(target)
-	if movement_target == Vector2.ZERO:
+	if not has_target:
 		_stop_motion(delta)
 		_mark_path_failed("no_target")
+		_active_move_target_valid = false
 		_reset_stall_monitor()
 		return false
-	if _active_move_target == Vector2.ZERO or _active_move_target.distance_to(movement_target) > 0.5:
+	var movement_target := _resolve_movement_target_with_shadow_escape(target, has_target)
+	if not _active_move_target_valid or _active_move_target.distance_to(movement_target) > 0.5:
 		_reset_stall_monitor()
 	_active_move_target = movement_target
+	_active_move_target_valid = true
 	var repath_interval := repath_interval_override_sec
 	if repath_interval <= 0.0:
 		repath_interval = _pursuit_cfg_float("path_repath_interval_sec", PATH_REPATH_INTERVAL_SEC)
@@ -288,7 +308,7 @@ func _execute_move_to_target(
 		if not _attempt_replan_with_policy(movement_target):
 			_handle_replan_failure(movement_target)
 			_attempt_shadow_escape_recovery()
-	if _update_stall_monitor(delta, movement_target):
+	if _update_stall_monitor(delta, movement_target, has_target):
 		_mark_path_failed("hard_stall")
 		_repath_timer = 0.0
 		if not _attempt_replan_with_policy(movement_target):
@@ -299,10 +319,12 @@ func _execute_move_to_target(
 		_policy_replan_attempts = 0
 		_policy_fallback_used = false
 		_policy_fallback_target = Vector2.ZERO
+		_active_move_target_valid = false
 		_reset_stall_monitor()
 		if _shadow_escape_active and owner.global_position.distance_to(_shadow_escape_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
 			_shadow_escape_active = false
 			_shadow_escape_target = Vector2.ZERO
+			_shadow_escape_target_valid = false
 	return not _last_path_failed
 
 
@@ -365,11 +387,12 @@ func _update_idle_roam(delta: float) -> void:
 		_stop_motion(delta)
 		return
 
-	if _roam_target == Vector2.ZERO or owner.global_position.distance_to(_roam_target) < 10.0:
+	if not _roam_target_valid or owner.global_position.distance_to(_roam_target) < 10.0:
 		if nav_system and nav_system.has_method("random_point_in_room"):
 			_roam_target = nav_system.random_point_in_room(home_room_id, 28.0)
 		else:
 			_roam_target = owner.global_position
+		_roam_target_valid = true
 		_roam_wait_timer = randf_range(0.1, 0.35)
 		_stop_motion(delta)
 		return
@@ -378,12 +401,12 @@ func _update_idle_roam(delta: float) -> void:
 	_move_in_direction(dir, 0.85, delta)
 
 
-func _plan_path_to(target_pos: Vector2) -> bool:
-	if target_pos == Vector2.ZERO:
+func _plan_path_to(target_pos: Vector2, has_target: bool = true) -> bool:
+	if not has_target:
 		_waypoints.clear()
 		_path_policy_blocked = false
 		return false
-	var planned_points := _build_reachable_path_points_for_enemy(target_pos)
+	var planned_points := _build_reachable_path_points_for_enemy(target_pos, has_target)
 	if planned_points.is_empty():
 		_path_policy_blocked = true
 		_last_policy_blocked_segment = -1
@@ -408,6 +431,7 @@ func _plan_path_to(target_pos: Vector2) -> bool:
 	_path_policy_blocked = false
 	_last_policy_blocked_segment = -1
 	_last_valid_path_node = planned_points.back()
+	_last_valid_path_node_valid = true
 	if _use_navmesh and _nav_agent:
 		_nav_agent.target_position = target_pos
 		_waypoints.clear()
@@ -611,21 +635,24 @@ func _attempt_replan_with_policy(target_pos: Vector2) -> bool:
 func _handle_replan_failure(target_pos: Vector2) -> bool:
 	if _policy_replan_attempts < PATH_POLICY_REPLAN_LIMIT:
 		return false
-	var fallback_target := _resolve_nearest_reachable_fallback(target_pos)
-	if fallback_target == Vector2.ZERO:
+	var fallback_pick := _resolve_nearest_reachable_fallback(target_pos)
+	if not bool(fallback_pick.get("found", false)):
 		_mark_path_failed("fallback_missing")
 		return false
+	var fallback_target := fallback_pick.get("point", Vector2.ZERO) as Vector2
 	_policy_fallback_used = true
 	_policy_fallback_target = fallback_target
 	_policy_replan_attempts = 0
-	if _plan_path_to(fallback_target):
+	if _plan_path_to(fallback_target, true):
 		return true
 	_mark_path_failed("fallback_failed")
 	return false
 
 
-func _build_reachable_path_points_for_enemy(target_pos: Vector2) -> Array[Vector2]:
+func _build_reachable_path_points_for_enemy(target_pos: Vector2, has_target: bool = true) -> Array[Vector2]:
 	var out: Array[Vector2] = []
+	if not has_target:
+		return out
 	if nav_system and nav_system.has_method("build_reachable_path_points"):
 		var path_variant: Variant = nav_system.call("build_reachable_path_points", owner.global_position, target_pos, owner)
 		if path_variant is Array:
@@ -637,11 +664,10 @@ func _build_reachable_path_points_for_enemy(target_pos: Vector2) -> Array[Vector
 		if fallback_variant is Array:
 			for point_variant in (fallback_variant as Array):
 				out.append(point_variant as Vector2)
-		if out.is_empty() and target_pos != Vector2.ZERO:
+		if out.is_empty():
 			out.append(target_pos)
 		return out
-	if target_pos != Vector2.ZERO:
-		out.append(target_pos)
+	out.append(target_pos)
 	return out
 
 
@@ -669,31 +695,38 @@ func _validate_path_policy(from_pos: Vector2, path_points: Array[Vector2]) -> Di
 	return {"valid": true, "segment_index": -1}
 
 
-func _resolve_nearest_reachable_fallback(target_pos: Vector2) -> Vector2:
+func _resolve_nearest_reachable_fallback(target_pos: Vector2) -> Dictionary:
 	if _is_owner_in_shadow_without_flashlight():
-		var shadow_escape_target := _resolve_shadow_escape_target()
-		if shadow_escape_target != Vector2.ZERO:
-			return shadow_escape_target
+		var shadow_escape_pick := _resolve_shadow_escape_target()
+		if bool(shadow_escape_pick.get("found", false)):
+			return shadow_escape_pick
 	var candidates := _sample_fallback_candidates(target_pos)
 	var best_result := _select_nearest_reachable_candidate(target_pos, candidates)
 	if bool(best_result.get("found", false)):
-		return best_result.get("point", Vector2.ZERO) as Vector2
-	if _last_valid_path_node != Vector2.ZERO:
-		return _last_valid_path_node
-	return Vector2.ZERO
+		return best_result
+	if _last_valid_path_node_valid:
+		return {
+			"found": true,
+			"point": _last_valid_path_node,
+		}
+	return {
+		"found": false,
+		"point": Vector2.ZERO,
+	}
 
 
-func _resolve_movement_target_with_shadow_escape(target: Vector2) -> Vector2:
-	if target == Vector2.ZERO:
-		return Vector2.ZERO
+func _resolve_movement_target_with_shadow_escape(target: Vector2, has_target: bool) -> Vector2:
+	if not has_target:
+		return target
 	if not _shadow_escape_active:
 		return target
-	if _shadow_escape_target == Vector2.ZERO:
+	if not _shadow_escape_target_valid:
 		_shadow_escape_active = false
 		return target
 	if not _is_owner_in_shadow_without_flashlight():
 		_shadow_escape_active = false
 		_shadow_escape_target = Vector2.ZERO
+		_shadow_escape_target_valid = false
 		return target
 	return _shadow_escape_target
 
@@ -701,32 +734,42 @@ func _resolve_movement_target_with_shadow_escape(target: Vector2) -> Vector2:
 func _attempt_shadow_escape_recovery() -> bool:
 	if not _is_owner_in_shadow_without_flashlight():
 		return false
-	var escape_target := _resolve_shadow_escape_target()
-	if escape_target == Vector2.ZERO:
+	var escape_pick := _resolve_shadow_escape_target()
+	if not bool(escape_pick.get("found", false)):
 		return false
+	var escape_target := escape_pick.get("point", Vector2.ZERO) as Vector2
 	_shadow_escape_active = true
 	_shadow_escape_target = escape_target
+	_shadow_escape_target_valid = true
 	_policy_replan_attempts = 0
 	_policy_fallback_used = true
 	_policy_fallback_target = escape_target
 	_active_move_target = Vector2.ZERO
+	_active_move_target_valid = false
 	_repath_timer = 0.0
 	_reset_stall_monitor()
-	if _plan_path_to(escape_target):
+	if _plan_path_to(escape_target, true):
 		return true
 	_shadow_escape_active = false
 	_shadow_escape_target = Vector2.ZERO
+	_shadow_escape_target_valid = false
 	return false
 
 
-func _resolve_shadow_escape_target() -> Vector2:
+func _resolve_shadow_escape_target() -> Dictionary:
 	var candidates := _sample_shadow_escape_candidates()
 	if candidates.is_empty():
-		return Vector2.ZERO
+		return {
+			"found": false,
+			"point": Vector2.ZERO,
+		}
 	var best_result := _select_nearest_reachable_candidate(owner.global_position, candidates)
 	if bool(best_result.get("found", false)):
-		return best_result.get("point", Vector2.ZERO) as Vector2
-	return Vector2.ZERO
+		return best_result
+	return {
+		"found": false,
+		"point": Vector2.ZERO,
+	}
 
 
 func _sample_shadow_escape_candidates() -> Array[Vector2]:
@@ -823,8 +866,8 @@ func _reset_stall_monitor() -> void:
 	_last_stall_path_progress = 0.0
 
 
-func _update_stall_monitor(delta: float, target_pos: Vector2) -> bool:
-	if delta <= 0.0 or target_pos == Vector2.ZERO:
+func _update_stall_monitor(delta: float, target_pos: Vector2, has_target: bool) -> bool:
+	if delta <= 0.0 or not has_target:
 		return false
 	_stall_clock += delta
 	_stall_samples.append({
@@ -886,12 +929,16 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"policy_fallback_used": _policy_fallback_used,
 		"policy_fallback_target": _policy_fallback_target,
 		"last_valid_path_node": _last_valid_path_node,
+		"last_valid_path_node_valid": _last_valid_path_node_valid,
+		"active_move_target": _active_move_target,
+		"active_move_target_valid": _active_move_target_valid,
 		"hard_stall": _hard_stall,
 		"stall_consecutive_windows": _stall_consecutive_windows,
 		"stall_speed_avg": _last_stall_speed_avg,
 		"stall_path_progress": _last_stall_path_progress,
 		"shadow_escape_active": _shadow_escape_active,
 		"shadow_escape_target": _shadow_escape_target,
+		"shadow_escape_target_valid": _shadow_escape_target_valid,
 	}
 
 

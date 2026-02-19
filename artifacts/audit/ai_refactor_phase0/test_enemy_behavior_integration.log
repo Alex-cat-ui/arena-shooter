@@ -1,0 +1,25 @@
+===== RUN res://tests/test_enemy_behavior_integration.tscn =====
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+ENEMY BEHAVIOR INTEGRATION TEST
+============================================================
+[PASS] Enemy scene available
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] Room alert level drives enemy to COMBAT marker state
+[PASS] AlertMarker visible in combat
+[PASS] Squad assignment exists
+[PASS] Runtime budget enemy quota respected
+[PASS] Runtime budget squad quota respected
+[PASS] Utility intent is active (not PATROL in combat)
+[PASS] PUSH intent advances enemy when selected
+
+============================================================
+ENEMY BEHAVIOR INTEGRATION RESULTS: 8/8 passed
+============================================================
+EXIT_CODE=0

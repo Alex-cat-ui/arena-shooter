@@ -7,6 +7,7 @@ var _tests_run := 0
 var _tests_passed := 0
 
 const AWARENESS_TEST_SCENE := "res://tests/test_enemy_awareness_system.tscn"
+const CONFIRM_HOSTILITY_TEST_SCENE := "res://tests/test_confirm_hostility.tscn"
 const AGGRO_TEST_SCENE := "res://tests/test_enemy_aggro_coordinator.tscn"
 const NOISE_FLOW_TEST_SCENE := "res://tests/test_enemy_noise_alert_flow.tscn"
 const DOOR_CONTROLLER_TEST_SCENE := "res://tests/test_door_controller_full.tscn"
@@ -69,8 +70,11 @@ const ENEMY_DAMAGE_IS_EXACTLY_1HP_PER_SUCCESSFUL_SHOT_TEST_SCENE := "res://tests
 const COMBAT_DAMAGE_ESCALATION_PIPELINE_TEST_SCENE := "res://tests/test_combat_damage_escalation_pipeline.tscn"
 const ENEMY_DAMAGE_API_SINGLE_SOURCE_TEST_SCENE := "res://tests/test_enemy_damage_api_single_source.tscn"
 const ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE := "res://tests/test_enemy_fire_cooldown_min_guard.tscn"
+const ENEMY_FIRE_DECISION_CONTRACT_TEST_SCENE := "res://tests/test_enemy_fire_decision_contract.tscn"
+const ENEMY_FIRE_TRACE_CACHE_RUNTIME_TEST_SCENE := "res://tests/test_enemy_fire_trace_cache_runtime.tscn"
 const PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE := "res://tests/test_pursuit_intent_only_runtime.tscn"
 const PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE := "res://tests/test_pursuit_stall_fallback_invariants.tscn"
+const PURSUIT_ORIGIN_TARGET_NOT_SENTINEL_TEST_SCENE := "res://tests/test_pursuit_origin_target_not_sentinel.tscn"
 const NAVIGATION_RUNTIME_QUERIES_TEST_SCENE := "res://tests/test_navigation_runtime_queries.tscn"
 const NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE := "res://tests/test_navigation_shadow_policy_runtime.tscn"
 const FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE := "res://tests/test_friendly_block_prevents_fire_and_triggers_reposition.tscn"
@@ -474,6 +478,9 @@ func _run_tests() -> void:
 	_test("Awareness test scene exists", func():
 		return _scene_exists(AWARENESS_TEST_SCENE)
 	)
+	_test("Confirm hostility test scene exists", func():
+		return _scene_exists(CONFIRM_HOSTILITY_TEST_SCENE)
+	)
 	_test("Aggro coordinator test scene exists", func():
 		return _scene_exists(AGGRO_TEST_SCENE)
 	)
@@ -577,6 +584,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Config validator AI balance suite", CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE)
 	await _run_embedded_scene_suite("GameConfig reset consistency (non-layout) suite", GAME_CONFIG_RESET_CONSISTENCY_NON_LAYOUT_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy awareness suite", AWARENESS_TEST_SCENE)
+	await _run_embedded_scene_suite("Confirm hostility suite", CONFIRM_HOSTILITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy aggro coordinator suite", AGGRO_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy noise alert flow suite", NOISE_FLOW_TEST_SCENE)
 	await _run_embedded_scene_suite("Door controller full suite", DOOR_CONTROLLER_TEST_SCENE)
@@ -701,6 +709,12 @@ func _run_tests() -> void:
 	_test("Enemy fire cooldown min guard test scene exists", func():
 		return _scene_exists(ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE)
 	)
+	_test("Enemy fire decision contract test scene exists", func():
+		return _scene_exists(ENEMY_FIRE_DECISION_CONTRACT_TEST_SCENE)
+	)
+	_test("Enemy fire trace cache runtime test scene exists", func():
+		return _scene_exists(ENEMY_FIRE_TRACE_CACHE_RUNTIME_TEST_SCENE)
+	)
 	_test("Friendly block prevents fire and triggers reposition test scene exists", func():
 		return _scene_exists(FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE)
 	)
@@ -733,6 +747,9 @@ func _run_tests() -> void:
 	)
 	_test("Pursuit stall/fallback invariants test scene exists", func():
 		return _scene_exists(PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE)
+	)
+	_test("Pursuit origin target not sentinel test scene exists", func():
+		return _scene_exists(PURSUIT_ORIGIN_TARGET_NOT_SENTINEL_TEST_SCENE)
 	)
 	_test("Navigation runtime queries test scene exists", func():
 		return _scene_exists(NAVIGATION_RUNTIME_QUERIES_TEST_SCENE)
@@ -834,6 +851,8 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Combat damage escalation pipeline suite", COMBAT_DAMAGE_ESCALATION_PIPELINE_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy damage API single source suite", ENEMY_DAMAGE_API_SINGLE_SOURCE_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy fire cooldown min guard suite", ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy fire decision contract suite", ENEMY_FIRE_DECISION_CONTRACT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy fire trace cache runtime suite", ENEMY_FIRE_TRACE_CACHE_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Friendly block prevents fire + reposition suite", FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow flashlight rule blocks/allows fire suite", SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow single source of truth nav+detection suite", SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE)
@@ -845,6 +864,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Stall definition reproducible thresholds suite", STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit intent-only runtime suite", PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit stall/fallback invariants suite", PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE)
+	await _run_embedded_scene_suite("Pursuit origin target not sentinel suite", PURSUIT_ORIGIN_TARGET_NOT_SENTINEL_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation runtime queries suite", NAVIGATION_RUNTIME_QUERIES_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation shadow policy runtime suite", NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Nearest reachable fallback by nav distance suite", NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE)

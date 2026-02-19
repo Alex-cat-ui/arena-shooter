@@ -1,0 +1,21 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+
+============================================================
+COMBAT ROLE LOCK AND REASSIGN TRIGGERS TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] role lock starts near 3.0s
+[PASS] role is not recalculated every tick under lock
+[PASS] early trigger: lost_los reassigns role
+[PASS] early trigger: stuck reassigns role
+[PASS] early trigger: path_failed reassigns role
+[PASS] early trigger: target_room_changed reassigns role
+[PASS] context role: no contact + flank availability picks FLANK
+[PASS] context role: far contact distance picks PRESSURE
+[PASS] context role: close contact without flank picks HOLD
+
+============================================================
+COMBAT ROLE LOCK AND REASSIGN TRIGGERS RESULTS: 9/9 passed
+============================================================

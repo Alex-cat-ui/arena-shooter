@@ -173,7 +173,7 @@ func _explode_rocket() -> void:
 	for enemy in enemies:
 		if enemy is Node2D and enemy.position.distance_to(position) <= aoe_radius_px:
 			if enemy.has_method("apply_damage"):
-				enemy.apply_damage(aoe_damage, "rocket_aoe")
+				enemy.apply_damage(aoe_damage, "rocket_aoe", true)
 			elif enemy.has_method("take_damage"):
 				enemy.take_damage(aoe_damage)
 

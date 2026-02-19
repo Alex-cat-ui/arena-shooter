@@ -1,0 +1,39 @@
+===== RUN res://tests/test_confirm_hostility.tscn =====
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+CONFIRM HOSTILITY TEST
+============================================================
+[PASS] confirm_accumulates_with_visual_no_shadow
+[PASS] confirm_zero_in_shadow
+[PASS] flashlight_detects_in_shadow
+[PASS] confirm_decays_after_grace
+[PASS] confirm_no_decay_during_grace
+ERROR: [FAIL] damage_sets_hostile_damaged
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] check (res://tests/test_helpers.gd:19)
+       [1] run_test (res://tests/test_helpers.gd:23)
+       [2] _test_damage_sets_hostile_damaged (res://tests/test_confirm_hostility.gd:95)
+       [3] run_suite (res://tests/test_confirm_hostility.gd:34)
+       [4] _ready (res://tests/test_confirm_hostility.gd:19)
+ERROR: [FAIL] hostile_never_returns_to_calm
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] check (res://tests/test_helpers.gd:19)
+       [1] run_test (res://tests/test_helpers.gd:23)
+       [2] _test_hostile_never_returns_to_calm (res://tests/test_confirm_hostility.gd:107)
+       [3] run_suite (res://tests/test_confirm_hostility.gd:35)
+       [4] _ready (res://tests/test_confirm_hostility.gd:19)
+[PASS] combat_phase_engaged_on_contact
+[PASS] combat_phase_hostile_search_on_los_loss
+[PASS] snapshot_returns_all_fields
+
+============================================================
+CONFIRM HOSTILITY RESULTS: 8/10 passed
+============================================================
+EXIT_CODE=1

@@ -1,0 +1,14 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+
+============================================================
+PURSUIT INTENT-ONLY RUNTIME TEST
+============================================================
+[PASS] legacy update(delta,use_room_nav,...) API removed
+[PASS] intent runtime executes PUSH without legacy path
+[PASS] intent runtime updates facing toward PUSH target
+[PASS] SEARCH intent keeps movement_intent=false
+
+============================================================
+PURSUIT INTENT-ONLY RUNTIME RESULTS: 4/4 passed
+============================================================

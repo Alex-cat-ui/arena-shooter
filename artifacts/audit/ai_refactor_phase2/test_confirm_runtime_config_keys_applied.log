@@ -1,0 +1,20 @@
+===== RUN res://tests/test_confirm_runtime_config_keys_applied.tscn =====
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+CONFIRM RUNTIME CONFIG KEYS APPLIED TEST
+============================================================
+[PASS] confirm_decay_rate applied: higher decay lowers confirm faster
+[PASS] confirm_grace_window applied: long grace postpones decay
+[PASS] minimum_hold: short-hold setup enters ALERT
+[PASS] minimum_hold: long-hold setup enters ALERT
+[PASS] minimum_hold_alert_sec applied: longer hold delays ALERT->SUSPICIOUS
+
+============================================================
+CONFIRM RUNTIME CONFIG KEYS APPLIED RESULTS: 5/5 passed
+============================================================
+EXIT_CODE=0

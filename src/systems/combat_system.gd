@@ -93,7 +93,8 @@ func damage_enemy(enemy: Node, amount: int, source: String) -> void:
 		return
 
 	# Canon path: enemy owns damage side-effects/events.
-	enemy.apply_damage(amount, source)
+	# Damage routed through CombatSystem is player-originated.
+	enemy.apply_damage(amount, source, true)
 
 
 ## ============================================================================

@@ -1,0 +1,6 @@
+test_pursuit_origin_target_not_sentinel=0
+test_pursuit_intent_only_runtime=0
+test_pursuit_stall_fallback_invariants=0
+test_nearest_reachable_fallback_by_nav_distance=0
+test_navigation_runtime_queries=0
+test_runner=0

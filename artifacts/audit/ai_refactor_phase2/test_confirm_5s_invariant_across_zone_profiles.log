@@ -1,0 +1,19 @@
+===== RUN res://tests/test_confirm_5s_invariant_across_zone_profiles.tscn =====
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+CONFIRM 5S INVARIANT ACROSS ZONE PROFILES TEST
+============================================================
+[PASS] CALM profile keeps confirm->combat at 5.0±0.2s
+[PASS] ELEVATED profile keeps confirm->combat at 5.0±0.2s
+[PASS] LOCKDOWN profile keeps confirm->combat at 5.0±0.2s
+[PASS] confirm timing spread across profiles is <= 0.2s
+
+============================================================
+CONFIRM 5S INVARIANT ACROSS ZONE PROFILES RESULTS: 4/4 passed
+============================================================
+EXIT_CODE=0

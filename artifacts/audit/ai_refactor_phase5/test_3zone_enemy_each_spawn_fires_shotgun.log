@@ -1,0 +1,48 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+
+============================================================
+3-ZONE: EACH ENEMY SPAWN FIRES SHOTGUN TEST
+============================================================
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] 3zone each enemy fire: player exists
+[PASS] 3zone each enemy fire: all 5 enemies exist
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15000 fires at least once
+[PASS] 3zone each enemy fire: enemy#15000 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15000 snapshot declares weapon_name=shotgun
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15001 fires at least once
+[PASS] 3zone each enemy fire: enemy#15001 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15001 snapshot declares weapon_name=shotgun
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15002 fires at least once
+[PASS] 3zone each enemy fire: enemy#15002 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15002 snapshot declares weapon_name=shotgun
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15003 fires at least once
+[PASS] 3zone each enemy fire: enemy#15003 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15003 snapshot declares weapon_name=shotgun
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15004 fires at least once
+[PASS] 3zone each enemy fire: enemy#15004 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15004 snapshot declares weapon_name=shotgun
+[PASS] 3zone each enemy fire: every spawn fires
+[PASS] 3zone each enemy fire: all enemy shot events are shotgun
+[PASS] 3zone each enemy fire: every snapshot declares shotgun
+
+============================================================
+3-ZONE: EACH ENEMY SPAWN FIRES SHOTGUN RESULTS: 20/20 passed
+============================================================

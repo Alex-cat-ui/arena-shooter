@@ -6,7 +6,7 @@ extends RefCounted
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
 
 
-static func apply_damage(enemy: Node, amount: int, source: String) -> void:
+static func apply_damage(enemy: Node, amount: int, source: String, from_player: bool = false) -> void:
 	if enemy == null:
 		return
 	if amount <= 0:
@@ -15,16 +15,16 @@ static func apply_damage(enemy: Node, amount: int, source: String) -> void:
 		return
 
 	var awareness: Variant = enemy.get("_awareness")
-	if awareness and not bool(awareness.hostile_damaged):
+	if from_player and awareness:
+		var is_first_hostile_damage := not bool(awareness.hostile_damaged)
 		awareness.hostile_damaged = true
 		if int(awareness.get_state()) == int(ENEMY_AWARENESS_SYSTEM_SCRIPT.State.COMBAT):
 			awareness.combat_phase = ENEMY_AWARENESS_SYSTEM_SCRIPT.CombatPhase.ENGAGED
-		else:
-			awareness.combat_phase = ENEMY_AWARENESS_SYSTEM_SCRIPT.CombatPhase.NONE
-			if awareness.has_method("_transition_to_combat_from_damage") and enemy.has_method("_apply_awareness_transitions"):
-				var transitions: Array[Dictionary] = awareness._transition_to_combat_from_damage()
-				enemy.call("_apply_awareness_transitions", transitions, "damage")
-		if EventBus and EventBus.has_method("emit_hostile_escalation"):
+			awareness.hostile_contact = true
+		elif awareness.has_method("_transition_to_combat_from_damage") and enemy.has_method("_apply_awareness_transitions"):
+			var transitions: Array[Dictionary] = awareness._transition_to_combat_from_damage()
+			enemy.call("_apply_awareness_transitions", transitions, "damage")
+		if is_first_hostile_damage and EventBus and EventBus.has_method("emit_hostile_escalation"):
 			EventBus.emit_hostile_escalation(int(enemy.get("entity_id")), "damaged")
 
 	var hp_now := int(enemy.get("hp")) - amount
@@ -47,4 +47,4 @@ static func apply_damage(enemy: Node, amount: int, source: String) -> void:
 
 
 static func take_damage_legacy(enemy: Node, amount: int) -> void:
-	apply_damage(enemy, amount, "legacy_take_damage")
+	apply_damage(enemy, amount, "legacy_take_damage", true)

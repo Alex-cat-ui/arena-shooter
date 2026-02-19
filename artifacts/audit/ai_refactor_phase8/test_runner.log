@@ -1,0 +1,2431 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+============================================================
+INTEGRATION TEST: Core + AI + Doors + Alert
+============================================================
+
+--- SECTION 1: Singletons ---
+[PASS] GameConfig singleton exists
+[PASS] RuntimeState singleton exists
+[PASS] StateManager singleton exists
+[PASS] EventBus singleton exists
+
+--- SECTION 2: GameConfig defaults ---
+[PASS] tile_size = 32
+[PASS] player_max_hp = 100
+[PASS] start_delay_sec = 1.5
+[PASS] contact_iframes_sec = 0.7
+[PASS] music_volume = 0.7
+[PASS] sfx_volume = 0.7
+
+--- SECTION 2b: Phase 0 stealth foundation ---
+[PASS] GameConfig.stealth_canon has all 8 Phase 0 keys
+[PASS] EventBus has Phase 0 zone/escalation signals
+
+--- SECTION 3: State transitions ---
+[PASS] Initial state is MAIN_MENU
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[PASS] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+[PASS] LEVEL_SETUP -> PLAYING
+[PASS] RuntimeState.is_level_active after PLAYING
+[StateManager] PLAYING -> PAUSED
+[PASS] PLAYING -> PAUSED
+[PASS] RuntimeState.is_frozen when PAUSED
+[StateManager] PAUSED -> PLAYING
+[PASS] PAUSED -> PLAYING
+[PASS] RuntimeState.is_frozen = false when PLAYING
+[StateManager] PLAYING -> GAME_OVER
+[PASS] PLAYING -> GAME_OVER
+[StateManager] GAME_OVER -> MAIN_MENU
+[PASS] GAME_OVER -> MAIN_MENU
+
+--- SECTION 4: Config validation ---
+[PASS] Valid config passes validation
+[PASS] Invalid tile_size caught
+
+--- SECTION 5: Vector3 utilities (CANON) ---
+[PASS] vec2_to_vec3 conversion
+[PASS] vec3_to_vec2 conversion
+
+--- SECTION 7: Enemy stats (ТЗ v1.13) ---
+[PASS] Zombie HP=100, DMG=10
+[PASS] Fast HP=100, DMG=7
+[PASS] Tank HP=100, DMG=15
+[PASS] Swarm HP=100, DMG=5
+
+--- SECTION 8: Projectile TTL (ТЗ v1.13) ---
+[PASS] Bullet TTL = 2.0s
+[PASS] Rocket TTL = 3.0s
+[PASS] Piercing bullet TTL = 2.0s
+
+--- SECTION 9: Weapon stats (ТЗ v1.13 - from GameConfig) ---
+[PASS] Pistol dmg=10, rpm=180
+[PASS] Weapon list reduced to pistol+shotgun
+[PASS] Shotgun pellets=16, dmg=6
+
+--- SECTION 10: RuntimeState reset ---
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+[StateManager] PLAYING -> GAME_OVER
+[StateManager] GAME_OVER -> MAIN_MENU
+[PASS] RuntimeState reset on MAIN_MENU
+
+--- SECTION 11: State transitions ---
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+[StateManager] PLAYING -> LEVEL_COMPLETE
+[StateManager] LEVEL_COMPLETE -> MAIN_MENU
+[PASS] PLAYING -> LEVEL_COMPLETE valid
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+[StateManager] PLAYING -> LEVEL_COMPLETE
+[StateManager] LEVEL_COMPLETE -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> MAIN_MENU
+[PASS] LEVEL_COMPLETE -> LEVEL_SETUP (Retry)
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+[StateManager] PLAYING -> LEVEL_COMPLETE
+[StateManager] LEVEL_COMPLETE -> MAIN_MENU
+[PASS] LEVEL_COMPLETE -> MAIN_MENU (Exit)
+
+--- SECTION 12: VFX System constants ---
+[PASS] Corpse limit = 200
+
+--- SECTION 13: Footprint System constants ---
+[PASS] Max footprints = 20
+
+--- SECTION 14: EventBus signals ---
+[PASS] blood_spawned signal exists
+[PASS] corpse_spawned signal exists
+[PASS] footprint_spawned signal exists
+
+--- SECTION 15: Visual Polish GameConfig defaults ---
+[PASS] footprints_enabled = true
+[PASS] footprint_step_distance_px = 40.0
+[PASS] footprint_lifetime_sec = 20.0
+[PASS] footprint_max_count = 4000
+[PASS] shadow_player_alpha = 0.25
+[PASS] hit_flash_duration = 0.06
+[PASS] kill_pop_scale = 1.2
+[PASS] blood_max_decals = 500
+[PASS] vignette_alpha = 0.3
+[PASS] debug_overlay_visible = false
+
+--- SECTION 16: Visual Polish system classes ---
+[PASS] ShadowSystem class exists
+[PASS] CombatFeedbackSystem class exists
+[PASS] AtmosphereSystem class exists
+
+--- SECTION 17: Visual Polish reset_to_defaults ---
+[PASS] Visual polish values survive reset_to_defaults
+
+--- SECTION 18: AI/Door/Alert suites ---
+[PASS] Awareness test scene exists
+[PASS] Confirm hostility test scene exists
+[PASS] Aggro coordinator test scene exists
+[PASS] Noise alert flow test scene exists
+[PASS] Door controller test scene exists
+[PASS] Door interaction flow test scene exists
+[PASS] Door selection metric test scene exists
+[PASS] Enemy alert marker test scene exists
+[PASS] Enemy alert system test scene exists
+[PASS] Enemy squad system test scene exists
+[PASS] Enemy utility brain test scene exists
+[PASS] Enemy behavior integration test scene exists
+[PASS] Enemy runtime budget scheduler test scene exists
+[PASS] Config validator AI balance test scene exists
+[PASS] GameConfig reset consistency (non-layout) test scene exists
+[PASS] Enemy suspicion test scene exists
+[PASS] Flashlight cone test scene exists
+[PASS] Alert flashlight detection test scene exists
+[PASS] Stealth room smoke test scene exists
+[PASS] Force state path test scene exists
+[PASS] Weapons toggle gate test scene exists
+[PASS] Player scene identity test scene exists
+[PASS] Combat obstacle chase basic test scene exists
+[PASS] DebugUI single owner test scene exists
+[PASS] Stealth weapon pipeline equivalence test scene exists
+[PASS] Stealth room alert flashlight integration test scene exists
+[PASS] Ring visibility policy test scene exists
+[PASS] Shadow zone test scene exists
+[PASS] Marker semantics mapping test scene exists
+[PASS] Ring visible during decay test scene exists
+[PASS] Weapons startup policy ON test scene exists
+[PASS] DebugUI layout no overlap test scene exists
+[PASS] EventBus backpressure test scene exists
+[PASS] 3zone combat transition stress test scene exists
+[PASS] AI long-run stress test scene exists
+
+============================================================
+CONFIG VALIDATOR AI BALANCE TEST
+============================================================
+[PASS] Empty ai_balance is validation error
+[PASS] Missing ai_balance section is validation error
+[PASS] Invalid ai_balance key type is rejected
+[PASS] Invalid ai_balance range is rejected
+[PASS] enemy_stats missing required key is rejected
+[PASS] projectile_ttl invalid value is rejected
+[PASS] Clamp keeps combat schema untouched
+
+============================================================
+CONFIG VALIDATOR AI BALANCE RESULTS: 7/7 passed
+============================================================
+[PASS] Config validator AI balance suite (7/7)
+
+============================================================
+GAME CONFIG RESET CONSISTENCY (NON-LAYOUT) TEST
+============================================================
+[PASS] reset restores all non-layout scalar defaults
+[PASS] reset restores all non-layout dictionary defaults
+[PASS] get_snapshot includes all non-layout scalar keys
+
+============================================================
+GAME CONFIG RESET CONSISTENCY (NON-LAYOUT) RESULTS: 3/3 passed
+============================================================
+[PASS] GameConfig reset consistency (non-layout) suite (3/3)
+
+============================================================
+ENEMY AWARENESS SYSTEM TEST
+============================================================
+[PASS] without continuous 5s confirm COMBAT does not trigger
+[PASS] continuous confirm reaches COMBAT in 5.0±0.2s
+[PASS] LOS enters COMBAT after confirm contract
+[PASS] COMBAT degrades to ALERT after no-contact timer
+[PASS] deterministic confirm trace across repeated runs
+
+============================================================
+ENEMY AWARENESS RESULTS: 5/5 passed
+============================================================
+[PASS] Enemy awareness suite (5/5)
+
+============================================================
+CONFIRM HOSTILITY TEST
+============================================================
+[PASS] confirm_accumulates_with_visual_no_shadow
+[PASS] confirm_zero_in_shadow
+[PASS] flashlight_detects_in_shadow
+[PASS] confirm_decays_after_grace
+[PASS] confirm_no_decay_during_grace
+[PASS] damage_sets_hostile_damaged
+[PASS] hostile_damaged_persists_until_reset
+[PASS] combat_phase_engaged_on_contact
+[PASS] combat_phase_hostile_search_on_los_loss
+[PASS] snapshot_returns_all_fields
+
+============================================================
+CONFIRM HOSTILITY RESULTS: 10/10 passed
+============================================================
+[PASS] Confirm hostility suite (10/10)
+
+============================================================
+ENEMY AGGRO COORDINATOR TEST
+============================================================
+[PASS] teammate call accepted by calm target
+[PASS] accepted teammate call reported to ZoneDirector
+[PASS] reinforcement blocked in CALM zone by ZoneDirector
+[PASS] ZoneDirector validation was called
+[PASS] reinforcement allowed in ELEVATED zone with source ALERT
+[PASS] ZoneDirector validation called once for allowed call
+
+============================================================
+ENEMY AGGRO COORDINATOR RESULTS: 6/6 passed
+============================================================
+[PASS] Enemy aggro coordinator suite (6/6)
+
+============================================================
+ENEMY NOISE ALERT FLOW TEST
+============================================================
+[PASS] Shot noise alerts same room enemy
+[PASS] Shot noise alerts adjacent room enemy
+[PASS] Shot noise does not alert non-adjacent room enemy
+[PASS] CALM->ALERT noise does not call reinforcement (entry-gated)
+[PASS] LOS after noise enters COMBAT
+[PASS] LOS->COMBAT does not add reinforcement fanout
+
+============================================================
+ENEMY NOISE ALERT FLOW RESULTS: 6/6 passed
+============================================================
+[PASS] Enemy noise alert flow suite (6/6)
+
+============================================================
+DOOR CONTROLLER FULL TEST (UPDATED)
+============================================================
+[PASS] Closed door does not open from player/enemy body contact
+[PASS] Shots do not change closed door angle
+[PASS] Command kick opens door
+[PASS] Blocker is detected inside doorway sensor
+[PASS] Safe-close activates anti-pinch when blocker is in doorway
+[PASS] Safe-close allows temporary reopen while blocked
+[PASS] Door does not fully close while blocker remains in doorway
+  safe_close_final: angle=0.000 av=0.000 close_intent=false auto_closed=true
+[PASS] Door auto-finishes closing after blocker leaves
+[PASS] close_intent resets after successful close
+[PASS] Door does not push stationary blocker body
+
+============================================================
+DOOR CONTROLLER FULL RESULTS: 10/10 passed
+============================================================
+[PASS] Door controller full suite (10/10)
+
+============================================================
+DOOR INTERACTION FLOW TEST
+============================================================
+[PASS] precondition: interact point uses opening (outside 20px hinge)
+[PASS] find_nearest_door returns reachable door
+[PASS] door_interact opens closed door
+[PASS] door_interact toggles opened door to close
+[PASS] precondition: kick point uses opening (outside 40px hinge)
+[PASS] door_kick force-opens door
+[PASS] find_nearest_door returns null outside radius
+[PASS] door_interact does nothing outside 20px
+[PASS] door_kick does nothing outside 40px
+[PASS] Out-of-range commands keep door closed
+
+============================================================
+DOOR INTERACTION FLOW RESULTS: 10/10 passed
+============================================================
+[PASS] Door interaction flow suite (10/10)
+
+============================================================
+LAYOUT DOOR SELECTION METRIC TEST
+============================================================
+[PASS] precondition: opening point is outside hinge radius 20px
+[PASS] radius gate uses opening distance (20px interact)
+[PASS] precondition: hinge metric would choose door B
+[PASS] precondition: opening metric should choose door A
+[PASS] nearest door is selected by opening metric
+
+============================================================
+LAYOUT DOOR SELECTION METRIC RESULTS: 5/5 passed
+============================================================
+[PASS] Door selection metric suite (5/5)
+
+============================================================
+ENEMY ALERT MARKER TEST
+============================================================
+[PASS] enemy_q_suspicious.png exists
+[PASS] enemy_excl_alert.png exists
+[PASS] enemy_excl_combat.png exists
+[PASS] enemy_q_suspicious.png is 16x16
+[PASS] enemy_excl_alert.png is 16x16
+[PASS] enemy_excl_combat.png is 16x16
+[PASS] Enemy scene loads
+[PASS] Enemy scene instantiates
+[PASS] AlertMarker exists
+[PASS] AlertMarker default hidden
+[PASS] AlertMarker position is (0, -26)
+[PASS] AlertMarker filter is nearest
+[PASS] AlertMarker z-index above enemy sprite
+
+============================================================
+ENEMY ALERT MARKER RESULTS: 13/13 passed
+============================================================
+[PASS] Enemy alert marker suite (13/13)
+
+============================================================
+ENEMY ALERT SYSTEM TEST
+============================================================
+[PASS] player_shot: source room -> ALERT
+[PASS] player_shot: neighbor room -> SUSPICIOUS
+[PASS] player_shot: non-neighbor remains CALM
+[PASS] spotted: source room -> ALERT (no immediate COMBAT)
+[PASS] spotted: neighbors stay unchanged before reinforcement
+[PASS] enemy_killed: room -> SUSPICIOUS
+[PASS] Decay setup starts in ALERT transient
+[PASS] ALERT decays to SUSPICIOUS
+[PASS] SUSPICIOUS decays to CALM
+[PASS] latch nonempty: room effective is COMBAT
+[PASS] latch nonempty: effective cannot become CALM
+[PASS] unlatch setup: room enters COMBAT
+[PASS] latch empty + no alive -> immediate CALM
+[PASS] neighbors of combat room are not auto-COMBAT
+[PASS] Non-calm state exists before reset
+[PASS] reset_all clears state
+
+============================================================
+ENEMY ALERT SYSTEM RESULTS: 16/16 passed
+============================================================
+[PASS] Enemy alert system suite (16/16)
+
+============================================================
+ENEMY SQUAD SYSTEM TEST
+============================================================
+[PASS] Slot reservation has no duplicates
+[PASS] Most enemies receive slot assignments
+[PASS] Role assignment is stable per enemy_id
+[PASS] Path-aware assignment keeps reachable slots
+[PASS] Fallback keeps assignment even when some slots unreachable
+
+============================================================
+ENEMY SQUAD SYSTEM RESULTS: 5/5 passed
+============================================================
+[PASS] Enemy squad system suite (5/5)
+
+============================================================
+ENEMY UTILITY BRAIN TEST
+============================================================
+[PASS] Far combat LOS chooses PUSH
+[PASS] Low HP close LOS chooses RETREAT
+[PASS] Recent no-LOS alert chooses INVESTIGATE
+[PASS] Old no-LOS suspicious chooses PATROL
+[PASS] Flank role with slot chooses MOVE_TO_SLOT
+[PASS] Decision hold prevents immediate flip
+[PASS] Intent can switch after hold window
+
+============================================================
+ENEMY UTILITY BRAIN RESULTS: 7/7 passed
+============================================================
+[PASS] Enemy utility brain suite (7/7)
+
+============================================================
+ENEMY BEHAVIOR INTEGRATION TEST
+============================================================
+[PASS] Enemy scene available
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] Room alert level drives enemy to COMBAT marker state
+[PASS] AlertMarker visible in combat
+[PASS] Squad assignment exists
+[PASS] Runtime budget enemy quota respected
+[PASS] Runtime budget squad quota respected
+[PASS] Utility intent is active (not PATROL in combat)
+[PASS] PUSH intent advances enemy when selected
+
+============================================================
+ENEMY BEHAVIOR INTEGRATION RESULTS: 8/8 passed
+============================================================
+[PASS] Enemy behavior integration suite (8/8)
+
+============================================================
+ENEMY RUNTIME BUDGET SCHEDULER TEST
+============================================================
+[PASS] Runtime budget caps per-frame quotas
+[PASS] Round-robin visits all enemies over multiple frames
+[PASS] Squad system switched to runtime budget mode
+[PASS] Nav tasks run through runtime budget quota
+[PASS] Late-joined enemies are auto-enrolled in runtime budget mode
+
+============================================================
+ENEMY RUNTIME BUDGET SCHEDULER RESULTS: 5/5 passed
+============================================================
+[PASS] Enemy runtime budget scheduler suite (5/5)
+
+============================================================
+ENEMY SUSPICION TEST
+============================================================
+[PASS] confirm path: first LOS tick does not instantly enter COMBAT
+[PASS] suspicion mode: no instant COMBAT on first LOS tick
+[PASS] suspicion mode: suspicion increases on LOS
+[PASS] suspicion threshold eventually enters COMBAT
+[PASS] COMBAT in suspicion mode sets confirmed visual
+[PASS] micro LOS loss uses reduced decay
+[PASS] noise sets ALERT (not COMBAT)
+[PASS] noise does not set confirmed visual
+[PASS] noise does not max suspicion
+[PASS] flashlight has no effect without LOS
+[PASS] flashlight boosts suspicion only with LOS
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] enemy exposes required debug detection snapshot fields
+[PASS] snapshot state is valid enum
+[PASS] snapshot suspicion is clamped
+
+============================================================
+ENEMY SUSPICION RESULTS: 14/14 passed
+============================================================
+[PASS] Enemy suspicion suite (14/14)
+
+============================================================
+FLASHLIGHT CONE TEST
+============================================================
+[PASS] point on center ray is in cone
+[PASS] point outside distance is out of cone
+[PASS] point outside cone angle is out of cone
+[PASS] point inside angle and distance is in cone
+[PASS] flashlight hit requires active state
+[PASS] flashlight hit requires LOS
+[PASS] flashlight hit true when active + LOS + in cone
+
+============================================================
+FLASHLIGHT CONE RESULTS: 7/7 passed
+============================================================
+[PASS] Flashlight cone suite (7/7)
+
+============================================================
+ALERT FLASHLIGHT DETECTION TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] test_flashlight_effect_visible: in_cone hit is true
+[PASS] test_flashlight_effect_visible: out_cone hit is false
+[PASS] test_flashlight_effect_visible: in_cone post-clamp visibility is higher
+[PASS] test_flashlight_effect_visible: in_cone suspicion gain is higher
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] test_flashlight_clamp_prevents_jump: pre-clamp can exceed 1.0
+[PASS] test_flashlight_clamp_prevents_jump: post-clamp is capped to 1.0
+[PASS] test_flashlight_clamp_prevents_jump: post-clamp stays non-negative
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] ALERT enables flashlight
+[PASS] player in front remains in LOS
+[PASS] player off-angle is blocked by confirm channel
+[PASS] cone geometry includes front player
+[PASS] cone geometry excludes off-angle player
+[PASS] player in cone produces flashlight hit
+[PASS] player outside cone does not produce flashlight hit
+[PASS] out-of-cone reason is cone_miss
+[PASS] flashlight hit grows suspicion faster than shadow-only
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] occluded LOS reports false
+[PASS] flashlight hit stays false when LOS is blocked
+[PASS] LOS-blocked reason is exposed
+[PASS] suspicion does not grow when LOS is blocked
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] profile-off keeps flashlight inactive
+[PASS] profile-off reason is exposed
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] CALM blocks flashlight activity
+[PASS] state-blocked reason is exposed
+
+============================================================
+ALERT FLASHLIGHT DETECTION RESULTS: 24/24 passed
+============================================================
+[PASS] Alert flashlight detection suite (24/24)
+
+============================================================
+STEALTH TEST ROOM SMOKE
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] stealth room has controller node
+[PASS] stealth room has player
+[PASS] stealth room has enemy
+[PASS] stealth room enemy has suspicion ring
+[PASS] stealth room ring starts at zero
+[PASS] stealth room has debug label
+[PASS] stealth overlay exposes required telemetry fields
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] controller available in autoload reuse case
+[PASS] room nav reuses root singleton
+[PASS] alert reuses root singleton
+[PASS] squad reuses root singleton
+[PASS] aggro reuses root singleton
+[PASS] no local NavigationService duplicate
+[PASS] no local EnemyAlertSystem duplicate
+[PASS] no local EnemySquadSystem duplicate
+[PASS] no local EnemyAggroCoordinator duplicate
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+
+============================================================
+STEALTH TEST ROOM SMOKE RESULTS: 16/16 passed
+============================================================
+[PASS] Stealth room smoke suite (16/16)
+
+============================================================
+FORCE STATE PATH TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] force path: controller exists
+[PASS] force path: enemy exists
+[PASS] force path: alert system exists
+[PASS] force path: hotkey switched enemy awareness to COMBAT
+[PASS] force path: room alert >= ALERT same tick
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.009 dist=36.0 last_seen_age=inf facing_delta=0.000
+
+============================================================
+FORCE STATE PATH RESULTS: 5/5 passed
+============================================================
+[PASS] Force state path suite (5/5)
+
+============================================================
+WEAPONS TOGGLE GATE TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] weapons gate: controller exists
+[PASS] weapons gate: player exists
+[PASS] weapons gate: enemy exists
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=6 los=true susp=1.000 vis=0.567 dist=260.0 last_seen_age=0.00 facing_delta=0.000
+[PASS] weapons gate removed: enemy reaches COMBAT without toggle
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] weapons same-tick: controller exists
+[PASS] weapons same-tick: enemy exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+[PASS] weapons same-tick: snapshot has no weapons_enabled field
+[PASS] weapons same-tick: enemy toggle API removed
+
+============================================================
+WEAPONS TOGGLE GATE RESULTS: 8/8 passed
+============================================================
+[PASS] Weapons toggle gate suite (8/8)
+
+============================================================
+PLAYER SCENE IDENTITY TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] player identity: stealth room has player node
+[PASS] player identity: instance is ProductionPlayerClass
+[PASS] player identity: sprite node exists
+[PASS] player identity: placeholder visual removed
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+
+============================================================
+PLAYER SCENE IDENTITY RESULTS: 4/4 passed
+============================================================
+[PASS] Player scene identity suite (4/4)
+
+============================================================
+COMBAT OBSTACLE CHASE BASIC TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] obstacle chase: controller exists
+[PASS] obstacle chase: player exists
+[PASS] obstacle chase: enemy exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.000 dist=inf last_seen_age=inf facing_delta=0.000
+[PASS] obstacle chase: navmesh path is ready
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=0 los=false susp=1.000 vis=0.000 dist=36.0 last_seen_age=inf facing_delta=2.565
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.000 dist=36.0 last_seen_age=inf facing_delta=2.857
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.835 vis=0.000 dist=61.0 last_seen_age=inf facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.028 vis=0.000 dist=48.3 last_seen_age=inf facing_delta=2.307
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=62.0 last_seen_age=inf facing_delta=2.252
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=69.1 last_seen_age=inf facing_delta=2.230
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=69.3 last_seen_age=inf facing_delta=2.357
+[PASS] obstacle chase: obstacle initially blocks direct ray
+[PASS] obstacle chase: COMBAT chase reduces distance to player
+[PASS] obstacle chase: enemy is not stationary
+[PASS] obstacle chase: l1 detour removed - navmesh handles avoidance
+[PASS] obstacle chase: honest repath has no teleport spikes
+
+============================================================
+COMBAT OBSTACLE CHASE BASIC RESULTS: 9/9 passed
+============================================================
+[PASS] Combat obstacle chase basic suite (9/9)
+
+============================================================
+DEBUG UI SINGLE OWNER TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] debugui: count_nodes(DebugUI) == 1
+[PASS] debugui: single stats label exists
+[PASS] debugui: single hint label exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+
+============================================================
+DEBUG UI SINGLE OWNER RESULTS: 3/3 passed
+============================================================
+[PASS] DebugUI single owner suite (3/3)
+
+============================================================
+STEALTH WEAPON PIPELINE EQUIVALENCE TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] pipeline eq: controller exists
+[PASS] pipeline eq: player exists
+[PASS] pipeline eq: enemy exists
+[PASS] pipeline eq: combat system exists
+[PASS] pipeline eq: projectile system exists
+[PASS] pipeline eq: ability system exists
+[PASS] pipeline eq: player projectile is wired
+[PASS] pipeline eq: player ability is wired
+[PASS] pipeline eq: ability->projectile wiring exists
+[PASS] pipeline eq: ability->combat wiring exists
+[PASS] pipeline eq: room has canonical system node names
+[PASS] pipeline eq: combat system player target is current player
+[PASS] pipeline eq: ability wiring matches LevelMVP contract
+[PASS] pipeline eq: enemy weapons toggle API removed
+[PASS] pipeline eq: enemy type matches production spawner default
+[PASS] pipeline eq: enemy shotgun loadout comes from production stats
+[PASS] pipeline eq: player loadout starts at production default weapon
+[PASS] pipeline eq: player weapon list reduced to pistol+shotgun
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+
+============================================================
+STEALTH WEAPON PIPELINE EQUIVALENCE RESULTS: 18/18 passed
+============================================================
+[PASS] Stealth weapon pipeline equivalence suite (18/18)
+
+============================================================
+STEALTH ROOM ALERT FLASHLIGHT INTEGRATION TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] stealth room integration: controller exists
+[PASS] stealth room integration: player exists
+[PASS] stealth room integration: enemy exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.003 vis=0.000 dist=inf last_seen_age=inf facing_delta=0.000
+[EnemyStealthTrace] id=9300 state=ALERT room_alert=CALM intent=4 los=true susp=0.100 vis=0.000 dist=40.0 last_seen_age=0.00 facing_delta=0.000
+[PASS] scene ALERT flashlight is active
+[PASS] scene ALERT flashlight reports in-cone
+[PASS] scene ALERT flashlight hits player in cone
+[PASS] scene ALERT flashlight path keeps LOS
+[PASS] scene ALERT flashlight path grows suspicion
+[PASS] scene ALERT flashlight debug exposes facing used for calculation
+[PASS] scene ALERT flashlight post-clamp visibility is in bounds
+[PASS] scene shadow zone uses configured multiplier
+[PASS] scene COMBAT same tick room alert escalates
+[PASS] scene COMBAT snapshot has no COMBAT|CALM mismatch
+[PASS] scene COMBAT keeps enemy latched
+[PASS] scene COMBAT keeps flashlight active
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.523 dist=36.0 last_seen_age=0.20 facing_delta=0.000
+[PASS] scene COMBAT remains flashlight-active out of cone
+[PASS] scene COMBAT out-of-cone reason is exposed
+
+============================================================
+STEALTH ROOM ALERT FLASHLIGHT INTEGRATION RESULTS: 17/17 passed
+============================================================
+[PASS] Stealth room alert flashlight integration suite (17/17)
+
+============================================================
+RING VISIBILITY POLICY TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] ring policy: presenter exists
+[PASS] CALM + progress > 0 => ring visible
+[PASS] SUSPICIOUS + progress > 0 => ring hidden
+[PASS] ALERT + progress > 0 => ring hidden
+[PASS] COMBAT => ring hidden
+[PASS] CALM + progress == 0 => ring hidden
+[PASS] disabled + progress > 0 => ring hidden
+
+============================================================
+RING VISIBILITY POLICY RESULTS: 7/7 passed
+============================================================
+[PASS] Ring visibility policy suite (7/7)
+
+============================================================
+SHADOW ZONE TEST
+============================================================
+[PASS] player entering shadow zone updates RuntimeState multiplier
+[PASS] player exiting shadow zone restores RuntimeState multiplier
+[PASS] player already in shadow on spawn applies visibility multiplier
+[PASS] RuntimeState.reset restores player visibility multiplier
+[PASS] shadow walk rule blocks movement in shadow without flashlight
+[PASS] shadow walk rule allows movement in shadow with flashlight
+[PASS] shadow walk rule allows movement outside shadow
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] calm shadow blocks spotted event emission
+[PASS] calm shadow blocks behavior LOS
+[PASS] calm shadow without valid contact does not escalate to COMBAT
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] confirmed contact emits bounded spotted events
+[PASS] confirmed contact reaches COMBAT
+
+============================================================
+SHADOW ZONE RESULTS: 12/12 passed
+============================================================
+[PASS] Shadow zone suite (12/12)
+
+============================================================
+MARKER SEMANTICS MAPPING TEST
+============================================================
+[PASS] SUSPICIOUS -> question mark texture (enemy_q_suspicious)
+[PASS] SUSPICIOUS texture path contains 'enemy_q_'
+[PASS] ALERT -> exclamation texture (enemy_excl_alert)
+[PASS] ALERT texture path contains 'enemy_excl_'
+[PASS] COMBAT -> exclamation texture (enemy_excl_combat)
+[PASS] COMBAT texture path contains 'enemy_excl_'
+[PASS] Marker visible at SUSPICIOUS
+[PASS] Marker hidden at CALM
+[PASS] Marker texture null at CALM
+[PASS] ? visible at SUSPICIOUS
+[PASS] ! visible at ALERT after ?
+[PASS] ? visible at SUSPICIOUS (pre-combat)
+[PASS] ! visible at COMBAT after ?
+[PASS] Missing ALERT texture -> marker hidden (fail-safe)
+
+============================================================
+MARKER SEMANTICS MAPPING RESULTS: 14/14 passed
+============================================================
+[PASS] Marker semantics mapping suite (14/14)
+
+============================================================
+RING VISIBLE DURING DECAY TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] decay: ring node exists
+[PASS] decay: visible at peak (1.0)
+[PASS] decay: visible at progress 0.800
+[PASS] decay: visible at progress 0.500
+[PASS] decay: visible at progress 0.200
+[PASS] decay: visible at progress 0.050
+[PASS] decay: visible at progress 0.001
+[PASS] decay: hidden at progress 0.0
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] combat-decay: visible in CALM
+[PASS] combat-decay: hidden in SUSPICIOUS with progress 0.7
+[PASS] combat-decay: hidden in ALERT with progress 0.7
+[PASS] combat-decay: hidden in COMBAT with progress 0.7
+[PASS] combat-decay: visible again after returning to CALM
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] growth: hidden at progress 0
+[PASS] growth: visible at progress 0.01
+[PASS] growth: visible at progress 0.10
+[PASS] growth: visible at progress 0.30
+[PASS] growth: visible at progress 0.60
+[PASS] growth: visible at progress 1.00
+
+============================================================
+RING VISIBLE DURING DECAY RESULTS: 19/19 passed
+============================================================
+[PASS] Ring visible during decay suite (19/19)
+
+============================================================
+WEAPONS STARTUP POLICY ON TEST
+============================================================
+[PASS] config: enemy_weapons_enabled_on_start removed
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] startup: controller exists
+[PASS] startup: combat system exists in pipeline
+[PASS] startup: ability system exists in pipeline
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] snapshot: enemy exists
+[PASS] snapshot: weapons_enabled field removed
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] single-source: enemy has no weapons toggle method
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+
+============================================================
+WEAPONS STARTUP POLICY ON RESULTS: 7/7 passed
+============================================================
+[PASS] Weapons startup policy ON suite (7/7)
+
+============================================================
+DEBUG UI LAYOUT NO OVERLAP TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] layout: DebugLabel exists
+[PASS] layout: HintLabel exists
+[PASS] layout: HintLabel.top >= DebugLabel.bottom (no overlap)
+[PASS] layout: gap between labels >= 4px
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] width: DebugLabel width >= 800px
+[PASS] width: HintLabel width >= 800px
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.009 dist=inf last_seen_age=inf facing_delta=0.000
+
+============================================================
+DEBUG UI LAYOUT NO OVERLAP RESULTS: 6/6 passed
+============================================================
+[PASS] DebugUI layout no overlap suite (6/6)
+
+============================================================
+EVENT BUS BACKPRESSURE TEST
+============================================================
+[PASS] event bus singleton exists
+[PASS] event bus exposes queue debug API for tests
+WARNING: [EventBus] Backpressure activated: queue=900, secondary signals will be dropped
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _process (res://src/systems/event_bus.gd:305)
+[PASS] event bus dispatches first burst chunk only
+[PASS] event bus keeps overflow queued for later frames
+[PASS] event bus drains overflow across subsequent frames
+
+============================================================
+EVENT BUS BACKPRESSURE RESULTS: 5/5 passed
+============================================================
+[PASS] EventBus backpressure suite (5/5)
+
+============================================================
+3-ZONE COMBAT TRANSITION STRESS TEST
+============================================================
+[PASS] stress: ALERT->COMBAT transition loop has no freeze in 200 iterations
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] stress: 3zone level controller exists
+[PASS] stress: player exists
+[PASS] stress: all 5 enemies exist
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 3 -> 2)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 2 -> 1)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 1 -> 0)
+[CombatSystem] Player died!
+[StateManager] PLAYING -> GAME_OVER
+[GameOver] Ready
+[PASS] stress: enemies still fire after mass COMBAT transition
+[PASS] stress: transition reaches GAME_OVER without stall
+[PASS] stress: GAME_OVER reached within frame budget
+[PASS] stress: EventBus pending queue remains below hard cap
+[PASS] stress: EventBus queue drains after GAME_OVER
+
+============================================================
+3-ZONE COMBAT TRANSITION STRESS RESULTS: 9/9 passed
+============================================================
+[PASS] 3zone combat transition stress suite (9/9)
+
+============================================================
+AI LONG-RUN STRESS TEST (timebox: 10s)
+============================================================
+[LongRun] Elapsed: 10.00s | Frames: 43393 | Transitions: 1288
+[LongRun] Max EventBus queue: 0 (KPI: <2048)
+[LongRun] Watchdog: avg_tick_ms=0.090 | replans/sec=1.72 | transitions/last_tick=0
+[PASS] long-run: ran for full timebox without freeze (43393 frames in 10.0s)
+[PASS] long-run: EventBus queue never exceeded KPI cap (0 < 2048)
+[PASS] long-run: awareness systems cycled through states (1288 transitions)
+[PASS] backpressure recovery: queue drains and backpressure deactivates after flood
+
+============================================================
+AI LONG-RUN STRESS RESULTS: 4/4 passed
+============================================================
+[PASS] AI long-run stress suite (4/4)
+
+--- SECTION 18b: Stealth phases 1-7 suites ---
+[PASS] Stealth room combat fire test scene exists
+[PASS] Stealth room LKP search test scene exists
+[PASS] Combat room alert sync test scene exists
+[PASS] AI transition single owner test scene exists
+[PASS] AI no duplicate state change per tick test scene exists
+[PASS] 3zone player weapon switch test scene exists
+[PASS] 3zone player shotgun fire pipeline test scene exists
+[PASS] 3zone each enemy spawn fires shotgun test scene exists
+[PASS] Enemy shotgun fire block reasons test scene exists
+[PASS] Alert->Combat requires 5s confirm test scene exists
+[PASS] Peek corner confirm threshold test scene exists
+[PASS] No combat latch before confirm complete test scene exists
+[PASS] Last seen only in suspicious/alert test scene exists
+[PASS] Teammate call dedup/cooldown test scene exists
+[PASS] Alert call only on state entry test scene exists
+[PASS] Alert degrade hold/grace/decay test scene exists
+[PASS] Suspicion channels vs confirm channel test scene exists
+[PASS] Teammate call room-graph gate test scene exists
+[PASS] Combat role lock/reassign triggers test scene exists
+[PASS] Combat search per-room budget/total cap test scene exists
+[PASS] Combat next-room scoring test scene exists
+[PASS] Combat->Alert search/no-contact gate test scene exists
+[PASS] First-shot-delay on first valid firing solution test scene exists
+[PASS] First-shot timer starts on first valid contact test scene exists
+[PASS] First-shot timer pause/reset 2.5s test scene exists
+[PASS] Telegraph profile production/debug test scene exists
+[PASS] Enemy damage exactly 1hp per successful shot test scene exists
+[PASS] Combat damage escalation pipeline test scene exists
+[PASS] Enemy damage API single source test scene exists
+[PASS] Enemy fire cooldown min guard test scene exists
+[PASS] Enemy fire decision contract test scene exists
+[PASS] Enemy fire trace cache runtime test scene exists
+[PASS] Friendly block prevents fire and triggers reposition test scene exists
+[PASS] Shadow flashlight rule blocks/allows fire test scene exists
+[PASS] Shadow single source of truth nav+detection test scene exists
+[PASS] Shadow policy hard block without grant test scene exists
+[PASS] Shadow enemy stuck when inside shadow test scene exists
+[PASS] Shadow enemy unstuck after flashlight activation test scene exists
+[PASS] Shadow stall escapes to light test scene exists
+[PASS] Door enemy oblique open then cross no wall stall test scene exists
+[PASS] Stall definition reproducible thresholds test scene exists
+[PASS] Pursuit intent-only runtime test scene exists
+[PASS] Pursuit stall/fallback invariants test scene exists
+[PASS] Pursuit origin target not sentinel test scene exists
+[PASS] Navigation runtime queries test scene exists
+[PASS] Navigation shadow policy runtime test scene exists
+[PASS] Nearest reachable fallback by nav distance test scene exists
+[PASS] ZoneDirector single-owner transitions test scene exists
+[PASS] Zone hysteresis hold/no-event decay test scene exists
+[PASS] Zone state machine contract test scene exists
+[PASS] Zone reinforcement budget contract test scene exists
+[PASS] Zone profile exact values test scene exists
+[PASS] Confirm 5s invariant across zone profiles test scene exists
+[PASS] Wave call permission matrix/cooldowns test scene exists
+[PASS] Combat no degrade test scene exists
+[PASS] Combat utility intent aggressive test scene exists
+[PASS] Main menu stealth entry test scene exists
+[PASS] Enemy latch register/unregister test scene exists
+[PASS] Enemy latch migration test scene exists
+[PASS] Combat uses last seen test scene exists
+[PASS] Last seen grace window test scene exists
+[PASS] Combat no LOS never hold range test scene exists
+[PASS] Combat intent push to search test scene exists
+[PASS] Detour side flip on stall test scene exists
+[PASS] Honest repath without teleport test scene exists
+[PASS] Flashlight active in combat test scene exists
+[PASS] Flashlight bonus in combat test scene exists
+
+============================================================
+STEALTH ROOM COMBAT FIRE TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] stealth fire: controller exists
+[PASS] stealth fire: player exists
+[PASS] stealth fire: enemy exists
+[PASS] stealth fire: player ability system wired
+[PASS] stealth fire: player projectile system wired
+[PASS] stealth fire: combat system exists
+[PASS] stealth fire: ability wired to combat
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.167 dist=inf last_seen_age=inf facing_delta=0.000
+[PASS] stealth fire: fallback profile is disabled before firing
+[PASS] stealth fire: first-attack delay is not armed before first valid firing solution
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=0 los=true susp=1.000 vis=0.167 dist=500.0 last_seen_age=0.00 facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=4 los=true susp=1.000 vis=0.167 dist=500.0 last_seen_age=0.00 facing_delta=0.000
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 100 -> 99)
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=true susp=1.000 vis=0.167 dist=500.0 last_seen_age=0.00 facing_delta=1.571
+[PASS] stealth fire: enemy fires at least once in COMBAT
+[PASS] stealth fire: production weapon event is shotgun
+[PASS] stealth fire: combat system applies enemy shot damage to player
+[PASS] stealth fire: enemy can fire without fallback profile
+[PASS] stealth fire: first combat shot honors first-shot timer + telegraph window
+[PASS] stealth fire: each enemy damage tick is exactly 1 hp
+
+============================================================
+STEALTH ROOM COMBAT FIRE RESULTS: 15/15 passed
+============================================================
+[PASS] Stealth room combat fire suite (15/15)
+
+============================================================
+STEALTH ROOM LKP SEARCH TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] lkp search: player exists
+[PASS] lkp search: enemy exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=1 los=false susp=0.000 vis=0.000 dist=120.0 last_seen_age=0.30 facing_delta=0.000
+[PASS] lkp search: no LOS with recent last_seen chooses INVESTIGATE
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=1 los=false susp=0.000 vis=0.000 dist=0.0 last_seen_age=0.50 facing_delta=0.416
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=2 los=false susp=0.000 vis=0.000 dist=0.0 last_seen_age=0.70 facing_delta=0.416
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=2 los=false susp=0.000 vis=0.000 dist=0.0 last_seen_age=0.90 facing_delta=0.737
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=2 los=false susp=0.000 vis=0.000 dist=0.0 last_seen_age=1.10 facing_delta=0.892
+[PASS] lkp search: arriving at last_seen switches to SEARCH
+
+============================================================
+STEALTH ROOM LKP SEARCH RESULTS: 4/4 passed
+============================================================
+[PASS] Stealth room LKP search suite (4/4)
+
+============================================================
+COMBAT ROOM ALERT SYNC TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] combat sync: controller exists
+[PASS] combat sync: enemy exists
+[PASS] combat sync: alert system exists
+[PASS] combat sync: enemy awareness switched to COMBAT
+[PASS] combat sync: room effective is COMBAT same tick
+[PASS] combat sync: room transient >= ALERT same tick
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.009 dist=36.0 last_seen_age=inf facing_delta=0.000
+[PASS] combat sync: snapshot has no COMBAT|CALM effective mismatch
+[PASS] combat sync: snapshot reports transient/effective/latch fields
+[PASS] combat sync: snapshot includes transition diagnostics
+[PASS] combat sync: forced combat transition is not blocked
+[PASS] combat sync: snapshot marks enemy as latched in COMBAT
+
+============================================================
+COMBAT ROOM ALERT SYNC RESULTS: 11/11 passed
+============================================================
+[PASS] Combat room alert sync suite (11/11)
+
+============================================================
+AI TRANSITION SINGLE OWNER TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] single-owner: controller exists
+[PASS] single-owner: enemy exists
+[PASS] single-owner: alert system exists
+[PASS] single-owner: enemy_player_spotted updates room owner
+[PASS] single-owner: spotted does not force enemy awareness transition
+
+============================================================
+AI TRANSITION SINGLE OWNER RESULTS: 5/5 passed
+============================================================
+[PASS] AI transition single owner suite (5/5)
+
+============================================================
+AI NO DUPLICATE STATE CHANGE PER TICK TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] no-duplicate: enemy exists
+[PASS] no-duplicate: 0 duplicate transitions per tick across 1000 ticks
+[PASS] no-duplicate: 0 ALERT<->COMBAT cycles in one tick
+[PASS] no-duplicate: snapshot exposes transition diagnostics fields
+
+============================================================
+AI NO DUPLICATE STATE CHANGE PER TICK RESULTS: 4/4 passed
+============================================================
+[PASS] AI no duplicate state change per tick suite (4/4)
+
+============================================================
+3-ZONE PLAYER WEAPON SWITCH TO SHOTGUN TEST
+============================================================
+[Player] Ready
+[StateManager] GAME_OVER -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] 3zone switch: controller exists
+[PASS] 3zone switch: player exists
+[PASS] 3zone switch: player weapon pipeline is wired
+[PASS] 3zone switch: player ability system supports slot switch
+[PASS] 3zone switch: weapon_2 switches to shotgun 20/20
+[PASS] 3zone switch: debug overlay includes player weapon
+
+============================================================
+3-ZONE PLAYER WEAPON SWITCH TO SHOTGUN RESULTS: 6/6 passed
+============================================================
+[PASS] 3zone player weapon switch suite (6/6)
+
+============================================================
+3-ZONE PLAYER SHOTGUN FIRE PIPELINE TEST
+============================================================
+[Player] Ready
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] 3zone fire: controller exists
+[PASS] 3zone fire: player exists
+[PASS] 3zone fire: player weapon pipeline is wired
+[PASS] 3zone fire: player ability system available
+[PASS] 3zone fire: weapon_2 + shoot emits shotgun shot event 20/20
+[PASS] 3zone fire: all captured player_shot events are shotgun
+
+============================================================
+3-ZONE PLAYER SHOTGUN FIRE PIPELINE RESULTS: 6/6 passed
+============================================================
+[PASS] 3zone player shotgun fire pipeline suite (6/6)
+
+============================================================
+3-ZONE: EACH ENEMY SPAWN FIRES SHOTGUN TEST
+============================================================
+[Player] Ready
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] 3zone each enemy fire: player exists
+[PASS] 3zone each enemy fire: all 5 enemies exist
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15000 fires at least once
+[PASS] 3zone each enemy fire: enemy#15000 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15000 snapshot declares weapon_name=shotgun
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15001 fires at least once
+[PASS] 3zone each enemy fire: enemy#15001 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15001 snapshot declares weapon_name=shotgun
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15002 fires at least once
+[PASS] 3zone each enemy fire: enemy#15002 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15002 snapshot declares weapon_name=shotgun
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15003 fires at least once
+[PASS] 3zone each enemy fire: enemy#15003 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15003 snapshot declares weapon_name=shotgun
+WARNING: [AIWatchdog] AI tick slow: 2.24ms (threshold 2.0ms)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:88)
+         [1] _process (res://src/systems/ai_watchdog.gd:47)
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone each enemy fire: enemy#15004 fires at least once
+[PASS] 3zone each enemy fire: enemy#15004 emits shotgun-only shot events
+[PASS] 3zone each enemy fire: enemy#15004 snapshot declares weapon_name=shotgun
+[PASS] 3zone each enemy fire: every spawn fires
+[PASS] 3zone each enemy fire: all enemy shot events are shotgun
+[PASS] 3zone each enemy fire: every snapshot declares shotgun
+
+============================================================
+3-ZONE: EACH ENEMY SPAWN FIRES SHOTGUN RESULTS: 20/20 passed
+============================================================
+[PASS] 3zone each enemy spawn fires shotgun suite (20/20)
+
+============================================================
+ENEMY SHOTGUN FIRE BLOCK REASONS TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] fire reasons: player exists
+[PASS] fire reasons: enemy exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=6 los=true susp=0.003 vis=0.567 dist=260.0 last_seen_age=0.00 facing_delta=0.000
+[PASS] fire reasons: snapshot exposes shotgun_fire_block_reason
+[PASS] fire reasons: no_combat_state
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.000 dist=37.6 last_seen_age=inf facing_delta=3.142
+[PASS] fire reasons: no_los
+[PASS] fire reasons: out_of_range
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=true susp=1.000 vis=0.565 dist=260.7 last_seen_age=0.00 facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=true susp=1.000 vis=0.564 dist=261.4 last_seen_age=0.00 facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=3 los=true susp=1.000 vis=0.562 dist=262.7 last_seen_age=0.00 facing_delta=0.000
+[PASS] fire reasons: cooldown
+[PASS] fire reasons: first_attack_delay
+
+============================================================
+ENEMY SHOTGUN FIRE BLOCK REASONS RESULTS: 8/8 passed
+============================================================
+[PASS] Enemy shotgun fire block reasons suite (8/8)
+
+============================================================
+ALERT->COMBAT REQUIRES 5S CONTINUOUS CONFIRM TEST
+============================================================
+[PASS] without continuous 5s, COMBAT is never entered
+[PASS] continuous LOS enters COMBAT in 5.0±0.2s
+
+============================================================
+ALERT->COMBAT REQUIRES 5S CONTINUOUS CONFIRM RESULTS: 2/2 passed
+============================================================
+[PASS] Alert->Combat requires 5s confirm suite (2/2)
+
+============================================================
+PEEK CORNER CONFIRM THRESHOLD TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] peek setup: blocker exists
+[PASS] peek 4.8s then break LOS: no COMBAT
+[PASS] peek 5.1s continuous: reaches COMBAT
+
+============================================================
+PEEK CORNER CONFIRM THRESHOLD RESULTS: 3/3 passed
+============================================================
+[PASS] Peek corner confirm threshold suite (3/3)
+
+============================================================
+NO COMBAT LATCH BEFORE CONFIRM COMPLETE TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] no-latch: controller exists
+[PASS] no-latch: enemy exists
+[PASS] no-latch: player exists
+[PASS] no-latch: alert system exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=4 los=true susp=0.020 vis=0.867 dist=80.0 last_seen_age=0.00 facing_delta=0.000
+[PASS] no-latch: before 5s enemy is below COMBAT
+[PASS] no-latch: room effective is below COMBAT before 5s
+[PASS] no-latch: confirm completion eventually reaches COMBAT
+[PASS] no-latch: room latch reaches COMBAT only after confirm
+
+============================================================
+NO COMBAT LATCH BEFORE CONFIRM COMPLETE RESULTS: 8/8 passed
+============================================================
+[PASS] No combat latch before confirm complete suite (8/8)
+
+============================================================
+LAST_SEEN USED ONLY IN SUSPICIOUS/ALERT TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] last_seen rule: blocker exists
+[PASS] last_seen rule: COMBAT no-LOS does not mark target_is_last_seen
+[PASS] last_seen rule: COMBAT no-LOS does not target remembered last_seen point
+[PASS] last_seen rule: COMBAT no-LOS intent is not INVESTIGATE/SEARCH-by-last_seen
+[PASS] last_seen rule: ALERT can mark target as last_seen
+[PASS] last_seen rule: ALERT can use remembered last_seen target
+
+============================================================
+LAST_SEEN USED ONLY IN SUSPICIOUS/ALERT RESULTS: 6/6 passed
+============================================================
+[PASS] Last seen only in suspicious/alert suite (6/6)
+
+============================================================
+TEAMMATE CALL DEDUP + COOLDOWN TEST
+============================================================
+[PASS] source cooldown: second call before 8s is blocked
+[PASS] dedup-key(target,call_id): duplicate call is consumed once
+[PASS] target cooldown 6s blocks immediate re-accept
+[PASS] target cooldown expires after 6s
+
+============================================================
+TEAMMATE CALL DEDUP + COOLDOWN RESULTS: 4/4 passed
+============================================================
+[PASS] Teammate call dedup/cooldown suite (4/4)
+
+============================================================
+ALERT CALL ONLY ON STATE ENTRY TEST
+============================================================
+[PASS] CALM->ALERT and ALERT->ALERT do not emit teammate/reinforcement call
+[PASS] SUSPICIOUS->ALERT emits teammate/reinforcement exactly once
+[PASS] teammate_call/reinforcement reasons are anti-cascade blocked
+
+============================================================
+ALERT CALL ONLY ON STATE ENTRY RESULTS: 3/3 passed
+============================================================
+[PASS] Alert call only on state entry suite (3/3)
+
+============================================================
+ALERT DEGRADE HOLD/GRACE/DECAY TEST
+============================================================
+[PASS] setup: ALERT entered with positive confirm
+[PASS] no early ALERT->SUSPICIOUS before hold 2.5s
+[PASS] ALERT->SUSPICIOUS occurs after hold/grace/decay gate
+[PASS] degrade occurs only when confirm01 reached zero
+
+============================================================
+ALERT DEGRADE HOLD/GRACE/DECAY RESULTS: 4/4 passed
+============================================================
+[PASS] Alert degrade hold/grace/decay suite (4/4)
+
+============================================================
+SUSPICION CHANNELS VS CONFIRM CHANNEL TEST
+============================================================
+[PASS] silhouette channel raises suspicion
+[PASS] silhouette channel does not raise confirm
+[PASS] flashlight glimpse can raise suspicion
+[PASS] flashlight glimpse without LOS does not raise confirm
+[PASS] valid_contact (LOS && flashlight_hit in shadow) raises confirm
+
+============================================================
+SUSPICION CHANNELS VS CONFIRM CHANNEL RESULTS: 5/5 passed
+============================================================
+[PASS] Suspicion channels vs confirm channel suite (5/5)
+
+============================================================
+TEAMMATE CALL ROOM-GRAPH GATE TEST
+============================================================
+[PASS] same-room teammate call accepted
+[PASS] adjacent-room teammate call accepted
+[PASS] non-adjacent room call blocked (no telepathy)
+
+============================================================
+TEAMMATE CALL ROOM-GRAPH GATE RESULTS: 3/3 passed
+============================================================
+[PASS] Teammate call room-graph gate suite (3/3)
+
+============================================================
+COMBAT ROLE LOCK AND REASSIGN TRIGGERS TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] role lock starts near 3.0s
+[PASS] role is not recalculated every tick under lock
+[PASS] early trigger: lost_los reassigns role
+[PASS] early trigger: stuck reassigns role
+[PASS] early trigger: path_failed reassigns role
+[PASS] early trigger: target_room_changed reassigns role
+[PASS] context role: no contact + flank availability picks FLANK
+[PASS] context role: far contact distance picks PRESSURE
+[PASS] context role: close contact without flank picks HOLD
+
+============================================================
+COMBAT ROLE LOCK AND REASSIGN TRIGGERS RESULTS: 9/9 passed
+============================================================
+[PASS] Combat role lock/reassign triggers suite (9/9)
+
+============================================================
+COMBAT SEARCH PER-ROOM BUDGET AND TOTAL CAP TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] per-room budget is always within 4..8s
+[PASS] combat search total elapsed reaches cap horizon
+[PASS] combat search total cap flag is raised at/after 24s
+
+============================================================
+COMBAT SEARCH PER-ROOM BUDGET AND TOTAL CAP RESULTS: 3/3 passed
+============================================================
+[PASS] Combat search per-room budget/total cap suite (3/3)
+
+============================================================
+COMBAT NEXT ROOM SCORING NO LOOPS TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] visited room penalty prevents immediate loop to visited room
+[PASS] after marking first pick visited, next unvisited room is chosen
+[PASS] score tie resolves by smaller room_id
+
+============================================================
+COMBAT NEXT ROOM SCORING NO LOOPS RESULTS: 3/3 passed
+============================================================
+[PASS] Combat next-room scoring suite (3/3)
+
+============================================================
+COMBAT->ALERT REQUIRES NO-CONTACT + SEARCH PROGRESS TEST
+============================================================
+[PASS] setup: entered COMBAT
+[PASS] no transition before search_progress >= 0.8
+[PASS] transition happens when no-contact + search gates are satisfied
+[PASS] lockdown: no transition before 12.0s no-contact window
+[PASS] lockdown: transition allowed after 12.0s gate
+
+============================================================
+COMBAT->ALERT REQUIRES NO-CONTACT + SEARCH PROGRESS RESULTS: 5/5 passed
+============================================================
+[PASS] Combat->Alert search/no-contact gate suite (5/5)
+
+============================================================
+FIRST SHOT DELAY STARTS ON FIRST VALID FIRING SOLUTION TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] before first valid solution: delay is not armed
+[PASS] first valid solution arms delay in 1.2..2.0s
+[PASS] losing solution pauses timer
+[PASS] restoring same solution resumes without reset
+[PASS] target context change resets and rearms timer
+
+============================================================
+FIRST SHOT DELAY STARTS ON FIRST VALID FIRING SOLUTION RESULTS: 5/5 passed
+============================================================
+[PASS] First-shot-delay on first valid firing solution suite (5/5)
+
+============================================================
+FIRST SHOT TIMER STARTS ON FIRST VALID FIRING SOLUTION TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] before first valid contact: timer is not armed
+[PASS] first valid contact arms timer in 1.2..2.0s window
+
+============================================================
+FIRST SHOT TIMER STARTS ON FIRST VALID FIRING SOLUTION RESULTS: 2/2 passed
+============================================================
+[PASS] First-shot timer starts on first valid contact suite (2/2)
+
+============================================================
+FIRST SHOT TIMER PAUSE/RESET AFTER 2.5S TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] timer was armed before pause
+[PASS] pause longer than 2.5s resets timer state
+[PASS] next valid contact rearms timer after reset
+
+============================================================
+FIRST SHOT TIMER PAUSE/RESET AFTER 2.5S RESULTS: 3/3 passed
+============================================================
+[PASS] First-shot timer pause/reset 2.5s suite (3/3)
+
+============================================================
+TELEGRAPH PROFILE PRODUCTION VS DEBUG TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] production profile telegraph is 0.10..0.18s
+[PASS] debug_test profile telegraph is 0.35..0.60s
+[PASS] auto resolves to debug_test inside tests
+[PASS] auto profile telegraph uses debug range in tests
+
+============================================================
+TELEGRAPH PROFILE PRODUCTION VS DEBUG RESULTS: 4/4 passed
+============================================================
+[PASS] Telegraph profile production/debug suite (4/4)
+
+============================================================
+ENEMY DAMAGE EXACTLY 1HP PER SUCCESSFUL SHOT TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] successful shot-level hit emits one contact event
+[PASS] successful shot-level hit applies exactly 1 HP
+[PASS] event source stays enemy_shotgun
+
+============================================================
+ENEMY DAMAGE EXACTLY 1HP PER SUCCESSFUL SHOT RESULTS: 3/3 passed
+============================================================
+[PASS] Enemy damage exactly 1hp per successful shot suite (3/3)
+
+============================================================
+COMBAT DAMAGE ESCALATION PIPELINE TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] combat->enemy pipeline reduces HP
+[PASS] combat->enemy pipeline marks hostile_damaged
+[PASS] combat->enemy pipeline escalates awareness above CALM
+[PASS] combat->enemy pipeline emits hostile_escalation once
+[PASS] combat->enemy pipeline emits damage_dealt once
+
+============================================================
+COMBAT DAMAGE ESCALATION PIPELINE RESULTS: 5/5 passed
+============================================================
+[PASS] Combat damage escalation pipeline suite (5/5)
+
+============================================================
+ENEMY DAMAGE API SINGLE SOURCE TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] take_damage delegates to canonical flow: hp reduced
+[PASS] take_damage delegates to canonical flow: hostile_damaged true
+[PASS] take_damage delegates to canonical flow: state escalated above CALM
+[PASS] take_damage delegates to canonical flow: hostile_escalation once
+[PASS] take_damage delegates to canonical flow: damage_dealt once with legacy source
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] apply_damage direct path: hp reduced
+[PASS] apply_damage direct path: single damage_dealt event
+
+============================================================
+ENEMY DAMAGE API SINGLE SOURCE RESULTS: 7/7 passed
+============================================================
+[PASS] Enemy damage API single source suite (7/7)
+
+============================================================
+ENEMY FIRE COOLDOWN MIN GUARD TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] cooldown guard clamps too-low cooldown to >= 0.25s
+[PASS] cooldown guard keeps larger weapon cooldown unchanged
+
+============================================================
+ENEMY FIRE COOLDOWN MIN GUARD RESULTS: 2/2 passed
+============================================================
+[PASS] Enemy fire cooldown min guard suite (2/2)
+
+============================================================
+ENEMY FIRE DECISION CONTRACT TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] reposition: can_fire remains true
+[PASS] reposition: should_fire_now is false
+[PASS] reposition: block reason is reposition
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] anti-sync: same tick second shot is blocked
+[PASS] anti-sync: next tick gate reopens
+
+============================================================
+ENEMY FIRE DECISION CONTRACT RESULTS: 5/5 passed
+============================================================
+[PASS] Enemy fire decision contract suite (5/5)
+
+============================================================
+ENEMY FIRE TRACE CACHE RUNTIME TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] cache rebuilds once per physics frame across all enemies
+[PASS] cache contains all active enemies in group
+[PASS] non-friendly trace path does not rebuild cache
+[PASS] next physics frame rebuilds cache exactly once more
+
+============================================================
+ENEMY FIRE TRACE CACHE RUNTIME RESULTS: 4/4 passed
+============================================================
+[PASS] Enemy fire trace cache runtime suite (4/4)
+
+============================================================
+FRIENDLY BLOCK PREVENTS FIRE AND TRIGGERS REPOSITION TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] friendly in line of fire blocks shot
+[PASS] two consecutive friendly blocks trigger reposition request with cooldown
+[PASS] successful shot resets friendly_block_streak
+
+============================================================
+FRIENDLY BLOCK PREVENTS FIRE AND TRIGGERS REPOSITION RESULTS: 3/3 passed
+============================================================
+[PASS] Friendly block prevents fire + reposition suite (3/3)
+
+============================================================
+SHADOW/FLASHLIGHT RULE BLOCKS OR ALLOWS FIRE TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] in shadow without flashlight_active: fire is blocked by shadow rule
+[PASS] in shadow with flashlight_active: shadow no longer blocks fire gate
+
+============================================================
+SHADOW/FLASHLIGHT RULE BLOCKS OR ALLOWS FIRE RESULTS: 2/2 passed
+============================================================
+[PASS] Shadow flashlight rule blocks/allows fire suite (2/2)
+
+============================================================
+SHADOW SINGLE SOURCE OF TRUTH (NAV + DETECTION) TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] nav check enters shadow via ShadowZone.contains_point
+[PASS] detection shadow uses NavigationService source (runtime override=1.0 ignored)
+[PASS] nav check exits shadow via ShadowZone.contains_point
+[PASS] detection shadow uses NavigationService source (runtime override=0.0 ignored)
+
+============================================================
+SHADOW SINGLE SOURCE OF TRUTH (NAV + DETECTION) RESULTS: 4/4 passed
+============================================================
+[PASS] Shadow single source of truth nav+detection suite (4/4)
+
+============================================================
+SHADOW POLICY HARD BLOCK WITHOUT GRANT TEST
+============================================================
+[PASS] blocked shadow segment is marked as policy_blocked
+[PASS] replan limit triggers nearest-reachable fallback
+[PASS] fallback target avoids shadow without grant
+[PASS] enemy starts moving on fallback path
+
+============================================================
+SHADOW POLICY HARD BLOCK WITHOUT GRANT RESULTS: 4/4 passed
+============================================================
+[PASS] Shadow policy hard block without grant suite (4/4)
+
+============================================================
+SHADOW: ENEMY STUCK WHEN INSIDE SHADOW TEST
+============================================================
+[PASS] setup: enemy starts in shadow
+[PASS] setup: candidate point remains in shadow
+[PASS] enemy already in shadow can keep moving in shadow without flashlight grant
+
+============================================================
+SHADOW: ENEMY STUCK WHEN INSIDE SHADOW RESULTS: 3/3 passed
+============================================================
+[PASS] Shadow enemy stuck when inside shadow suite (3/3)
+
+============================================================
+SHADOW: ENEMY UNSTUCK AFTER FLASHLIGHT ACTIVATION TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] setup: enemy forced into COMBAT
+[PASS] setup: candidate point remains in shadow
+[PASS] combat flashlight grant applies to navigation immediately
+
+============================================================
+SHADOW: ENEMY UNSTUCK AFTER FLASHLIGHT ACTIVATION RESULTS: 3/3 passed
+============================================================
+[PASS] Shadow enemy unstuck after flashlight activation suite (3/3)
+
+============================================================
+SHADOW STALL ESCAPES TO LIGHT TEST
+============================================================
+[PASS] setup: owner starts in shadow
+[PASS] shadow stall picks escape target in light
+[PASS] enemy exits shadow to light during recovery
+[PASS] after recovery owner remains outside shadow
+
+============================================================
+SHADOW STALL ESCAPES TO LIGHT RESULTS: 4/4 passed
+============================================================
+[PASS] Shadow stall escapes to light suite (4/4)
+
+============================================================
+DOOR: ENEMY OBLIQUE OPEN THEN CROSS WITHOUT WALL STALL TEST
+============================================================
+[PASS] setup: enemy opens door from oblique approach
+[PASS] door open event forces immediate repath reset
+
+============================================================
+DOOR: ENEMY OBLIQUE OPEN THEN CROSS WITHOUT WALL STALL RESULTS: 2/2 passed
+============================================================
+[PASS] Door enemy oblique open then cross no wall stall suite (2/2)
+
+============================================================
+STALL DEFINITION REPRODUCIBLE THRESHOLDS TEST
+============================================================
+[PASS] window#1: below thresholds is stall but not hard_stall yet
+[PASS] window#2: second consecutive stall becomes hard_stall
+[PASS] speed boundary: speed_avg == 8 px/s is not stall
+[PASS] progress boundary: path_progress == 12 px is not stall
+
+============================================================
+STALL DEFINITION REPRODUCIBLE THRESHOLDS RESULTS: 4/4 passed
+============================================================
+[PASS] Stall definition reproducible thresholds suite (4/4)
+
+============================================================
+PURSUIT INTENT-ONLY RUNTIME TEST
+============================================================
+[PASS] legacy update(delta,use_room_nav,...) API removed
+[PASS] intent runtime executes PUSH without legacy path
+[PASS] intent runtime updates facing toward PUSH target
+[PASS] SEARCH intent keeps movement_intent=false
+
+============================================================
+PURSUIT INTENT-ONLY RUNTIME RESULTS: 4/4 passed
+============================================================
+[PASS] Pursuit intent-only runtime suite (4/4)
+
+============================================================
+PURSUIT STALL/FALLBACK INVARIANTS TEST
+============================================================
+[PASS] two consecutive stalled windows trigger hard_stall
+[PASS] non-stalled window clears hard_stall
+[PASS] fallback selection deterministic for same inputs
+[PASS] fallback selects reachable candidate
+
+============================================================
+PURSUIT STALL/FALLBACK INVARIANTS RESULTS: 4/4 passed
+============================================================
+[PASS] Pursuit stall/fallback invariants suite (4/4)
+
+============================================================
+PURSUIT ORIGIN TARGET NOT SENTINEL TEST
+============================================================
+[PASS] planner accepts explicit origin target
+[PASS] planner rejects missing target
+[PASS] origin target intent does not fail as no_target
+[PASS] active target validity flag is true
+[PASS] active target can equal origin
+
+============================================================
+PURSUIT ORIGIN TARGET NOT SENTINEL RESULTS: 5/5 passed
+============================================================
+[PASS] Pursuit origin target not sentinel suite (5/5)
+
+============================================================
+NAVIGATION RUNTIME QUERIES TEST
+============================================================
+[PASS] room_id_at_point resolves by layout method
+[PASS] get_neighbors returns sorted room graph neighbors
+[PASS] get_enemy_room_id_by_id resolves from entities container
+[PASS] get_room_rect chooses largest room rect
+[PASS] get_door_center_between picks closest center to anchor
+[PASS] build_path_points always ends at target
+[PASS] get_player_position uses player_node when available
+
+============================================================
+NAVIGATION RUNTIME QUERIES RESULTS: 7/7 passed
+============================================================
+[PASS] Navigation runtime queries suite (7/7)
+
+============================================================
+NAVIGATION SHADOW POLICY RUNTIME TEST
+============================================================
+[PASS] is_point_in_shadow detects point inside shadow zone
+[PASS] shadow blocks entry without flashlight when enemy is outside shadow
+[PASS] enemy already in shadow can keep moving to escape
+[PASS] flashlight grants traversal override in shadow
+[PASS] outside shadow remains traversable
+
+============================================================
+NAVIGATION SHADOW POLICY RUNTIME RESULTS: 5/5 passed
+============================================================
+[PASS] Navigation shadow policy runtime suite (5/5)
+
+============================================================
+NEAREST REACHABLE FALLBACK BY NAV DISTANCE TEST
+============================================================
+[PASS] fallback selection uses nav_path_length over euclid
+[PASS] nav distance tie-break resolves by smaller euclid
+[PASS] unreachable candidates are ignored
+
+============================================================
+NEAREST REACHABLE FALLBACK BY NAV DISTANCE RESULTS: 3/3 passed
+============================================================
+[PASS] Nearest reachable fallback by nav distance suite (3/3)
+
+============================================================
+ZONE DIRECTOR SINGLE OWNER TRANSITIONS TEST
+============================================================
+[PASS] initial zone state is CALM
+[PASS] CALM -> ELEVATED on room ALERT event
+[PASS] ELEVATED -> LOCKDOWN on room COMBAT event
+[PASS] zone_state_changed sequence owned by ZoneDirector
+[PASS] ELEVATED -> LOCKDOWN on 3 confirmed contacts in 8s
+
+============================================================
+ZONE DIRECTOR SINGLE OWNER TRANSITIONS RESULTS: 5/5 passed
+============================================================
+[PASS] ZoneDirector single-owner transitions suite (5/5)
+
+============================================================
+ZONE HYSTERESIS HOLD AND NO-EVENT DECAY TEST
+============================================================
+[PASS] hysteresis hold gates LOCKDOWN->ELEVATED->CALM decay
+[PASS] zone event resets no-event timer before ELEVATED->CALM decay
+
+============================================================
+ZONE HYSTERESIS HOLD AND NO-EVENT DECAY RESULTS: 2/2 passed
+============================================================
+[PASS] Zone hysteresis hold/no-event decay suite (2/2)
+
+============================================================
+ZONE STATE MACHINE CONTRACT TEST
+============================================================
+[PASS] initial state is CALM
+[PASS] ALERT event promotes CALM->ELEVATED
+[PASS] COMBAT event promotes ELEVATED->LOCKDOWN
+[PASS] LOCKDOWN decays to ELEVATED after hold/no-events
+[PASS] ELEVATED decays to CALM after hold/no-events
+[PASS] zone_state_changed emits canonical transition sequence
+
+============================================================
+ZONE STATE MACHINE CONTRACT RESULTS: 6/6 passed
+============================================================
+[PASS] Zone state machine contract suite (6/6)
+
+============================================================
+ZONE REINFORCEMENT BUDGET CONTRACT TEST
+============================================================
+[PASS] ELEVATED starts with reinforcement budget available
+[PASS] register_reinforcement_wave consumes wave+enemy credits
+[PASS] after consuming ELEVATED cap, can_spawn_reinforcement becomes false
+[PASS] LOCKDOWN state expands caps and restores spawn capability
+[PASS] LOCKDOWN accepts valid COMBAT reinforcement call
+[PASS] dedup TTL blocks repeated call_id
+
+============================================================
+ZONE REINFORCEMENT BUDGET CONTRACT RESULTS: 6/6 passed
+============================================================
+[PASS] Zone reinforcement budget contract suite (6/6)
+
+============================================================
+ZONE PROFILE MODIFIERS EXACT VALUES TEST
+============================================================
+[PASS] zone profile values for CALM are exact
+[PASS] zone profile values for ELEVATED are exact
+[PASS] zone profile values for LOCKDOWN are exact
+[PASS] GameConfig.zone_system stores all 3 zone profiles
+
+============================================================
+ZONE PROFILE MODIFIERS EXACT VALUES RESULTS: 4/4 passed
+============================================================
+[PASS] Zone profile exact values suite (4/4)
+
+============================================================
+CONFIRM 5S INVARIANT ACROSS ZONE PROFILES TEST
+============================================================
+[PASS] CALM profile keeps confirm->combat at 5.0±0.2s
+[PASS] ELEVATED profile keeps confirm->combat at 5.0±0.2s
+[PASS] LOCKDOWN profile keeps confirm->combat at 5.0±0.2s
+[PASS] confirm timing spread across profiles is <= 0.2s
+
+============================================================
+CONFIRM 5S INVARIANT ACROSS ZONE PROFILES RESULTS: 4/4 passed
+============================================================
+[PASS] Confirm 5s invariant across zone profiles suite (4/4)
+
+============================================================
+WAVE CALL PERMISSION MATRIX AND COOLDOWNS TEST
+============================================================
+[PASS] CALM blocks reinforcement call
+[PASS] ELEVATED requires source ALERT
+[PASS] ELEVATED accepts source ALERT
+[PASS] call_id dedup TTL blocks duplicate call
+[PASS] zone global cooldown blocks too-frequent call
+[PASS] second call accepted after cooldown window
+[PASS] per-enemy call window limit blocks third call
+[PASS] LOCKDOWN accepts source COMBAT
+[PASS] LOCKDOWN still rejects source outside ALERT/COMBAT
+
+============================================================
+WAVE CALL PERMISSION MATRIX AND COOLDOWNS RESULTS: 9/9 passed
+============================================================
+[PASS] Wave call permission matrix/cooldowns suite (9/9)
+
+============================================================
+COMBAT DEGRADES ON NO-CONTACT TIMER TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] combat degrade: controller exists
+[PASS] combat degrade: player exists
+[PASS] combat degrade: enemy exists
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.009 dist=36.0 last_seen_age=inf facing_delta=0.000
+[PASS] combat degrade: starts in COMBAT
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.285 vis=0.037 dist=52.9 last_seen_age=inf facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=39.2 last_seen_age=inf facing_delta=2.001
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=0.0 last_seen_age=inf facing_delta=3.084
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=35.0 last_seen_age=inf facing_delta=1.973
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.016 dist=50.7 last_seen_age=inf facing_delta=3.058
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=38.1 last_seen_age=inf facing_delta=3.119
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=50.2 last_seen_age=inf facing_delta=3.139
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=0.0 last_seen_age=inf facing_delta=3.141
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=50.5 last_seen_age=inf facing_delta=3.141
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=37.1 last_seen_age=inf facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=ALERT room_alert=ALERT intent=7 los=false susp=0.000 vis=0.000 dist=inf last_seen_age=inf facing_delta=0.000
+[PASS] combat degrade: LOS break eventually downgrades COMBAT->ALERT
+
+============================================================
+COMBAT DEGRADES ON NO-CONTACT TIMER RESULTS: 5/5 passed
+============================================================
+[PASS] Combat no degrade suite (5/5)
+
+============================================================
+COMBAT NO-LOS INTENT CONTRACT TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] combat intent: controller exists
+[PASS] combat intent: player exists
+[PASS] combat intent: enemy exists
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.009 dist=36.0 last_seen_age=inf facing_delta=0.000
+[PASS] combat intent: state starts in COMBAT
+[PASS] combat intent: no-LOS COMBAT does not use last_seen target
+[PASS] combat intent: no-LOS COMBAT avoids INVESTIGATE/SEARCH-by-last_seen
+
+============================================================
+COMBAT NO-LOS INTENT CONTRACT RESULTS: 6/6 passed
+============================================================
+[PASS] Combat utility intent aggressive suite (6/6)
+
+============================================================
+MAIN MENU STEALTH ENTRY TEST
+============================================================
+[MainMenu] Ready
+[PASS] main menu stealth entry: button exists
+[PASS] main menu stealth entry: status label exists
+[PASS] main menu stealth entry: preflight method exists
+[PASS] main menu stealth entry: stealth scene preflight passes
+
+============================================================
+MAIN MENU STEALTH ENTRY RESULTS: 4/4 passed
+============================================================
+[PASS] Main menu stealth entry suite (4/4)
+
+============================================================
+ENEMY LATCH REGISTER/UNREGISTER TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] combat transition registers enemy into room latch
+[PASS] snapshot exposes effective/transient/latch fields
+[PASS] snapshot reports latched combat state
+[PASS] exit COMBAT unregisters enemy from latch
+[PASS] re-enter COMBAT registers enemy back to latch
+[PASS] death unregisters enemy from latch
+[PASS] snapshot marks latched=false after death
+
+============================================================
+ENEMY LATCH REGISTER/UNREGISTER RESULTS: 7/7 passed
+============================================================
+[PASS] Enemy latch register/unregister suite (7/7)
+
+============================================================
+ENEMY LATCH MIGRATION TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] setup: room 0 starts latched in COMBAT
+[PASS] migration: before 0.2s hysteresis latch stays in old room
+[PASS] migration: after 0.2s hysteresis latch moves to new room
+[PASS] snapshot reflects migrated effective/transient/latch state
+
+============================================================
+ENEMY LATCH MIGRATION RESULTS: 4/4 passed
+============================================================
+[PASS] Enemy latch migration suite (4/4)
+
+============================================================
+COMBAT LAST_SEEN FORBIDDEN TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] no-los setup: blocker exists
+[PASS] without LOS: snapshot marks has_los=false
+[PASS] without LOS: target_is_last_seen=false in COMBAT
+[PASS] without LOS: intent target is not remembered last_seen anchor
+
+============================================================
+COMBAT LAST_SEEN FORBIDDEN RESULTS: 4/4 passed
+============================================================
+[PASS] Combat uses last seen suite (4/4)
+
+============================================================
+LAST_SEEN COMBAT->ALERT HANDOFF TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] grace setup: blocker exists
+[PASS] during COMBAT no-LOS: target_is_last_seen=false
+[PASS] during COMBAT no-LOS: target is not remembered last_seen
+[PASS] after combat timer: state downgraded to ALERT
+[PASS] after combat timer: ALERT may use last_seen target
+[PASS] after combat timer: intent is investigate/search around last_seen
+
+============================================================
+LAST_SEEN COMBAT->ALERT HANDOFF RESULTS: 6/6 passed
+============================================================
+[PASS] Last seen grace window suite (6/6)
+
+============================================================
+COMBAT NO-LOS NEVER HOLD_RANGE TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] setup: blocker exists
+[PASS] during grace: no LOS
+[PASS] during grace: no HOLD_RANGE in COMBAT no-LOS
+[PASS] after grace: still no LOS
+[PASS] after grace: still no HOLD_RANGE in COMBAT no-LOS
+
+============================================================
+COMBAT NO-LOS NEVER HOLD_RANGE RESULTS: 5/5 passed
+============================================================
+[PASS] Combat no LOS never hold range suite (5/5)
+
+============================================================
+COMBAT NO-LOS -> ALERT SEARCH TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] setup: blocker exists
+[PASS] during COMBAT no-LOS: state remains COMBAT
+[PASS] during COMBAT no-LOS: target_is_last_seen=false
+[PASS] during COMBAT no-LOS: target not remembered last_seen
+WARNING: [AIWatchdog] High repath rate: 28.1/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:91)
+         [1] _process (res://src/systems/ai_watchdog.gd:47)
+[PASS] after timer: state degraded to ALERT
+[PASS] after timer: target_is_last_seen=true in ALERT
+[PASS] after timer: ALERT intent becomes INVESTIGATE/SEARCH around remembered point
+
+============================================================
+COMBAT NO-LOS -> ALERT SEARCH RESULTS: 7/7 passed
+============================================================
+[PASS] Combat intent push to search suite (7/7)
+
+============================================================
+DETOUR SIDE FLIP ON STALL TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] setup: blocker exists
+[PASS] stall: setup keeps no-LOS
+[PASS] stall: enemy stays in COMBAT with no-LOS (hostile_contact persists)
+
+============================================================
+DETOUR SIDE FLIP ON STALL RESULTS: 3/3 passed
+============================================================
+[PASS] Detour side flip on stall suite (3/3)
+
+============================================================
+HONEST REPATH WITHOUT TELEPORT TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] honest repath: controller exists
+[PASS] honest repath: player exists
+[PASS] honest repath: enemy exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=0 los=false susp=0.000 vis=0.000 dist=inf last_seen_age=inf facing_delta=0.000
+[PASS] honest repath: navmesh path is ready
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=0 los=false susp=1.000 vis=0.000 dist=36.0 last_seen_age=inf facing_delta=2.565
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.000 dist=36.0 last_seen_age=inf facing_delta=2.857
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.835 vis=0.000 dist=61.0 last_seen_age=inf facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.028 vis=0.000 dist=48.3 last_seen_age=inf facing_delta=2.307
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=62.0 last_seen_age=inf facing_delta=2.252
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=69.1 last_seen_age=inf facing_delta=2.230
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=0.000 vis=0.000 dist=69.3 last_seen_age=inf facing_delta=2.357
+[PASS] honest repath: enemy moves
+[PASS] honest repath: distance to player decreases
+[PASS] honest repath: no teleport/forced unstuck spikes
+
+============================================================
+HONEST REPATH WITHOUT TELEPORT RESULTS: 7/7 passed
+============================================================
+[PASS] Honest repath without teleport suite (7/7)
+
+============================================================
+FLASHLIGHT ACTIVE IN COMBAT WHEN LATCHED TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] setup: controller exists
+[PASS] setup: player exists
+[PASS] setup: enemy exists
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.500 dist=36.0 last_seen_age=inf facing_delta=0.000
+[PASS] combat setup: state is COMBAT
+[PASS] combat setup: enemy is latched
+[PASS] combat setup: room latch count is non-zero
+[PASS] combat setup: flashlight is active
+[PASS] combat out-of-cone: flashlight stays active
+[PASS] combat out-of-cone: no flashlight hit
+[PASS] combat out-of-cone: reason is cone_miss
+
+============================================================
+FLASHLIGHT ACTIVE IN COMBAT WHEN LATCHED RESULTS: 10/10 passed
+============================================================
+[PASS] Flashlight active in combat suite (10/10)
+
+============================================================
+FLASHLIGHT BONUS APPLIES IN COMBAT TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] combat bonus: state remains COMBAT
+[PASS] combat bonus: flashlight active in combat
+[PASS] combat bonus: in-cone produces flashlight hit
+[PASS] combat bonus: out-of-cone disables flashlight hit
+[PASS] combat bonus: in-cone effective visibility pre-clamp is higher
+[PASS] combat bonus: debug bonus raw exceeds 1.0 when hit
+
+============================================================
+FLASHLIGHT BONUS APPLIES IN COMBAT RESULTS: 6/6 passed
+============================================================
+[PASS] Flashlight bonus in combat suite (6/6)
+
+--- SECTION 19: Level decomposition controller suites ---
+[PASS] Level runtime guard test scene exists
+[PASS] Level input controller test scene exists
+[PASS] Level HUD controller test scene exists
+[PASS] Level camera controller test scene exists
+[PASS] Level layout regen test scene exists
+[PASS] Level layout floor test scene exists
+[PASS] Level transition controller test scene exists
+[PASS] Level enemy runtime controller test scene exists
+[PASS] Level events controller test scene exists
+[PASS] Level bootstrap controller test scene exists
+[PASS] Mission transition gate test scene exists
+[PASS] Game systems runtime test scene exists
+[PASS] Physics world runtime test scene exists
+[PASS] Refactor KPI contract test scene exists
+
+============================================================
+LEVEL RUNTIME GUARD TEST
+============================================================
+[PASS] enforce_on_start keeps runtime state intact
+[PASS] enforce_on_start keeps context intact
+[PASS] enforce_on_layout_reset keeps runtime state intact
+[PASS] enforce_on_layout_reset keeps context intact
+
+============================================================
+LEVEL RUNTIME GUARD RESULTS: 4/4 passed
+============================================================
+[PASS] Level runtime guard suite (4/4)
+
+============================================================
+LEVEL INPUT CONTROLLER TEST
+============================================================
+[StateManager] PLAYING -> MAIN_MENU
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+[StateManager] PLAYING -> PAUSED
+[PASS] pause action toggles PLAYING -> PAUSED
+[StateManager] PAUSED -> PLAYING
+[PASS] pause action toggles PAUSED -> PLAYING
+[StateManager] PLAYING -> MAIN_MENU
+[LevelMVP] Debug overlay: ON
+[PASS] debug_toggle flips context visibility
+[PASS] debug_toggle updates debug container visibility
+[PASS] debug_toggle syncs GameConfig flag
+[LevelMVP] Debug overlay: OFF
+[PASS] door_interact routed with strict 20px radius
+[LevelMVP] Debug overlay: ON
+[PASS] door_kick routed with strict 40px radius
+[LevelMVP] F4: Regenerating layout
+[PASS] F4 triggers on_regenerate_layout callback
+[PASS] F8 uses fallback when key is free
+[PASS] F8 triggers on_toggle_god_mode callback when key is assigned
+
+============================================================
+LEVEL INPUT CONTROLLER RESULTS: 10/10 passed
+============================================================
+[PASS] Level input controller suite (10/10)
+
+============================================================
+LEVEL HUD CONTROLLER TEST
+============================================================
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+[PASS] HUD HP string uses current runtime hp
+[PASS] HUD state string includes start delay
+[PASS] HUD time/kills string format preserved
+[PASS] HUD weapon string format preserved
+[PASS] Right debug hint no longer includes Enemy Guns line
+[PASS] Right debug hint includes God Mode line
+[StateManager] PLAYING -> MAIN_MENU
+[PASS] Debug overlay creates RoomTypesLabel
+[PASS] RoomTypesLabel shows canonical room counters
+[PASS] Vignette creation is idempotent
+[PASS] Debug overlay creation is idempotent
+[PASS] Debug overlay labels are not duplicated
+
+============================================================
+LEVEL HUD CONTROLLER RESULTS: 11/11 passed
+============================================================
+[PASS] Level HUD controller suite (11/11)
+
+============================================================
+LEVEL CAMERA CONTROLLER TEST
+============================================================
+[PASS] camera follow moves toward player target
+[PASS] camera rotation invariant remains zero
+[PASS] reset_follow places camera at player position
+[PASS] reset_follow enables camera
+[PASS] reset_follow keeps rotation invariant
+
+============================================================
+LEVEL CAMERA CONTROLLER RESULTS: 5/5 passed
+============================================================
+[PASS] Level camera controller suite (5/5)
+
+============================================================
+LEVEL LAYOUT CONTROLLER REGEN TEST
+============================================================
+[PASS] regen clears walls first
+[PASS] regen order keeps doors after generate
+[PASS] regen order keeps floor before stats
+[PASS] regen order keeps stats before runtime memory
+[PASS] regen rebinds spawner and room nav
+[PASS] regen rebinds enemy aggro context
+[PASS] regen sets transition before camera reset
+[PASS] regen applies runtime guard at the end
+
+============================================================
+LEVEL LAYOUT CONTROLLER REGEN RESULTS: 8/8 passed
+============================================================
+[PASS] Level layout controller regen suite (8/8)
+
+============================================================
+LEVEL LAYOUT FLOOR REBUILD TEST
+============================================================
+[PASS] valid layout hides base floor sprite
+[PASS] valid layout builds walkable floor patches
+[PASS] invalid layout keeps base floor sprite visible
+
+============================================================
+LEVEL LAYOUT FLOOR REBUILD RESULTS: 3/3 passed
+============================================================
+[PASS] Level layout floor rebuild suite (3/3)
+
+============================================================
+LEVEL TRANSITION CONTROLLER TEST
+============================================================
+[LevelMVP] Mission=3 transition trigger=[P: (-100.0, -400.0), S: (200.0, 100.0)]
+[PASS] transition trigger setup enables rect
+[PASS] transition blocked while alive enemies exist
+[LevelMVP] Transition -> mission 1
+[PASS] transition unlocked when alive_scene_enemies_count == 0
+[PASS] mission cycle advances on unlocked transition
+[PASS] regenerate callback fired once on transition
+
+============================================================
+LEVEL TRANSITION CONTROLLER RESULTS: 5/5 passed
+============================================================
+[PASS] Level transition controller suite (5/5)
+
+============================================================
+LEVEL ENEMY RUNTIME CONTROLLER TEST
+============================================================
+[PASS] toggle_enemy_weapons API removed
+[PASS] bind_enemy_toggle_hook API removed
+[PASS] apply_enemy_weapon_toggle_to_all API removed
+[PASS] rebind_enemy_aggro_context prefers bind_context
+
+============================================================
+LEVEL ENEMY RUNTIME CONTROLLER RESULTS: 4/4 passed
+============================================================
+[PASS] Level enemy runtime controller suite (4/4)
+
+============================================================
+LEVEL EVENTS CONTROLLER TEST
+============================================================
+[LevelMVP] Player damaged: 7 (HP: 93, source: unit)
+[PASS] player_damaged handled exactly once after duplicate bind
+[PASS] rocket_exploded handled via camera shake
+[PASS] unbind prevents duplicate future reactions
+
+============================================================
+LEVEL EVENTS CONTROLLER RESULTS: 3/3 passed
+============================================================
+[PASS] Level events controller suite (3/3)
+
+============================================================
+LEVEL BOOTSTRAP CONTROLLER TEST
+============================================================
+MAIN_BOOTSTRAP_v20260216
+[VFXSystem] Initialized
+[FootprintSystem] Initialized (pool: 4000, vfx_wired: true)
+[LevelMVP] Room stats: layout invalid or disabled
+[LevelMVP] Systems initialized (Weapons + Arena Polish)
+[ShadowSystem] Initialized (player_radius=16)
+[CombatFeedbackSystem] Initialized
+[AtmosphereSystem] Initialized
+[LevelMVP] Visual polish initialized
+[PASS] bootstrap creates core systems
+[PASS] bootstrap creates layout and tactical systems
+[PASS] bootstrap creates runtime budget scheduler
+[PASS] bootstrap creates visual polish systems
+[PASS] bootstrap ordering keeps Combat -> Projectile -> VFX
+[PASS] bootstrap ordering keeps LayoutWalls -> LayoutDoors -> LayoutDebug
+
+============================================================
+LEVEL BOOTSTRAP CONTROLLER RESULTS: 6/6 passed
+============================================================
+[PASS] Level bootstrap controller suite (6/6)
+============================================================
+MISSION TRANSITION GATE TEST
+============================================================
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+[Player] Ready
+[LevelMVP] Ready - Visual Polish Pass
+MAIN_BOOTSTRAP_v20260216
+[VFXSystem] Initialized
+[FootprintSystem] Initialized (pool: 4000, vfx_wired: true)
+[LevelMVP] Room stats: layout invalid or disabled
+[LevelMVP] Systems initialized (Weapons + Arena Polish)
+[ShadowSystem] Initialized (player_radius=16)
+[CombatFeedbackSystem] Initialized
+[AtmosphereSystem] Initialized
+[LevelMVP] Visual polish initialized
+[LevelMVP] Level bootstrap complete, start delay: 999.0 sec
+[PASS] Blocked while alive enemies exist
+[LevelMVP] Transition -> mission 1
+[PASS] Allowed after clear
+[PASS] Gate unlock condition is alive_scene_enemies_count == 0
+[PASS] RuntimeState mission index synced
+
+============================================================
+MISSION TRANSITION GATE RESULTS: 4/4 passed
+============================================================
+[PASS] Mission transition gate suite (4/4)
+
+============================================================
+GAME SYSTEMS RUNTIME TEST
+============================================================
+[PASS] register_system accepts known slot
+[PASS] register_system rejects unknown slot
+[PASS] update(delta) systems are ticked once per frame
+[PASS] runtime_budget_tick(delta) fallback is supported
+[PASS] zero-arg update() methods are not called with delta
+[PASS] pause flag is raised
+[PASS] set_paused(true) is propagated to registered systems
+[PASS] paused systems are not updated
+[PASS] pause flag is lowered
+[PASS] set_paused(false) is propagated on resume
+[PASS] updates resume after resume_systems()
+
+============================================================
+GAME SYSTEMS RUNTIME RESULTS: 11/11 passed
+============================================================
+[PASS] Game systems runtime suite (11/11)
+
+============================================================
+PHYSICS WORLD RUNTIME TEST
+============================================================
+[PASS] raycast hits static body and returns Vector3 position
+[PASS] overlap_circle returns collider dictionaries for intersecting bodies
+[PASS] move_and_collide reports collision with Vector3 outputs
+
+============================================================
+PHYSICS WORLD RUNTIME RESULTS: 3/3 passed
+============================================================
+[PASS] Physics world runtime suite (3/3)
+
+============================================================
+REFACTOR KPI CONTRACT TEST
+============================================================
+[PASS] KPI: pursuit runtime has no legacy branch tokens
+[PASS] KPI: navigation service preloads runtime helper modules
+[PASS] KPI: zone director preloads runtime helper modules
+[PASS] KPI: GameSystems no longer contains phase-0 stub markers
+[PASS] KPI: PhysicsWorld no longer contains phase-0 stub markers
+[PASS] KPI: navigation helper scripts exist
+[PASS] KPI: zone helper scripts exist
+[PASS] KPI: test runner uses scene_exists helper for existence checks
+
+============================================================
+REFACTOR KPI CONTRACT RESULTS: 8/8 passed
+============================================================
+[PASS] Refactor KPI contract suite (8/8)
+
+All tests completed (Core + AI + Door + Alert + Decomposition suites).
+
+============================================================
+RESULTS: 291/291 tests passed
+============================================================

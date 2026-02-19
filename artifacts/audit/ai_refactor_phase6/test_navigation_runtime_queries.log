@@ -1,0 +1,17 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+
+============================================================
+NAVIGATION RUNTIME QUERIES TEST
+============================================================
+[PASS] room_id_at_point resolves by layout method
+[PASS] get_neighbors returns sorted room graph neighbors
+[PASS] get_enemy_room_id_by_id resolves from entities container
+[PASS] get_room_rect chooses largest room rect
+[PASS] get_door_center_between picks closest center to anchor
+[PASS] build_path_points always ends at target
+[PASS] get_player_position uses player_node when available
+
+============================================================
+NAVIGATION RUNTIME QUERIES RESULTS: 7/7 passed
+============================================================

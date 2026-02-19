@@ -4,11 +4,12 @@
 ## Wired as autoload: AIWatchdog
 extends Node
 
-# --- Thresholds (read from GameConfig if available, else constants) ---
+# --- Thresholds ---
 const QUEUE_WARN_THRESHOLD := 512
 const TICK_MS_WARN_THRESHOLD := 2.0
-const TRANSITIONS_PER_TICK_WARN := 4
 const REPLANS_PER_SEC_WARN := 8.0
+const WARN_MIN_SUSTAIN_SEC := 1.0
+const WARN_COOLDOWN_SEC := 20.0
 
 # --- Metrics (exponential moving average, alpha=0.05 for smoothing) ---
 const EMA_ALPHA := 0.05
@@ -24,7 +25,9 @@ var _tick_active: bool = false
 var _replan_accumulator: float = 0.0
 var _replan_window_elapsed: float = 0.0
 var _warn_cooldown: float = 0.0
-const _WARN_COOLDOWN_SEC := 5.0
+var _queue_warn_elapsed: float = 0.0
+var _tick_warn_elapsed: float = 0.0
+var _replan_warn_elapsed: float = 0.0
 
 
 func _process(delta: float) -> void:
@@ -40,6 +43,7 @@ func _process(delta: float) -> void:
 	if _warn_cooldown > 0.0:
 		_warn_cooldown -= delta
 
+	_update_violation_windows(delta)
 	_check_thresholds()
 
 
@@ -77,12 +81,25 @@ func get_snapshot() -> Dictionary:
 func _check_thresholds() -> void:
 	if _warn_cooldown > 0.0:
 		return
-	if event_queue_length > QUEUE_WARN_THRESHOLD:
+	if _queue_warn_elapsed >= WARN_MIN_SUSTAIN_SEC:
 		push_warning("[AIWatchdog] EventBus queue high: %d (threshold %d)" % [event_queue_length, QUEUE_WARN_THRESHOLD])
-		_warn_cooldown = _WARN_COOLDOWN_SEC
-	elif avg_ai_tick_ms > TICK_MS_WARN_THRESHOLD:
+		_warn_cooldown = WARN_COOLDOWN_SEC
+	elif _tick_warn_elapsed >= WARN_MIN_SUSTAIN_SEC:
 		push_warning("[AIWatchdog] AI tick slow: %.2fms (threshold %.1fms)" % [avg_ai_tick_ms, TICK_MS_WARN_THRESHOLD])
-		_warn_cooldown = _WARN_COOLDOWN_SEC
-	elif replans_per_sec > REPLANS_PER_SEC_WARN:
+		_warn_cooldown = WARN_COOLDOWN_SEC
+	elif _replan_warn_elapsed >= WARN_MIN_SUSTAIN_SEC:
 		push_warning("[AIWatchdog] High repath rate: %.1f/sec (threshold %.1f)" % [replans_per_sec, REPLANS_PER_SEC_WARN])
-		_warn_cooldown = _WARN_COOLDOWN_SEC
+		_warn_cooldown = WARN_COOLDOWN_SEC
+
+
+func _update_violation_windows(delta: float) -> void:
+	var safe_delta := maxf(delta, 0.0)
+	_queue_warn_elapsed = _next_violation_elapsed(_queue_warn_elapsed, event_queue_length > QUEUE_WARN_THRESHOLD, safe_delta)
+	_tick_warn_elapsed = _next_violation_elapsed(_tick_warn_elapsed, avg_ai_tick_ms > TICK_MS_WARN_THRESHOLD, safe_delta)
+	_replan_warn_elapsed = _next_violation_elapsed(_replan_warn_elapsed, replans_per_sec > REPLANS_PER_SEC_WARN, safe_delta)
+
+
+func _next_violation_elapsed(current: float, violated: bool, delta: float) -> float:
+	if not violated:
+		return 0.0
+	return current + delta

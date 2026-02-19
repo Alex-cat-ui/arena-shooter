@@ -75,7 +75,17 @@ const SHOTGUN_FIRE_BLOCK_FIRST_ATTACK_DELAY := "first_attack_delay"
 const SHOTGUN_FIRE_BLOCK_TELEGRAPH := "telegraph"
 const SHOTGUN_FIRE_BLOCK_SHADOW_BLOCKED := "shadow_blocked"
 const SHOTGUN_FIRE_BLOCK_FRIENDLY_BLOCK := "friendly_block"
+const SHOTGUN_FIRE_BLOCK_REPOSITION := "reposition"
+const SHOTGUN_FIRE_BLOCK_SYNC_WINDOW := "sync_window"
+const COMBAT_FIRE_PHASE_PEEK := 0
+const COMBAT_FIRE_PHASE_FIRE := 1
+const COMBAT_FIRE_PHASE_REPOSITION := 2
+const COMBAT_FIRE_REPOSITION_SEC := 0.35
 const REASON_TEAMMATE_CALL := "teammate_call"
+static var _global_enemy_shot_tick: int = -1
+static var _friendly_fire_excludes_physics_frame: int = -1
+static var _friendly_fire_excludes_cache: Array[RID] = []
+static var _friendly_fire_excludes_rebuild_count: int = 0
 
 ## Enemy stats fallback (canonical values live in GameConfig.enemy_stats).
 const DEFAULT_ENEMY_STATS := {
@@ -96,9 +106,6 @@ var hp: int = 30
 
 ## Max HP (for potential HP bars)
 var max_hp: int = 30
-
-## Contact damage (kept for compatibility)
-var contact_damage: int = 10
 
 ## Movement speed in tiles/sec
 var speed_tiles: float = 2.0
@@ -178,6 +185,8 @@ var _debug_last_shotgun_fire_block_reason: String = SHOTGUN_FIRE_BLOCK_NO_COMBAT
 var _debug_last_shotgun_fire_requested: bool = false
 var _debug_last_shotgun_fire_attempted: bool = false
 var _debug_last_shotgun_fire_success: bool = false
+var _debug_last_shotgun_can_fire: bool = false
+var _debug_last_shotgun_should_fire_now: bool = false
 var _debug_tick_id: int = 0
 var _debug_last_flashlight_calc_tick_id: int = -1
 var _stealth_test_debug_logging_enabled: bool = false
@@ -216,6 +225,8 @@ var _combat_first_shot_pause_elapsed: float = 0.0
 var _combat_telegraph_active: bool = false
 var _combat_telegraph_timer: float = 0.0
 var _combat_telegraph_pause_elapsed: float = 0.0
+var _combat_fire_phase: int = COMBAT_FIRE_PHASE_PEEK
+var _combat_fire_reposition_left: float = 0.0
 var _friendly_block_streak: int = 0
 var _friendly_block_reposition_cooldown_left: float = 0.0
 var _friendly_block_force_reposition: bool = false
@@ -287,7 +298,6 @@ func initialize(id: int, type: String) -> void:
 	if not stats.is_empty():
 		hp = stats.hp
 		max_hp = stats.hp
-		contact_damage = stats.damage
 		speed_tiles = stats.speed
 	else:
 		push_warning("[Enemy] Unknown enemy type: %s" % type)
@@ -342,6 +352,8 @@ func initialize(id: int, type: String) -> void:
 	_debug_last_shotgun_fire_requested = false
 	_debug_last_shotgun_fire_attempted = false
 	_debug_last_shotgun_fire_success = false
+	_debug_last_shotgun_can_fire = false
+	_debug_last_shotgun_should_fire_now = false
 	_debug_last_valid_contact_for_fire = false
 	_debug_last_fire_los = false
 	_debug_last_fire_inside_fov = false
@@ -360,6 +372,7 @@ func initialize(id: int, type: String) -> void:
 	_combat_telegraph_active = false
 	_combat_telegraph_timer = 0.0
 	_combat_telegraph_pause_elapsed = 0.0
+	_reset_combat_fire_cycle_state()
 	_friendly_block_streak = 0
 	_friendly_block_reposition_cooldown_left = 0.0
 	_friendly_block_force_reposition = false
@@ -667,6 +680,8 @@ func runtime_budget_tick(delta: float) -> void:
 	if _friendly_block_force_reposition:
 		intent = _inject_friendly_block_reposition_intent(intent, assignment, target_context)
 		_friendly_block_force_reposition = false
+	if _is_combat_reposition_phase_active():
+		intent = _inject_combat_cycle_reposition_intent(intent, assignment, target_context)
 	var exec_result: Dictionary = _pursuit.execute_intent(delta, intent, context) if _pursuit and _pursuit.has_method("execute_intent") else {}
 	var moved_distance := global_position.distance_to(pos_before_intent)
 	var target_room_id := _resolve_target_room_id(target_context.get("known_target_pos", Vector2.ZERO) as Vector2)
@@ -677,6 +692,7 @@ func runtime_budget_tick(delta: float) -> void:
 		moved_distance,
 		bool(exec_result.get("path_failed", false)),
 		target_room_id,
+		float(context.get("dist", INF)),
 		assignment
 	)
 	if _suspicion_test_profile_enabled and not behavior_visible and _test_los_look_grace_timer > 0.0 and _pursuit and _pursuit.has_method("set_external_look_dir"):
@@ -698,22 +714,29 @@ func runtime_budget_tick(delta: float) -> void:
 	)
 	var valid_firing_solution := bool(fire_contact.get("valid_contact_for_fire", false))
 	_update_first_shot_delay_runtime(delta, valid_firing_solution, _combat_target_context_key(target_context))
+	var shotgun_can_fire := _can_fire_contact_allows_shot(fire_contact)
+	_update_combat_fire_cycle_runtime(delta, shotgun_can_fire)
 	var should_request_fire := bool(exec_result.get("request_fire", false))
 	if not should_request_fire and valid_firing_solution and _intent_supports_fire(int(intent.get("type", -1))):
 		should_request_fire = true
+	var shotgun_should_fire_now := _should_fire_now(should_request_fire, shotgun_can_fire)
 	var shotgun_fire_block_reason := _resolve_shotgun_fire_block_reason(fire_contact)
+	if should_request_fire and shotgun_can_fire and not shotgun_should_fire_now:
+		shotgun_fire_block_reason = _resolve_shotgun_fire_schedule_block_reason()
 	var shotgun_fire_attempted := false
 	var shotgun_fire_success := false
-	if should_request_fire and shotgun_fire_block_reason == "":
+	if should_request_fire and shotgun_should_fire_now:
 		shotgun_fire_attempted = true
 		shotgun_fire_success = _try_fire_at_player(player_pos)
-		if not shotgun_fire_success:
+		if not shotgun_fire_success and shotgun_fire_block_reason == "":
 			shotgun_fire_block_reason = _resolve_shotgun_fire_block_reason(fire_contact)
 	if shotgun_fire_success:
 		_mark_enemy_shot_success()
 	elif should_request_fire and shotgun_fire_block_reason == SHOTGUN_FIRE_BLOCK_FRIENDLY_BLOCK:
 		_register_friendly_block_and_reposition()
 	_debug_last_shotgun_fire_requested = should_request_fire
+	_debug_last_shotgun_can_fire = shotgun_can_fire
+	_debug_last_shotgun_should_fire_now = shotgun_should_fire_now
 	_debug_last_shotgun_fire_attempted = shotgun_fire_attempted
 	_debug_last_shotgun_fire_success = shotgun_fire_success
 	_debug_last_shotgun_fire_block_reason = shotgun_fire_block_reason
@@ -890,18 +913,6 @@ func _connect_event_bus_signals() -> void:
 		return
 	if EventBus.has_signal("enemy_reinforcement_called") and not EventBus.enemy_reinforcement_called.is_connected(_on_enemy_reinforcement_called):
 		EventBus.enemy_reinforcement_called.connect(_on_enemy_reinforcement_called)
-
-
-func _on_enemy_player_spotted(source_enemy_id: int, position: Vector3) -> void:
-	if is_dead:
-		return
-	if source_enemy_id != entity_id:
-		return
-	if _awareness and _awareness.has_method("get_state_name"):
-		var state_name := String(_awareness.get_state_name())
-		if state_name == AWARENESS_COMBAT and _combat_latched:
-			return
-	_handle_confirmed_player_spotted(Vector2(position.x, position.y), false)
 
 
 func _on_enemy_reinforcement_called(source_enemy_id: int, _source_room_id: int, target_room_ids: Array) -> void:
@@ -1298,6 +1309,8 @@ func get_debug_detection_snapshot() -> Dictionary:
 		"transition_count_this_tick": _debug_transition_count_this_tick,
 		"shotgun_fire_block_reason": _debug_last_shotgun_fire_block_reason,
 		"shotgun_fire_requested": _debug_last_shotgun_fire_requested,
+		"shotgun_can_fire_contact": _debug_last_shotgun_can_fire,
+		"shotgun_should_fire_now": _debug_last_shotgun_should_fire_now,
 		"shotgun_fire_attempted": _debug_last_shotgun_fire_attempted,
 		"shotgun_fire_success": _debug_last_shotgun_fire_success,
 		"weapon_name": WEAPON_SHOTGUN,
@@ -1315,6 +1328,8 @@ func get_debug_detection_snapshot() -> Dictionary:
 		"shotgun_first_attack_delay_armed": _combat_first_shot_delay_armed,
 		"shotgun_first_attack_fired": _combat_first_shot_fired,
 		"shotgun_first_attack_target_context_key": _combat_first_shot_target_context_key,
+		"shotgun_fire_phase": _combat_fire_phase_name(_combat_fire_phase),
+		"shotgun_fire_reposition_left": _combat_fire_reposition_left,
 		"shotgun_first_attack_pause_left_before_reset": maxf(0.0, COMBAT_FIRST_SHOT_MAX_PAUSE_SEC - _combat_first_shot_pause_elapsed),
 		"shotgun_first_attack_pause_elapsed": _combat_first_shot_pause_elapsed,
 		"shotgun_telegraph_active": _combat_telegraph_active,
@@ -1607,6 +1622,96 @@ func _resolve_shotgun_fire_block_reason(fire_contact: Dictionary) -> String:
 	return ""
 
 
+func _can_fire_contact_allows_shot(fire_contact: Dictionary) -> bool:
+	return (
+		bool(fire_contact.get("valid_contact_for_fire", false))
+		and _is_first_shot_gate_ready()
+		and not bool(fire_contact.get("friendly_block", false))
+	)
+
+
+func _resolve_shotgun_fire_schedule_block_reason() -> String:
+	if _is_combat_reposition_phase_active():
+		return SHOTGUN_FIRE_BLOCK_REPOSITION
+	if not _anti_sync_fire_gate_open():
+		return SHOTGUN_FIRE_BLOCK_SYNC_WINDOW
+	return ""
+
+
+func _should_fire_now(tactical_request: bool, can_fire_contact: bool) -> bool:
+	if not tactical_request or not can_fire_contact:
+		return false
+	return _resolve_shotgun_fire_schedule_block_reason() == ""
+
+
+func _update_combat_fire_cycle_runtime(delta: float, can_fire_contact: bool) -> void:
+	if not _is_combat_awareness_active():
+		_reset_combat_fire_cycle_state()
+		return
+	if _combat_fire_phase == COMBAT_FIRE_PHASE_REPOSITION:
+		_combat_fire_reposition_left = maxf(0.0, _combat_fire_reposition_left - maxf(delta, 0.0))
+		if _combat_fire_reposition_left <= 0.0:
+			_combat_fire_phase = COMBAT_FIRE_PHASE_PEEK
+		return
+	_combat_fire_phase = COMBAT_FIRE_PHASE_FIRE if can_fire_contact else COMBAT_FIRE_PHASE_PEEK
+
+
+func _begin_combat_reposition_phase() -> void:
+	_combat_fire_phase = COMBAT_FIRE_PHASE_REPOSITION
+	_combat_fire_reposition_left = COMBAT_FIRE_REPOSITION_SEC
+
+
+func _is_combat_reposition_phase_active() -> bool:
+	return _combat_fire_phase == COMBAT_FIRE_PHASE_REPOSITION and _combat_fire_reposition_left > 0.0
+
+
+func _inject_combat_cycle_reposition_intent(intent: Dictionary, assignment: Dictionary, target_context: Dictionary) -> Dictionary:
+	return _inject_friendly_block_reposition_intent(intent, assignment, target_context)
+
+
+func _reset_combat_fire_cycle_state() -> void:
+	_combat_fire_phase = COMBAT_FIRE_PHASE_PEEK
+	_combat_fire_reposition_left = 0.0
+
+
+func _combat_fire_phase_name(phase: int) -> String:
+	match phase:
+		COMBAT_FIRE_PHASE_PEEK:
+			return "peek"
+		COMBAT_FIRE_PHASE_FIRE:
+			return "fire"
+		COMBAT_FIRE_PHASE_REPOSITION:
+			return "reposition"
+		_:
+			return "unknown"
+
+
+func _anti_sync_fire_gate_open() -> bool:
+	return Engine.get_physics_frames() != Enemy._global_enemy_shot_tick
+
+
+func _record_enemy_shot_tick() -> void:
+	Enemy._global_enemy_shot_tick = Engine.get_physics_frames()
+
+
+static func debug_reset_fire_sync_gate() -> void:
+	Enemy._global_enemy_shot_tick = -1
+
+
+static func debug_reset_fire_trace_cache_metrics() -> void:
+	Enemy._friendly_fire_excludes_physics_frame = -1
+	Enemy._friendly_fire_excludes_cache = []
+	Enemy._friendly_fire_excludes_rebuild_count = 0
+
+
+static func debug_get_fire_trace_cache_metrics() -> Dictionary:
+	return {
+		"physics_frame": Enemy._friendly_fire_excludes_physics_frame,
+		"cache_size": Enemy._friendly_fire_excludes_cache.size(),
+		"rebuild_count": Enemy._friendly_fire_excludes_rebuild_count,
+	}
+
+
 func _evaluate_fire_contact(
 	player_valid: bool,
 	player_pos: Vector2,
@@ -1641,13 +1746,15 @@ func _evaluate_fire_contact(
 	var min_dot := cos(deg_to_rad(sight_fov_deg) * 0.5)
 	var inside_fov := facing.dot(dir_to_player) >= min_dot
 	var in_fire_range := dist <= _enemy_vision_cfg_float("fire_attack_range_max_px", DEFAULT_FIRE_ATTACK_RANGE_MAX_PX)
-	var trace_ignore_friendlies := _trace_fire_line(player_pos, true)
 	var trace_with_friendlies := _trace_fire_line(player_pos, false)
+	var friendly_block := bool(trace_with_friendlies.get("hit_friendly", false))
+	var trace_ignore_friendlies := trace_with_friendlies
+	if friendly_block:
+		trace_ignore_friendlies = _trace_fire_line(player_pos, true)
 	var not_occluded_by_world := bool(trace_ignore_friendlies.get("hit_player", false))
 	var los := not_occluded_by_world and dist <= sight_max_distance_px
 	var shadow_rule_passed := (not in_shadow) or flashlight_active
 	var weapon_ready := _shot_cooldown <= 0.0
-	var friendly_block := bool(trace_with_friendlies.get("hit_friendly", false))
 	var valid_contact_for_fire := (
 		los
 		and inside_fov
@@ -1707,14 +1814,25 @@ func _build_fire_line_excludes(ignore_friendlies: bool) -> Array[RID]:
 	var excludes := _ray_excludes()
 	if not ignore_friendlies:
 		return excludes
-	if get_tree() == null:
+	var tree := get_tree()
+	if tree == null:
 		return excludes
-	for enemy_variant in get_tree().get_nodes_in_group("enemies"):
+	var frame_id := Engine.get_physics_frames()
+	if Enemy._friendly_fire_excludes_physics_frame != frame_id:
+		_rebuild_friendly_fire_excludes_cache(tree)
+		Enemy._friendly_fire_excludes_physics_frame = frame_id
+	return Enemy._friendly_fire_excludes_cache
+
+
+static func _rebuild_friendly_fire_excludes_cache(tree: SceneTree) -> void:
+	var rebuilt: Array[RID] = []
+	for enemy_variant in tree.get_nodes_in_group("enemies"):
 		var enemy_node := enemy_variant as Node2D
-		if enemy_node == null or enemy_node == self:
+		if enemy_node == null:
 			continue
-		excludes.append(enemy_node.get_rid())
-	return excludes
+		rebuilt.append(enemy_node.get_rid())
+	Enemy._friendly_fire_excludes_cache = rebuilt
+	Enemy._friendly_fire_excludes_rebuild_count += 1
 
 
 func _is_player_collider_for_fire(collider: Variant) -> bool:
@@ -1988,6 +2106,8 @@ func _mark_enemy_shot_success() -> void:
 	_combat_first_attack_delay_timer = 0.0
 	_combat_first_shot_pause_elapsed = 0.0
 	_cancel_first_shot_telegraph()
+	_begin_combat_reposition_phase()
+	_record_enemy_shot_tick()
 	_friendly_block_streak = 0
 
 
@@ -1998,6 +2118,7 @@ func _reset_first_shot_delay_state() -> void:
 	_combat_first_shot_target_context_key = ""
 	_combat_first_shot_pause_elapsed = 0.0
 	_cancel_first_shot_telegraph()
+	_reset_combat_fire_cycle_state()
 
 
 func _update_first_shot_delay_runtime(delta: float, has_valid_solution: bool, target_context_key: String) -> void:
@@ -2101,6 +2222,7 @@ func _update_combat_role_runtime(
 	moved_distance: float,
 	path_failed: bool,
 	target_room_id: int,
+	target_distance: float,
 	assignment: Dictionary
 ) -> void:
 	var base_role := int(assignment.get("role", SQUAD_ROLE_PRESSURE))
@@ -2147,15 +2269,21 @@ func _update_combat_role_runtime(
 	if trigger_reason == "" and _combat_role_lock_timer > 0.0:
 		return
 	var reason := trigger_reason if trigger_reason != "" else "lock_expired"
-	_reassign_combat_role(base_role, reason)
+	_reassign_combat_role(base_role, reason, has_valid_contact, target_distance, assignment)
 	_combat_role_lock_timer = COMBAT_ROLE_LOCK_SEC
 
 
-func _reassign_combat_role(base_role: int, reason: String) -> void:
+func _reassign_combat_role(
+	base_role: int,
+	reason: String,
+	has_valid_contact: bool,
+	target_distance: float,
+	assignment: Dictionary
+) -> void:
 	var new_role := base_role
 	match reason:
 		"lost_los":
-			new_role = SQUAD_ROLE_FLANK
+			new_role = SQUAD_ROLE_FLANK if _assignment_supports_flank_role(assignment) else SQUAD_ROLE_PRESSURE
 		"stuck":
 			new_role = SQUAD_ROLE_HOLD
 		"path_failed":
@@ -2164,8 +2292,38 @@ func _reassign_combat_role(base_role: int, reason: String) -> void:
 			new_role = SQUAD_ROLE_PRESSURE
 		_:
 			new_role = base_role
-	_combat_role_current = new_role
+	_combat_role_current = _resolve_contextual_combat_role(new_role, has_valid_contact, target_distance, assignment)
 	_combat_role_last_reassign_reason = reason
+
+
+func _assignment_supports_flank_role(assignment: Dictionary) -> bool:
+	if int(assignment.get("role", -1)) != SQUAD_ROLE_FLANK:
+		return false
+	if not bool(assignment.get("has_slot", false)):
+		return false
+	return bool(assignment.get("path_ok", false))
+
+
+func _resolve_contextual_combat_role(
+	candidate_role: int,
+	has_valid_contact: bool,
+	target_distance: float,
+	assignment: Dictionary
+) -> int:
+	var flank_available := _assignment_supports_flank_role(assignment)
+	var hold_range_min := _utility_cfg_float("hold_range_min_px", 390.0)
+	var hold_range_max := _utility_cfg_float("hold_range_max_px", 610.0)
+	if not has_valid_contact:
+		return SQUAD_ROLE_FLANK if flank_available else SQUAD_ROLE_PRESSURE
+	if is_finite(target_distance):
+		if target_distance > hold_range_max:
+			return SQUAD_ROLE_PRESSURE
+		if target_distance < hold_range_min and not flank_available:
+			return SQUAD_ROLE_HOLD
+	if flank_available and is_finite(target_distance):
+		if target_distance >= hold_range_min and target_distance <= hold_range_max:
+			return SQUAD_ROLE_FLANK
+	return candidate_role
 
 
 func _reset_combat_search_state() -> void:
@@ -2612,8 +2770,8 @@ func _shotgun_cooldown_sec() -> float:
 
 ## Apply damage from any source (projectile, explosion, etc.)
 ## Reduces HP, emits EventBus signals, handles death once.
-func apply_damage(amount: int, source: String) -> void:
-	ENEMY_DAMAGE_RUNTIME_SCRIPT.apply_damage(self, amount, source)
+func apply_damage(amount: int, source: String, from_player: bool = false) -> void:
+	ENEMY_DAMAGE_RUNTIME_SCRIPT.apply_damage(self, amount, source, from_player)
 
 
 ## Apply stagger (blocks movement for duration)

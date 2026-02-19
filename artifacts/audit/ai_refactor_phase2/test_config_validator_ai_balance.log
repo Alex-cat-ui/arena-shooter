@@ -1,0 +1,22 @@
+===== RUN res://tests/test_config_validator_ai_balance.tscn =====
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+CONFIG VALIDATOR AI BALANCE TEST
+============================================================
+[PASS] Empty ai_balance is validation error
+[PASS] Missing ai_balance section is validation error
+[PASS] Invalid ai_balance key type is rejected
+[PASS] Invalid ai_balance range is rejected
+[PASS] enemy_stats missing required key is rejected
+[PASS] projectile_ttl invalid value is rejected
+[PASS] Clamp keeps combat schema untouched
+
+============================================================
+CONFIG VALIDATOR AI BALANCE RESULTS: 7/7 passed
+============================================================
+EXIT_CODE=0

@@ -1,0 +1,25 @@
+===== RUN res://tests/test_confirm_hostility.tscn =====
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+CONFIRM HOSTILITY TEST
+============================================================
+[PASS] confirm_accumulates_with_visual_no_shadow
+[PASS] confirm_zero_in_shadow
+[PASS] flashlight_detects_in_shadow
+[PASS] confirm_decays_after_grace
+[PASS] confirm_no_decay_during_grace
+[PASS] damage_sets_hostile_damaged
+[PASS] hostile_damaged_persists_until_reset
+[PASS] combat_phase_engaged_on_contact
+[PASS] combat_phase_hostile_search_on_los_loss
+[PASS] snapshot_returns_all_fields
+
+============================================================
+CONFIRM HOSTILITY RESULTS: 10/10 passed
+============================================================
+EXIT_CODE=0

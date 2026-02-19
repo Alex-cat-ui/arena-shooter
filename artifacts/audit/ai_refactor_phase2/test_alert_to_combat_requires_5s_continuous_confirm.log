@@ -1,0 +1,17 @@
+===== RUN res://tests/test_alert_to_combat_requires_5s_continuous_confirm.tscn =====
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+ALERT->COMBAT REQUIRES 5S CONTINUOUS CONFIRM TEST
+============================================================
+[PASS] without continuous 5s, COMBAT is never entered
+[PASS] continuous LOS enters COMBAT in 5.0±0.2s
+
+============================================================
+ALERT->COMBAT REQUIRES 5S CONTINUOUS CONFIRM RESULTS: 2/2 passed
+============================================================
+EXIT_CODE=0

@@ -220,13 +220,12 @@ func process_confirm(
 ) -> Array[Dictionary]:
 	var transitions: Array[Dictionary] = []
 	var dt := maxf(delta, 0.0)
-	var confirm_time := float(config.get("confirm_time_to_engage", DEFAULT_CONFIRM_TIME_TO_ENGAGE_SEC))
-	# Phase-3 frozen contract: keep explicit decay constants fixed.
-	var decay_rate := DEFAULT_CONFIRM_DECAY_RATE
-	var grace_window := DEFAULT_CONFIRM_GRACE_WINDOW_SEC
+	var confirm_time := maxf(float(config.get("confirm_time_to_engage", DEFAULT_CONFIRM_TIME_TO_ENGAGE_SEC)), 0.001)
+	var decay_rate := maxf(float(config.get("confirm_decay_rate", DEFAULT_CONFIRM_DECAY_RATE)), 0.0)
+	var grace_window := maxf(float(config.get("confirm_grace_window", DEFAULT_CONFIRM_GRACE_WINDOW_SEC)), 0.0)
 	var suspicious_enter := clampf(float(config.get("suspicious_enter", DEFAULT_SUSPICIOUS_ENTER)), 0.0, 1.0)
 	var alert_enter := clampf(float(config.get("alert_enter", DEFAULT_ALERT_ENTER)), 0.0, 1.0)
-	_minimum_alert_hold_sec = DEFAULT_MINIMUM_ALERT_HOLD_SEC
+	_minimum_alert_hold_sec = maxf(float(config.get("minimum_hold_alert_sec", DEFAULT_MINIMUM_ALERT_HOLD_SEC)), 0.0)
 	var combat_no_contact_window_sec := maxf(float(config.get("combat_no_contact_window_sec", _combat_ttl_sec())), 0.0)
 	var combat_require_search_progress := bool(config.get("combat_require_search_progress", false))
 	var combat_search_progress := clampf(float(config.get("combat_search_progress", 0.0)), 0.0, 1.0)
@@ -362,12 +361,13 @@ func register_teammate_call() -> Array[Dictionary]:
 func _transition_to_combat_from_damage() -> Array[Dictionary]:
 	var transitions: Array[Dictionary] = []
 	hostile_damaged = true
+	hostile_contact = true
 	if _state == State.COMBAT:
 		combat_phase = CombatPhase.ENGAGED
 		_combat_timer = _combat_ttl_sec()
 		return transitions
-	combat_phase = CombatPhase.NONE
-	_transition_to(State.ALERT, "damage", transitions)
+	combat_phase = CombatPhase.ENGAGED
+	_transition_to(State.COMBAT, "damage", transitions)
 	return transitions
 
 

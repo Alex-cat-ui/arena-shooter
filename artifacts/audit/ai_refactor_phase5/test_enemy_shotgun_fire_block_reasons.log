@@ -1,0 +1,27 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+
+
+============================================================
+ENEMY SHOTGUN FIRE BLOCK REASONS TEST
+============================================================
+[Player] Ready
+STEALTH_TEST_BOOTSTRAP_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] fire reasons: player exists
+[PASS] fire reasons: enemy exists
+[EnemyStealthTrace] id=9300 state=CALM room_alert=CALM intent=6 los=true susp=0.003 vis=0.567 dist=260.0 last_seen_age=0.00 facing_delta=0.000
+[PASS] fire reasons: snapshot exposes shotgun_fire_block_reason
+[PASS] fire reasons: no_combat_state
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=false susp=1.000 vis=0.000 dist=37.6 last_seen_age=inf facing_delta=3.142
+[PASS] fire reasons: no_los
+[PASS] fire reasons: out_of_range
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=true susp=1.000 vis=0.565 dist=260.7 last_seen_age=0.00 facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=5 los=true susp=1.000 vis=0.564 dist=261.4 last_seen_age=0.00 facing_delta=3.142
+[EnemyStealthTrace] id=9300 state=COMBAT room_alert=COMBAT intent=3 los=true susp=1.000 vis=0.562 dist=262.7 last_seen_age=0.00 facing_delta=0.000
+[PASS] fire reasons: cooldown
+[PASS] fire reasons: first_attack_delay
+
+============================================================
+ENEMY SHOTGUN FIRE BLOCK REASONS RESULTS: 8/8 passed
+============================================================

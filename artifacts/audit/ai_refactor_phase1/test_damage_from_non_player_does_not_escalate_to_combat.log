@@ -1,0 +1,21 @@
+===== RUN res://tests/test_damage_from_non_player_does_not_escalate_to_combat.tscn =====
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+NON-PLAYER DAMAGE DOES NOT ESCALATE TO COMBAT TEST
+============================================================
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] non-player damage: hp reduced
+[PASS] non-player damage: state is not COMBAT
+[PASS] non-player damage: hostile_damaged remains false
+[PASS] non-player damage: hostile_escalation not emitted
+
+============================================================
+NON-PLAYER DAMAGE DOES NOT ESCALATE TO COMBAT RESULTS: 4/4 passed
+============================================================
+EXIT_CODE=0

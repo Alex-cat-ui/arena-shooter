@@ -1,0 +1,3 @@
+test_combat_role_lock_and_reassign_triggers=0
+test_enemy_utility_brain=0
+test_runner=0

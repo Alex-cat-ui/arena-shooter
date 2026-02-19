@@ -32,7 +32,7 @@ func run_suite() -> Dictionary:
 	_test_confirm_decays_after_grace()
 	_test_confirm_no_decay_during_grace()
 	_test_damage_sets_hostile_damaged()
-	_test_hostile_never_returns_to_calm()
+	_test_hostile_damaged_persists_until_reset()
 	_test_combat_phase_engaged_on_contact()
 	_test_combat_phase_hostile_search_on_los_loss()
 	_test_snapshot_returns_all_fields()
@@ -98,13 +98,19 @@ func _test_damage_sets_hostile_damaged() -> void:
 	)
 
 
-func _test_hostile_never_returns_to_calm() -> void:
+func _test_hostile_damaged_persists_until_reset() -> void:
 	var awareness = _new_awareness()
-	awareness.hostile_contact = true
-	awareness.register_reinforcement()
+	awareness._transition_to_combat_from_damage()
 	for _i in range(300):
 		awareness.process_confirm(0.1, false, false, false, CANON_CONFIG)
-	_t.run_test("hostile_never_returns_to_calm", awareness.get_state_name() == "COMBAT")
+	var snap_before_reset := awareness.get_ui_snapshot() as Dictionary
+	awareness.reset()
+	var snap_after_reset := awareness.get_ui_snapshot() as Dictionary
+	_t.run_test(
+		"hostile_damaged_persists_until_reset",
+		bool(snap_before_reset.get("hostile_damaged", false))
+			and not bool(snap_after_reset.get("hostile_damaged", true))
+	)
 
 
 func _test_combat_phase_engaged_on_contact() -> void:

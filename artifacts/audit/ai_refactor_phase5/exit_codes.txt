@@ -1,0 +1,5 @@
+test_enemy_fire_decision_contract=0
+test_enemy_shotgun_fire_block_reasons=0
+test_3zone_enemy_each_spawn_fires_shotgun=0
+test_stealth_room_combat_fire=0
+test_runner=0
