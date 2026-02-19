@@ -21,6 +21,8 @@
 - legacy-контуры ближнего боя удалены из рабочего runtime/UI и актуальной документации;
 - legacy-пайплайн `suspicion profile` (включая `process_suspicion`) удален; канонический контур детекции: `stealth_canon` + `process_confirm`;
 - одиночная тестовая сцена `stealth_test_room.tscn` удалена; канонический стенд: `res://src/levels/stealth_3zone_test.tscn` (`Stealth3ZoneTestController`);
+- удалены legacy-ветки урона врага (`take_damage`, `take_damage_legacy`) — канонический вход только `apply_damage`;
+- удален fallback-выстрел игрока через `player.projectile_system` — канонический путь: `AbilitySystem -> ProjectileSystem/CombatSystem`;
 - текущий фокус миграции: data-driven баланс и унификация AI-сигналов.
 
 ## Технологии
@@ -72,19 +74,14 @@ godot --path . --scene res://scenes/app_root.tscn
 - `F2`: принудительный `LEVEL_COMPLETE`
 - `F3`: debug overlay
 - `F4`: регенерация процедурного layout
-- `F7`: включение/выключение огнестрела у врагов
 - `F8`: загрузка `res://src/levels/stealth_3zone_test.tscn` (если `F8` не занят в `InputMap`)
 
 ## Что Уже Есть В Геймплее
 
 - Свободное top-down перемещение с accel/decel.
-- Система оружия на 6 слотов:
+- Канонический набор оружия игрока:
   - `pistol`
-  - `auto`
   - `shotgun`
-  - `plasma`
-  - `rocket`
-  - `chain_lightning`
 - Боевой пайплайн и урон:
   - TTL и жизненный цикл снарядов;
   - агрегация дроби для shotgun;

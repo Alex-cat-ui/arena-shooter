@@ -34,6 +34,10 @@ func run_suite() -> Dictionary:
 func _test_lkp_investigate_then_search() -> void:
 	if EventBus and EventBus.has_method("debug_reset_queue_for_tests"):
 		EventBus.call("debug_reset_queue_for_tests")
+	if RuntimeState:
+		RuntimeState.is_frozen = false
+		RuntimeState.player_visibility_mul = 1.0
+		RuntimeState.player_hp = 100
 	var room := STEALTH_ROOM_SCENE.instantiate()
 	add_child(room)
 	await get_tree().process_frame
@@ -59,7 +63,9 @@ func _test_lkp_investigate_then_search() -> void:
 
 	enemy.set_physics_process(false)
 	enemy.set_meta("room_id", 0)
-	player.global_position = enemy.global_position + Vector2(300.0, 0.0)
+	# Keep player far away so this suite deterministically validates
+	# last-seen intent flow (no live LOS branch) in both standalone/full runner.
+	player.global_position = enemy.global_position + Vector2(5000.0, 0.0)
 	player.velocity = Vector2.ZERO
 
 	var los_blocker := StaticBody2D.new()
@@ -81,6 +87,10 @@ func _test_lkp_investigate_then_search() -> void:
 
 	enemy.runtime_budget_tick(0.2)
 	var investigate_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
+	_t.run_test(
+		"lkp search: precondition has_los is false",
+		not bool(investigate_snapshot.get("has_los", true))
+	)
 	var initial_intent := int(investigate_snapshot.get("intent_type", -1))
 	_t.run_test(
 		"lkp search: no LOS with recent last_seen chooses INVESTIGATE/SEARCH",
