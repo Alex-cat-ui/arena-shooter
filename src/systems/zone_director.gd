@@ -4,6 +4,9 @@
 class_name ZoneDirector
 extends Node
 
+const ZONE_STATE_MACHINE_RUNTIME_SCRIPT := preload("res://src/systems/zone_state_machine_runtime.gd")
+const ZONE_REINFORCEMENT_RUNTIME_SCRIPT := preload("res://src/systems/zone_reinforcement_runtime.gd")
+
 
 enum ZoneState {
 	CALM = 0,
@@ -83,6 +86,15 @@ var _alert_system: EnemyAlertSystem = null
 var _sim_time_sec: float = 0.0
 var _debug_time_override_sec: float = -1.0
 var _event_bus_connected: bool = false
+var _state_machine_runtime = null
+var _reinforcement_runtime = null
+
+
+func _ensure_runtime_components() -> void:
+	if _state_machine_runtime == null:
+		_state_machine_runtime = ZONE_STATE_MACHINE_RUNTIME_SCRIPT.new(self)
+	if _reinforcement_runtime == null:
+		_reinforcement_runtime = ZONE_REINFORCEMENT_RUNTIME_SCRIPT.new(self)
 
 
 func _ready() -> void:
@@ -90,6 +102,7 @@ func _ready() -> void:
 
 
 func initialize(zone_config: Array[Dictionary], zone_edges: Array[Array], alert_system: EnemyAlertSystem = null) -> void:
+	_ensure_runtime_components()
 	_zone_states.clear()
 	_zone_rooms.clear()
 	_room_to_zone.clear()
@@ -212,25 +225,13 @@ func record_confirmed_contact_increment(room_id: int) -> void:
 
 
 func can_spawn_reinforcement(zone_id: int) -> bool:
-	if zone_id < 0 or not _zone_states.has(zone_id):
-		return false
-	_ensure_reinforcement_budget_entry(zone_id)
-	var caps := _get_reinforcement_caps(zone_id)
-	var wave_credit := float(_zone_wave_budget_credit.get(zone_id, 0.0))
-	var enemy_credit := float(_zone_enemy_budget_credit.get(zone_id, 0.0))
-	return caps.max_waves > 0 and caps.max_enemies > 0 and wave_credit >= 1.0 and enemy_credit >= 1.0
+	_ensure_runtime_components()
+	return bool(_reinforcement_runtime.can_spawn_reinforcement(zone_id))
 
 
 func register_reinforcement_wave(zone_id: int, count: int) -> void:
-	if zone_id < 0 or not _zone_states.has(zone_id):
-		return
-	_ensure_reinforcement_budget_entry(zone_id)
-	var used_enemy_credit := maxf(float(maxi(count, 0)), 0.0)
-	_zone_wave_budget_credit[zone_id] = maxf(float(_zone_wave_budget_credit.get(zone_id, 0.0)) - 1.0, 0.0)
-	_zone_enemy_budget_credit[zone_id] = maxf(float(_zone_enemy_budget_credit.get(zone_id, 0.0)) - used_enemy_credit, 0.0)
-	_reinforcement_waves[zone_id] = int(_reinforcement_waves.get(zone_id, 0)) + 1
-	_reinforcement_enemies[zone_id] = int(_reinforcement_enemies.get(zone_id, 0)) + maxi(count, 0)
-	_record_zone_event(zone_id, ZONE_EVENT_WAVE_SPAWN_SUCCESS)
+	_ensure_runtime_components()
+	_reinforcement_runtime.register_reinforcement_wave(zone_id, count)
 
 
 func validate_reinforcement_call(
@@ -240,64 +241,14 @@ func validate_reinforcement_call(
 	call_id: int,
 	now_sec: float = -1.0
 ) -> Dictionary:
-	var zone_id := get_zone_for_room(source_room_id)
-	if zone_id < 0:
-		return _rejected_call(zone_id, "invalid_zone")
-	if call_id <= 0:
-		return _rejected_call(zone_id, "invalid_call_id")
-	if source_enemy_id <= 0:
-		return _rejected_call(zone_id, "invalid_source_enemy_id")
-
-	var now := _now_sec(now_sec)
-	_prune_reinforcement_call_data_for_zone(zone_id, now)
-
-	var dedup := (_zone_call_dedup_until_sec.get(zone_id, {}) as Dictionary).duplicate(true)
-	var call_key := str(call_id)
-	if dedup.has(call_key) and float(dedup.get(call_key, 0.0)) > now:
-		return _rejected_call(zone_id, "dedup_ttl")
-
-	var zone_state := get_zone_state(zone_id)
-	if zone_state == ZoneState.CALM:
-		return _rejected_call(zone_id, "permission_calm")
-	if zone_state == ZoneState.ELEVATED and source_awareness_state != AWARENESS_ALERT:
-		return _rejected_call(zone_id, "permission_elevated_requires_alert")
-	if zone_state == ZoneState.LOCKDOWN and source_awareness_state != AWARENESS_ALERT and source_awareness_state != AWARENESS_COMBAT:
-		return _rejected_call(zone_id, "permission_lockdown_requires_alert_or_combat")
-
-	var profile := _profile_for_state(zone_state)
-	var cooldown_scale := maxf(float(profile.get("reinforcement_cooldown_scale", 1.0)), 0.0)
-	var global_cooldown := _global_call_cooldown_sec() * cooldown_scale
-	var last_zone_call := float(_zone_last_call_sec.get(zone_id, -999999.0))
-	if now - last_zone_call < global_cooldown:
-		return _rejected_call(zone_id, "global_cooldown")
-
-	var per_zone_calls := (_zone_source_call_times.get(zone_id, {}) as Dictionary).duplicate(true)
-	var source_times := (per_zone_calls.get(source_enemy_id, []) as Array).duplicate()
-	var call_window_sec := _call_window_sec()
-	var pruned_source_times: Array = []
-	for time_variant in source_times:
-		var ts := float(time_variant)
-		if now - ts <= call_window_sec:
-			pruned_source_times.append(ts)
-	if pruned_source_times.size() >= _calls_per_enemy_per_window():
-		return _rejected_call(zone_id, "source_window_limit")
-
-	if not can_spawn_reinforcement(zone_id):
-		return _rejected_call(zone_id, "budget_exhausted")
-
-	pruned_source_times.append(now)
-	per_zone_calls[source_enemy_id] = pruned_source_times
-	_zone_source_call_times[zone_id] = per_zone_calls
-	_zone_last_call_sec[zone_id] = now
-	dedup[call_key] = now + _call_dedup_ttl_sec()
-	_zone_call_dedup_until_sec[zone_id] = dedup
-	_record_zone_event(zone_id, ZONE_EVENT_ACCEPTED_REINFORCEMENT_CALL)
-
-	return {
-		"accepted": true,
-		"reason": "ok",
-		"zone_id": zone_id,
-	}
+	_ensure_runtime_components()
+	return _reinforcement_runtime.validate_reinforcement_call(
+		source_enemy_id,
+		source_room_id,
+		source_awareness_state,
+		call_id,
+		now_sec
+	)
 
 
 func debug_set_time_override_sec(time_sec: float) -> void:
@@ -385,132 +336,43 @@ func _record_confirmed_contact_for_zone(zone_id: int) -> void:
 
 
 func _process_zone_decay() -> void:
-	var now := _now_sec()
-	for zone_variant in _zone_states.keys():
-		var zone_id := int(zone_variant)
-		var state := get_zone_state(zone_id)
-		var state_entered := float(_zone_state_entered_sec.get(zone_id, now))
-		var last_event := float(_zone_last_event_sec.get(zone_id, now))
-		var time_in_state := now - state_entered
-		var no_events_elapsed := now - last_event
-
-		if state == ZoneState.LOCKDOWN:
-			if time_in_state >= _lockdown_min_hold_sec() and no_events_elapsed >= _lockdown_to_elevated_no_events_sec():
-				_transition_zone(zone_id, ZoneState.ELEVATED, "lockdown_no_event_decay")
-		elif state == ZoneState.ELEVATED:
-			if time_in_state >= _elevated_min_hold_sec() and no_events_elapsed >= _elevated_to_calm_no_events_sec():
-				_transition_zone(zone_id, ZoneState.CALM, "elevated_no_event_decay")
+	_ensure_runtime_components()
+	_state_machine_runtime.process_zone_decay()
 
 
 func _transition_zone(zone_id: int, new_state: int, _reason: String) -> bool:
-	if zone_id < 0 or not _zone_states.has(zone_id):
-		return false
-	var old_state := get_zone_state(zone_id)
-	if old_state == new_state:
-		return false
-
-	var now := _now_sec()
-	var last_transition := float(_zone_last_transition_sec.get(zone_id, -999999.0))
-	if now - last_transition < MIN_TRANSITION_INTERVAL_SEC:
-		return false
-
-	_zone_states[zone_id] = new_state
-	_zone_state_entered_sec[zone_id] = now
-	_zone_last_transition_sec[zone_id] = now
-	var history := (_zone_transition_history.get(zone_id, []) as Array).duplicate()
-	history.append(now)
-	_zone_transition_history[zone_id] = history
-	_sync_reinforcement_budget_caps_for_state_change(zone_id, old_state, new_state)
-	_emit_zone_state_changed(zone_id, old_state, new_state)
-	return true
+	_ensure_runtime_components()
+	return bool(_state_machine_runtime.transition_zone(zone_id, new_state, _reason))
 
 
 func _emit_zone_state_changed(zone_id: int, old_state: int, new_state: int) -> void:
-	if not EventBus:
-		return
-	if EventBus.has_method("emit_zone_state_changed"):
-		EventBus.emit_zone_state_changed(zone_id, old_state, new_state)
-	elif EventBus.has_signal("zone_state_changed"):
-		EventBus.zone_state_changed.emit(zone_id, old_state, new_state)
+	_ensure_runtime_components()
+	_state_machine_runtime.emit_zone_state_changed(zone_id, old_state, new_state)
 
 
 func _record_zone_event(zone_id: int, event_name: String) -> void:
-	if zone_id < 0 or not _zone_states.has(zone_id):
-		return
-	match event_name:
-		ZONE_EVENT_ROOM_ALERT, ZONE_EVENT_ROOM_COMBAT, ZONE_EVENT_ACCEPTED_TEAMMATE_CALL, ZONE_EVENT_CONFIRMED_CONTACT_INCREMENT, ZONE_EVENT_ACCEPTED_REINFORCEMENT_CALL, ZONE_EVENT_WAVE_SPAWN_SUCCESS:
-			_zone_last_event_sec[zone_id] = _now_sec()
-		_:
-			return
+	_ensure_runtime_components()
+	_state_machine_runtime.record_zone_event(zone_id, event_name)
 
 
 func _ensure_zone_entry(zone_id: int) -> void:
-	if not _zone_states.has(zone_id):
-		_zone_states[zone_id] = ZoneState.CALM
-	if not _zone_rooms.has(zone_id):
-		_zone_rooms[zone_id] = []
-	if not _zone_graph.has(zone_id):
-		_zone_graph[zone_id] = []
-	if not _zone_state_entered_sec.has(zone_id):
-		_zone_state_entered_sec[zone_id] = _now_sec()
-	if not _zone_last_event_sec.has(zone_id):
-		_zone_last_event_sec[zone_id] = _now_sec()
-	if not _zone_last_transition_sec.has(zone_id):
-		_zone_last_transition_sec[zone_id] = -999999.0
-	if not _zone_transition_history.has(zone_id):
-		_zone_transition_history[zone_id] = []
-	if not _zone_confirmed_contact_times.has(zone_id):
-		_zone_confirmed_contact_times[zone_id] = []
-	if not _reinforcement_waves.has(zone_id):
-		_reinforcement_waves[zone_id] = 0
-	if not _reinforcement_enemies.has(zone_id):
-		_reinforcement_enemies[zone_id] = 0
-	if not _zone_last_call_sec.has(zone_id):
-		_zone_last_call_sec[zone_id] = -999999.0
-	if not _zone_source_call_times.has(zone_id):
-		_zone_source_call_times[zone_id] = {}
-	if not _zone_call_dedup_until_sec.has(zone_id):
-		_zone_call_dedup_until_sec[zone_id] = {}
-	_ensure_reinforcement_budget_entry(zone_id)
+	_ensure_runtime_components()
+	_state_machine_runtime.ensure_zone_entry(zone_id)
 
 
 func _ensure_reinforcement_budget_entry(zone_id: int) -> void:
-	var caps := _get_reinforcement_caps(zone_id)
-	if not _zone_wave_budget_credit.has(zone_id):
-		_zone_wave_budget_credit[zone_id] = float(caps.max_waves)
-	if not _zone_enemy_budget_credit.has(zone_id):
-		_zone_enemy_budget_credit[zone_id] = float(caps.max_enemies)
-	_zone_wave_budget_credit[zone_id] = clampf(float(_zone_wave_budget_credit.get(zone_id, 0.0)), 0.0, float(caps.max_waves))
-	_zone_enemy_budget_credit[zone_id] = clampf(float(_zone_enemy_budget_credit.get(zone_id, 0.0)), 0.0, float(caps.max_enemies))
+	_ensure_runtime_components()
+	_reinforcement_runtime.ensure_reinforcement_budget_entry(zone_id)
 
 
 func _sync_reinforcement_budget_caps_for_state_change(zone_id: int, old_state: int, new_state: int) -> void:
-	var caps := _get_reinforcement_caps(zone_id)
-	var wave_credit := float(_zone_wave_budget_credit.get(zone_id, 0.0))
-	var enemy_credit := float(_zone_enemy_budget_credit.get(zone_id, 0.0))
-	if new_state > old_state:
-		wave_credit = maxf(wave_credit, float(caps.max_waves))
-		enemy_credit = maxf(enemy_credit, float(caps.max_enemies))
-	_zone_wave_budget_credit[zone_id] = clampf(wave_credit, 0.0, float(caps.max_waves))
-	_zone_enemy_budget_credit[zone_id] = clampf(enemy_credit, 0.0, float(caps.max_enemies))
+	_ensure_runtime_components()
+	_reinforcement_runtime.sync_reinforcement_budget_caps_for_state_change(zone_id, old_state, new_state)
 
 
 func _refill_reinforcement_budgets(delta: float) -> void:
-	var dt := maxf(delta, 0.0)
-	if dt <= 0.0:
-		return
-	for zone_variant in _zone_states.keys():
-		var zone_id := int(zone_variant)
-		_ensure_reinforcement_budget_entry(zone_id)
-		var caps := _get_reinforcement_caps(zone_id)
-		var profile := _profile_for_state(get_zone_state(zone_id))
-		var refill_scale := maxf(float(profile.get("zone_refill_scale", 0.0)), 0.0)
-		if refill_scale <= 0.0:
-			continue
-		var wave_credit := float(_zone_wave_budget_credit.get(zone_id, 0.0)) + refill_scale * dt
-		var enemy_credit := float(_zone_enemy_budget_credit.get(zone_id, 0.0)) + refill_scale * dt
-		_zone_wave_budget_credit[zone_id] = minf(float(caps.max_waves), wave_credit)
-		_zone_enemy_budget_credit[zone_id] = minf(float(caps.max_enemies), enemy_credit)
+	_ensure_runtime_components()
+	_reinforcement_runtime.refill_reinforcement_budgets(delta)
 
 
 func _resolve_enemy_room_id(enemy_id: int) -> int:
@@ -532,61 +394,28 @@ func _resolve_enemy_room_id(enemy_id: int) -> int:
 
 
 func _prune_confirmed_contact_windows() -> void:
-	var now := _now_sec()
-	for zone_variant in _zone_confirmed_contact_times.keys():
-		_prune_confirmed_contact_window_for_zone(int(zone_variant), now)
+	_ensure_runtime_components()
+	_reinforcement_runtime.prune_confirmed_contact_windows()
 
 
 func _prune_confirmed_contact_window_for_zone(zone_id: int, now_sec: float) -> void:
-	var window_sec := _confirmed_contact_window_sec()
-	var times := (_zone_confirmed_contact_times.get(zone_id, []) as Array).duplicate()
-	var pruned: Array = []
-	for time_variant in times:
-		var ts := float(time_variant)
-		if now_sec - ts <= window_sec:
-			pruned.append(ts)
-	_zone_confirmed_contact_times[zone_id] = pruned
+	_ensure_runtime_components()
+	_reinforcement_runtime.prune_confirmed_contact_window_for_zone(zone_id, now_sec)
 
 
 func _prune_reinforcement_call_windows_and_dedup() -> void:
-	var now := _now_sec()
-	for zone_variant in _zone_states.keys():
-		_prune_reinforcement_call_data_for_zone(int(zone_variant), now)
+	_ensure_runtime_components()
+	_reinforcement_runtime.prune_reinforcement_call_windows_and_dedup()
 
 
 func _prune_reinforcement_call_data_for_zone(zone_id: int, now_sec: float) -> void:
-	var call_window_sec := _call_window_sec()
-	var per_zone_calls := (_zone_source_call_times.get(zone_id, {}) as Dictionary).duplicate(true)
-	var cleaned_per_zone: Dictionary = {}
-	for source_variant in per_zone_calls.keys():
-		var source_enemy_id := int(source_variant)
-		var timestamps := (per_zone_calls.get(source_variant, []) as Array).duplicate()
-		var pruned_timestamps: Array = []
-		for ts_variant in timestamps:
-			var ts := float(ts_variant)
-			if now_sec - ts <= call_window_sec:
-				pruned_timestamps.append(ts)
-		if not pruned_timestamps.is_empty():
-			cleaned_per_zone[source_enemy_id] = pruned_timestamps
-	_zone_source_call_times[zone_id] = cleaned_per_zone
-
-	var dedup := (_zone_call_dedup_until_sec.get(zone_id, {}) as Dictionary).duplicate(true)
-	var remove_keys: Array = []
-	for call_key_variant in dedup.keys():
-		var key := str(call_key_variant)
-		if float(dedup.get(call_key_variant, 0.0)) <= now_sec:
-			remove_keys.append(key)
-	for key_variant in remove_keys:
-		dedup.erase(key_variant)
-	_zone_call_dedup_until_sec[zone_id] = dedup
+	_ensure_runtime_components()
+	_reinforcement_runtime.prune_reinforcement_call_data_for_zone(zone_id, now_sec)
 
 
 func _rejected_call(zone_id: int, reason: String) -> Dictionary:
-	return {
-		"accepted": false,
-		"reason": reason,
-		"zone_id": zone_id,
-	}
+	_ensure_runtime_components()
+	return _reinforcement_runtime.rejected_call(zone_id, reason)
 
 
 func _now_sec(override_sec: float = -1.0) -> float:

@@ -83,7 +83,7 @@ enum DirectionRenderMode {
 @export_group("Weapons")
 
 ## Canonical weapon stats - source of truth for AbilitySystem
-var weapon_stats: Dictionary = {
+const DEFAULT_WEAPON_STATS := {
 	"pistol": {
 		"damage": 10,
 		"rpm": 180,
@@ -102,6 +102,7 @@ var weapon_stats: Dictionary = {
 		"shot_damage_total": 25.0,
 	},
 }
+var weapon_stats: Dictionary = DEFAULT_WEAPON_STATS.duplicate(true)
 
 ## ============================================================================
 ## SECTION: AI / Combat Balance (Data-Driven)
@@ -219,9 +220,10 @@ var projectile_ttl: Dictionary = DEFAULT_PROJECTILE_TTL.duplicate(true)
 ## Central AI/combat tuning values consumed by enemy + tactical systems.
 var ai_balance: Dictionary = DEFAULT_AI_BALANCE.duplicate(true)
 ## Fire profile mode: production|debug_test|auto.
-var ai_fire_profile_mode: String = "auto"
+const DEFAULT_AI_FIRE_PROFILE_MODE := "auto"
+var ai_fire_profile_mode: String = DEFAULT_AI_FIRE_PROFILE_MODE
 ## Fire profile timings used by enemy first-shot telegraph.
-var ai_fire_profiles: Dictionary = {
+const DEFAULT_AI_FIRE_PROFILES := {
 	"production": {
 		"telegraph_min_sec": 0.10,
 		"telegraph_max_sec": 0.18,
@@ -231,6 +233,7 @@ var ai_fire_profiles: Dictionary = {
 		"telegraph_max_sec": 0.60,
 	},
 }
+var ai_fire_profiles: Dictionary = DEFAULT_AI_FIRE_PROFILES.duplicate(true)
 
 ## ============================================================================
 ## SECTION: Stealth Canon (Phase 0)
@@ -249,7 +252,7 @@ var ai_fire_profiles: Dictionary = {
 @export var stealth_flashlight_enabled: bool = true
 
 ## Canon stealth timing and behavior toggles.
-var stealth_canon := {
+const DEFAULT_STEALTH_CANON := {
 	"confirm_time_to_engage": 5.0,
 	"confirm_decay_rate": 1.25,
 	"confirm_grace_window": 0.50,
@@ -259,9 +262,10 @@ var stealth_canon := {
 	"flashlight_works_in_combat": true,
 	"flashlight_works_in_lockdown": true,
 }
+var stealth_canon := DEFAULT_STEALTH_CANON.duplicate(true)
 
 ## Zone system tuning for escalation and reinforcement.
-var zone_system := {
+const DEFAULT_ZONE_SYSTEM := {
 	"elevated_min_hold_sec": 16.0,
 	"lockdown_min_hold_sec": 24.0,
 	"elevated_to_calm_no_events_sec": 12.0,
@@ -304,6 +308,67 @@ var zone_system := {
 	"lockdown_combat_no_contact_window_sec": 45.0,
 	"lockdown_hold_to_pressure_ratio": 0.75,
 	"friendly_fire": false,
+}
+var zone_system := DEFAULT_ZONE_SYSTEM.duplicate(true)
+
+const DEFAULT_NON_LAYOUT_SCALARS := {
+	"tile_size": 32,
+	"max_alive_enemies": 64,
+	"direction_render_mode": DirectionRenderMode.ROTATE_SPRITE,
+	"pixel_perfect_rotation": true,
+	"god_mode": false,
+	"start_delay_sec": 1.5,
+	"player_max_hp": 100,
+	"contact_iframes_sec": 0.7,
+	"shotgun_hit_contact_damage": 1,
+	"music_volume": 0.7,
+	"sfx_volume": 0.7,
+	"music_fade_in_sec": 0.5,
+	"music_fade_out_sec": 0.7,
+	"player_speed_tiles": 10.0,
+	"ai_fire_profile_mode": DEFAULT_AI_FIRE_PROFILE_MODE,
+	"stealth_enabled": true,
+	"stealth_confirm_time_sec": 5.0,
+	"stealth_suspicious_enter": 0.25,
+	"stealth_alert_enter": 0.55,
+	"stealth_flashlight_enabled": true,
+	"footprints_enabled": true,
+	"footprint_step_distance_px": 40.0,
+	"footprint_rear_offset_px": 12.0,
+	"footprint_separation_px": 7.0,
+	"footprint_scale": 0.65,
+	"footprint_alpha": 0.35,
+	"footprint_rotation_jitter_deg": 1.0,
+	"footprint_lifetime_sec": 20.0,
+	"footprint_velocity_threshold": 35.0,
+	"footprint_max_count": 4000,
+	"footprint_bloody_steps": 8,
+	"footprint_black_steps": 4,
+	"footprint_blood_detect_radius": 25.0,
+	"footprint_rotation_offset_deg": 90.0,
+	"boots_blood_max_prints": 8,
+	"shadow_player_radius_mult": 1.2,
+	"shadow_player_alpha": 0.25,
+	"shadow_enemy_radius_mult": 1.1,
+	"shadow_enemy_alpha": 0.18,
+	"highlight_player_radius_offset": 2.0,
+	"highlight_player_thickness": 2.0,
+	"highlight_player_alpha": 0.5,
+	"hit_flash_duration": 0.06,
+	"kill_pop_scale": 1.2,
+	"kill_pop_duration": 0.1,
+	"kill_edge_pulse_alpha": 0.15,
+	"damage_arc_duration": 0.12,
+	"blood_max_decals": 500,
+	"blood_darken_rate": 0.01,
+	"blood_desaturate_rate": 0.005,
+	"vignette_alpha": 0.3,
+	"floor_overlay_alpha": 0.15,
+	"atmosphere_particle_alpha_min": 0.05,
+	"atmosphere_particle_alpha_max": 0.15,
+	"atmosphere_particle_lifetime_min": 3.0,
+	"atmosphere_particle_lifetime_max": 6.0,
+	"debug_overlay_visible": false,
 }
 
 ## ============================================================================
@@ -428,151 +493,27 @@ var zone_system := {
 ## METHODS
 ## ============================================================================
 
+func _apply_non_layout_scalar_defaults() -> void:
+	for key_variant in DEFAULT_NON_LAYOUT_SCALARS.keys():
+		var key := String(key_variant)
+		set(key, DEFAULT_NON_LAYOUT_SCALARS[key])
+
 ## Reset all values to defaults
 func reset_to_defaults() -> void:
-	# Core
-	tile_size = 32
-	max_alive_enemies = 64
-	direction_render_mode = DirectionRenderMode.ROTATE_SPRITE
-	pixel_perfect_rotation = true
-	god_mode = false
-
-	# Spawn
-	start_delay_sec = 1.5
-
-	# Combat
-	player_max_hp = 100
-	contact_iframes_sec = 0.7
-	shotgun_hit_contact_damage = 1
-
-	# Audio
-	music_volume = 0.7
-	sfx_volume = 0.7
-	music_fade_in_sec = 0.5
-	music_fade_out_sec = 0.7
-
-	# Physics
-	player_speed_tiles = 10.0
+	# Non-layout scalar defaults.
+	_apply_non_layout_scalar_defaults()
 
 	# Weapons
-	weapon_stats = {
-		"pistol": {"damage": 10, "rpm": 180, "speed_tiles": 12.0, "projectile_type": "bullet", "pellets": 1},
-		"shotgun": {"damage": 6, "rpm": 50.0, "cooldown_sec": 1.2, "speed_tiles": 40.0, "projectile_type": "pellet", "pellets": 16, "cone_deg": 8.0, "shot_damage_total": 25.0},
-	}
+	weapon_stats = DEFAULT_WEAPON_STATS.duplicate(true)
 
 	# AI/combat balance
 	enemy_stats = DEFAULT_ENEMY_STATS.duplicate(true)
 	projectile_ttl = DEFAULT_PROJECTILE_TTL.duplicate(true)
 	ai_balance = DEFAULT_AI_BALANCE.duplicate(true)
-	ai_fire_profile_mode = "auto"
-	ai_fire_profiles = {
-		"production": {
-			"telegraph_min_sec": 0.10,
-			"telegraph_max_sec": 0.18,
-		},
-		"debug_test": {
-			"telegraph_min_sec": 0.35,
-			"telegraph_max_sec": 0.60,
-		},
-	}
-	stealth_enabled = true
-	stealth_confirm_time_sec = 5.0
-	stealth_suspicious_enter = 0.25
-	stealth_alert_enter = 0.55
-	stealth_flashlight_enabled = true
-	stealth_canon = {
-		"confirm_time_to_engage": 5.0,
-		"confirm_decay_rate": 1.25,
-		"confirm_grace_window": 0.50,
-		"minimum_hold_alert_sec": 2.5,
-		"shadow_is_binary": true,
-		"flashlight_works_in_alert": true,
-		"flashlight_works_in_combat": true,
-		"flashlight_works_in_lockdown": true,
-	}
-	zone_system = {
-		"elevated_min_hold_sec": 16.0,
-		"lockdown_min_hold_sec": 24.0,
-		"elevated_to_calm_no_events_sec": 12.0,
-		"lockdown_to_elevated_no_events_sec": 18.0,
-		"confirmed_contacts_lockdown_threshold": 3,
-		"confirmed_contacts_window_sec": 8.0,
-		"calls_per_enemy_per_window": 2,
-		"call_window_sec": 20.0,
-		"global_call_cooldown_sec": 3.0,
-		"call_dedup_ttl_sec": 1.5,
-		"zone_profiles": {
-			"CALM": {
-				"alert_sweep_budget_scale": 0.85,
-				"role_weights_profiled": {"PRESSURE": 0.30, "HOLD": 0.60, "FLANK": 0.10},
-				"reinforcement_cooldown_scale": 1.25,
-				"flashlight_active_cap": 1,
-				"zone_refill_scale": 0.0,
-			},
-			"ELEVATED": {
-				"alert_sweep_budget_scale": 1.10,
-				"role_weights_profiled": {"PRESSURE": 0.45, "HOLD": 0.40, "FLANK": 0.15},
-				"reinforcement_cooldown_scale": 0.90,
-				"flashlight_active_cap": 2,
-				"zone_refill_scale": 0.35,
-			},
-			"LOCKDOWN": {
-				"alert_sweep_budget_scale": 1.45,
-				"role_weights_profiled": {"PRESSURE": 0.60, "HOLD": 0.25, "FLANK": 0.15},
-				"reinforcement_cooldown_scale": 0.65,
-				"flashlight_active_cap": 4,
-				"zone_refill_scale": 1.00,
-			},
-		},
-		"lockdown_spread_delay_elevated_sec": 2.0,
-		"lockdown_spread_delay_far_sec": 5.0,
-		"max_reinforcement_waves_per_zone": 1,
-		"max_reinforcement_enemies_per_zone": 2,
-		"lockdown_max_reinforcement_waves_per_zone": 3,
-		"lockdown_max_reinforcement_enemies_per_zone": 6,
-		"lockdown_combat_no_contact_window_sec": 45.0,
-		"lockdown_hold_to_pressure_ratio": 0.75,
-		"friendly_fire": false,
-	}
-
-	# Visual Polish
-	footprints_enabled = true
-	footprint_step_distance_px = 40.0
-	footprint_rear_offset_px = 12.0
-	footprint_separation_px = 7.0
-	footprint_scale = 0.65
-	footprint_alpha = 0.35
-	footprint_rotation_jitter_deg = 1.0
-	footprint_lifetime_sec = 20.0
-	footprint_velocity_threshold = 35.0
-	footprint_max_count = 4000
-	footprint_bloody_steps = 8
-	footprint_black_steps = 4
-	footprint_blood_detect_radius = 25.0
-	footprint_rotation_offset_deg = 90.0
-	boots_blood_max_prints = 8
-	shadow_player_radius_mult = 1.2
-	shadow_player_alpha = 0.25
-	shadow_enemy_radius_mult = 1.1
-	shadow_enemy_alpha = 0.18
-	highlight_player_radius_offset = 2.0
-	highlight_player_thickness = 2.0
-	highlight_player_alpha = 0.5
-	hit_flash_duration = 0.06
-	kill_pop_scale = 1.2
-	kill_pop_duration = 0.1
-	kill_edge_pulse_alpha = 0.15
-	damage_arc_duration = 0.12
-	blood_max_decals = 500
-	blood_darken_rate = 0.01
-	blood_desaturate_rate = 0.005
-	vignette_alpha = 0.3
-	floor_overlay_alpha = 0.15
-	atmosphere_particle_alpha_min = 0.05
-	atmosphere_particle_alpha_max = 0.15
-	atmosphere_particle_lifetime_min = 3.0
-	atmosphere_particle_lifetime_max = 6.0
-	debug_overlay_visible = false
+	ai_fire_profile_mode = DEFAULT_AI_FIRE_PROFILE_MODE
+	ai_fire_profiles = DEFAULT_AI_FIRE_PROFILES.duplicate(true)
+	stealth_canon = DEFAULT_STEALTH_CANON.duplicate(true)
+	zone_system = DEFAULT_ZONE_SYSTEM.duplicate(true)
 
 	# Procedural Layout
 	procedural_layout_enabled = true
@@ -622,23 +563,15 @@ func reset_to_defaults() -> void:
 
 ## Create a snapshot of current config (for validation/comparison)
 func get_snapshot() -> Dictionary:
-	return {
-		"tile_size": tile_size,
-		"max_alive_enemies": max_alive_enemies,
-		"god_mode": god_mode,
-		"start_delay_sec": start_delay_sec,
-		"player_max_hp": player_max_hp,
-		"music_volume": music_volume,
-		"sfx_volume": sfx_volume,
-		"player_speed_tiles": player_speed_tiles,
-		"enemy_stats": enemy_stats.duplicate(true),
-		"projectile_ttl": projectile_ttl.duplicate(true),
-		"ai_balance": ai_balance.duplicate(true),
-		"ai_fire_profile_mode": ai_fire_profile_mode,
-		"ai_fire_profiles": ai_fire_profiles.duplicate(true),
-		"stealth_enabled": stealth_enabled,
-		"stealth_confirm_time_sec": stealth_confirm_time_sec,
-		"stealth_suspicious_enter": stealth_suspicious_enter,
-		"stealth_alert_enter": stealth_alert_enter,
-		"stealth_flashlight_enabled": stealth_flashlight_enabled,
-	}
+	var snapshot: Dictionary = {}
+	for key_variant in DEFAULT_NON_LAYOUT_SCALARS.keys():
+		var key := String(key_variant)
+		snapshot[key] = get(key)
+	snapshot["weapon_stats"] = weapon_stats.duplicate(true)
+	snapshot["enemy_stats"] = enemy_stats.duplicate(true)
+	snapshot["projectile_ttl"] = projectile_ttl.duplicate(true)
+	snapshot["ai_balance"] = ai_balance.duplicate(true)
+	snapshot["ai_fire_profiles"] = ai_fire_profiles.duplicate(true)
+	snapshot["stealth_canon"] = stealth_canon.duplicate(true)
+	snapshot["zone_system"] = zone_system.duplicate(true)
+	return snapshot

@@ -85,19 +85,15 @@ func damage_player(amount: int, source: String) -> void:
 
 ## Apply damage to enemy
 func damage_enemy(enemy: Node, amount: int, source: String) -> void:
-	if not enemy or not enemy.has_method("take_damage"):
+	if not enemy:
+		return
+	if amount <= 0:
+		return
+	if not enemy.has_method("apply_damage"):
 		return
 
-	# Track stats
-	if RuntimeState:
-		RuntimeState.damage_dealt += amount
-
-	# Apply damage
-	enemy.take_damage(amount)
-
-	# Emit event
-	if EventBus and "entity_id" in enemy:
-		EventBus.emit_damage_dealt(enemy.entity_id, amount, source)
+	# Canon path: enemy owns damage side-effects/events.
+	enemy.apply_damage(amount, source)
 
 
 ## ============================================================================

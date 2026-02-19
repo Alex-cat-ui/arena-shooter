@@ -7,20 +7,8 @@ const ENEMY_PATROL_SYSTEM_SCRIPT := preload("res://src/systems/enemy_patrol_syst
 const ENEMY_UTILITY_BRAIN_SCRIPT := preload("res://src/systems/enemy_utility_brain.gd")
 const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 
-enum AIState {
-	IDLE_ROAM,
-	APPROACH_ATTACK_RANGE,
-	INVESTIGATE_LAST_SEEN,
-	SEARCH_LAST_SEEN,
-	RETURN_TO_HOME,
-}
-
 const ATTACK_RANGE_MAX_PX := 600.0
-const ATTACK_RANGE_PREF_MIN_PX := 500.0
 const LAST_SEEN_REACHED_PX := 20.0
-const RETURN_TARGET_REACHED_PX := 20.0
-const SEARCH_MIN_SEC := 5.0
-const SEARCH_MAX_SEC := 9.0
 const SEARCH_SWEEP_RAD := 0.9
 const SEARCH_SWEEP_SPEED := 2.4
 const HOLD_LISTEN_MIN_SEC := 0.8
@@ -51,7 +39,6 @@ var nav_system: Node = null
 var home_room_id: int = -1
 var _patrol = null
 
-var ai_state: int = AIState.IDLE_ROAM
 var facing_dir: Vector2 = Vector2.RIGHT
 var _target_facing_dir: Vector2 = Vector2.RIGHT
 
@@ -60,14 +47,10 @@ var _roam_wait_timer: float = 0.0
 var _waypoints: Array[Vector2] = []
 var _repath_timer: float = 0.0
 var _last_seen_pos: Vector2 = Vector2.ZERO
-var _has_last_seen: bool = false
-var _search_timer: float = 0.0
 var _search_phase: float = 0.0
-var _search_base_angle: float = 0.0
 var _in_hold_listen: bool = false
 var _hold_listen_timer: float = 0.0
 var _last_intent_type: int = -1
-var _return_target: Vector2 = Vector2.ZERO
 var _rng := RandomNumberGenerator.new()
 var _target_facing_lock_timer: float = 0.0
 var _pending_target_facing: Vector2 = Vector2.ZERO
@@ -126,18 +109,14 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	nav_system = p_nav_system
 	home_room_id = p_home_room_id
 	owner.set_meta("room_id", p_home_room_id)
-	ai_state = AIState.IDLE_ROAM
 	_waypoints.clear()
 	_roam_target = Vector2.ZERO
 	_roam_wait_timer = 0.0
 	_repath_timer = 0.0
 	_last_seen_pos = Vector2.ZERO
-	_has_last_seen = false
-	_search_timer = 0.0
 	_in_hold_listen = false
 	_hold_listen_timer = 0.0
 	_last_intent_type = -1
-	_return_target = Vector2.ZERO
 	_target_facing_dir = facing_dir
 	_target_facing_lock_timer = 0.0
 	_pending_target_facing = Vector2.ZERO
@@ -183,20 +162,9 @@ func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 		return
 
 	_set_last_seen(shot_pos)
-	ai_state = AIState.INVESTIGATE_LAST_SEEN
 	_plan_path_to(_last_seen_pos)
 	if _patrol:
 		_patrol.notify_alert()
-
-
-## @deprecated: Legacy simple-AI path. Use execute_intent() for the utility-brain path.
-## Calling both update() and execute_intent() in the same tick causes double-facing interpolation.
-func update(delta: float, use_room_nav: bool, player_valid: bool, player_pos: Vector2, player_visible: bool) -> void:
-	if use_room_nav:
-		_update_room_ai(delta, player_valid, player_pos, player_visible)
-	else:
-		_update_simple_ai(delta, player_valid, player_pos)
-	_update_facing(delta)
 
 
 func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Dictionary:
@@ -358,127 +326,6 @@ func _execute_retreat_from(delta: float, danger_origin: Vector2) -> void:
 		retreat_dir = Vector2.RIGHT.rotated(_rng.randf_range(0.0, TAU))
 	var retreat_target := owner.global_position + retreat_dir * _pursuit_cfg_float("retreat_distance_px", 140.0)
 	_execute_move_to_target(delta, retreat_target, 0.95)
-
-
-func _update_simple_ai(delta: float, player_valid: bool, player_pos: Vector2) -> void:
-	if not player_valid:
-		_stop_motion(delta)
-		return
-
-	var to_player := player_pos - owner.global_position
-	var dist := to_player.length()
-	if dist <= 0.001:
-		_stop_motion(delta)
-		return
-
-	var dir := to_player / dist
-	face_towards(player_pos)
-	if dist > _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX):
-		_move_in_direction(dir, 1.0, delta)
-		return
-
-	_stop_motion(delta)
-
-
-func _update_room_ai(delta: float, player_valid: bool, player_pos: Vector2, player_visible: bool) -> void:
-	if player_valid and player_visible:
-		_set_last_seen(player_pos)
-		if _patrol:
-			_patrol.notify_alert()
-		_update_engage_player(delta, player_pos)
-		return
-
-	if _has_last_seen:
-		if ai_state == AIState.IDLE_ROAM or ai_state == AIState.APPROACH_ATTACK_RANGE:
-			ai_state = AIState.INVESTIGATE_LAST_SEEN
-			_plan_path_to(_last_seen_pos)
-		match ai_state:
-			AIState.INVESTIGATE_LAST_SEEN:
-				_update_investigate_last_seen(delta)
-			AIState.SEARCH_LAST_SEEN:
-				_update_search_last_seen(delta)
-			AIState.RETURN_TO_HOME:
-				_update_return_to_home(delta)
-			_:
-				_update_idle_roam(delta)
-		return
-
-	_update_idle_roam(delta)
-
-
-func _update_engage_player(delta: float, player_pos: Vector2) -> void:
-	var dist := owner.global_position.distance_to(player_pos)
-	face_towards(player_pos)
-
-	if dist > _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX):
-		ai_state = AIState.APPROACH_ATTACK_RANGE
-		_repath_timer -= delta
-		if _repath_timer <= 0.0:
-			_repath_timer = _pursuit_cfg_float("path_repath_interval_sec", PATH_REPATH_INTERVAL_SEC)
-			_plan_path_to(player_pos)
-		_follow_waypoints(1.0, delta)
-		return
-
-	if dist < _pursuit_cfg_float("attack_range_pref_min_px", ATTACK_RANGE_PREF_MIN_PX):
-		ai_state = AIState.APPROACH_ATTACK_RANGE
-		_repath_timer -= delta
-		if _repath_timer <= 0.0:
-			_repath_timer = _pursuit_cfg_float("path_repath_interval_sec", PATH_REPATH_INTERVAL_SEC)
-			var retreat_dir := (owner.global_position - player_pos).normalized()
-			if retreat_dir == Vector2.ZERO:
-				retreat_dir = Vector2.RIGHT.rotated(_rng.randf_range(0.0, TAU))
-			var retreat_target := owner.global_position + retreat_dir * _pursuit_cfg_float("retreat_distance_px", 140.0)
-			if nav_system and nav_system.has_method("room_id_at_point"):
-				var rid := int(nav_system.room_id_at_point(retreat_target))
-				if rid < 0:
-					retreat_target = owner.global_position
-			_plan_path_to(retreat_target)
-		_follow_waypoints(0.9, delta)
-		return
-	else:
-		_waypoints.clear()
-		_stop_motion(delta)
-
-
-func _update_investigate_last_seen(delta: float) -> void:
-	if not _has_last_seen:
-		_begin_return_home()
-		return
-
-	if owner.global_position.distance_to(_last_seen_pos) <= _pursuit_cfg_float("last_seen_reached_px", LAST_SEEN_REACHED_PX):
-		_begin_search_last_seen()
-		return
-
-	_repath_timer -= delta
-	if _repath_timer <= 0.0:
-		_repath_timer = _pursuit_cfg_float("path_repath_interval_sec", PATH_REPATH_INTERVAL_SEC)
-		_plan_path_to(_last_seen_pos)
-	_follow_waypoints(1.0, delta)
-
-
-func _update_search_last_seen(delta: float) -> void:
-	_stop_motion(delta)
-	_search_timer = maxf(0.0, _search_timer - delta)
-	_search_phase += delta * _pursuit_cfg_float("search_sweep_speed", SEARCH_SWEEP_SPEED)
-	var angle := _search_base_angle + sin(_search_phase) * _pursuit_cfg_float("search_sweep_rad", SEARCH_SWEEP_RAD)
-	_set_target_facing(Vector2.RIGHT.rotated(angle))
-	if _search_timer <= 0.0:
-		_begin_return_home()
-
-
-func _update_return_to_home(delta: float) -> void:
-	if _return_target == Vector2.ZERO:
-		_return_target = _pick_home_return_target()
-
-	if owner.global_position.distance_to(_return_target) <= _pursuit_cfg_float("return_target_reached_px", RETURN_TARGET_REACHED_PX):
-		_clear_alert_and_idle()
-		return
-
-	_repath_timer -= delta
-	if _repath_timer <= 0.0:
-		_repath_timer = _pursuit_cfg_float("path_repath_interval_sec", PATH_REPATH_INTERVAL_SEC)
-		_plan_path_to(_return_target)
-	_follow_waypoints(0.95, delta)
 
 
 func _update_idle_roam(delta: float) -> void:
@@ -702,44 +549,12 @@ func _update_facing(delta: float) -> void:
 
 func _set_last_seen(pos: Vector2) -> void:
 	_last_seen_pos = pos
-	_has_last_seen = true
-
-
-func _begin_search_last_seen() -> void:
-	ai_state = AIState.SEARCH_LAST_SEEN
-	_search_timer = _rng.randf_range(
-		_pursuit_cfg_float("search_min_sec", SEARCH_MIN_SEC),
-		_pursuit_cfg_float("search_max_sec", SEARCH_MAX_SEC)
-	)
-	_search_phase = 0.0
-	_search_base_angle = facing_dir.angle()
-	_waypoints.clear()
-	_stop_motion(0.0)
-
-
-func _begin_return_home() -> void:
-	ai_state = AIState.RETURN_TO_HOME
-	_return_target = _pick_home_return_target()
-	_repath_timer = 0.0
-	_plan_path_to(_return_target)
 
 
 func _pick_home_return_target() -> Vector2:
 	if nav_system and nav_system.has_method("random_point_in_room") and home_room_id >= 0:
 		return nav_system.random_point_in_room(home_room_id, 28.0)
 	return owner.global_position
-
-
-func _clear_alert_and_idle() -> void:
-	_has_last_seen = false
-	_last_seen_pos = Vector2.ZERO
-	_search_timer = 0.0
-	_return_target = Vector2.ZERO
-	_waypoints.clear()
-	ai_state = AIState.IDLE_ROAM
-	_roam_wait_timer = randf_range(0.1, 0.35)
-	if _patrol:
-		_patrol.notify_calm()
 
 
 func _get_door_system() -> Node:

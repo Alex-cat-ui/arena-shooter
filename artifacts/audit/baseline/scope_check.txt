@@ -1,0 +1,6 @@
+timestamp_utc=2026-02-19T16:06:56Z
+changed_files:
+  ?? artifacts/
+  ?? docs/refactor_scope.md
+
+out_of_scope_changed=false

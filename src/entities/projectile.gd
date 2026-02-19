@@ -172,7 +172,9 @@ func _explode_rocket() -> void:
 	var enemies := get_tree().get_nodes_in_group("enemies")
 	for enemy in enemies:
 		if enemy is Node2D and enemy.position.distance_to(position) <= aoe_radius_px:
-			if enemy.has_method("take_damage"):
+			if enemy.has_method("apply_damage"):
+				enemy.apply_damage(aoe_damage, "rocket_aoe")
+			elif enemy.has_method("take_damage"):
 				enemy.take_damage(aoe_damage)
 
 	# Emit rocket_exploded event for camera shake

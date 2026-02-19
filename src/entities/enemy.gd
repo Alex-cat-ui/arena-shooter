@@ -5,6 +5,7 @@ class_name Enemy
 extends CharacterBody2D
 
 const SHOTGUN_SPREAD_SCRIPT := preload("res://src/systems/shotgun_spread.gd")
+const ENEMY_DAMAGE_RUNTIME_SCRIPT := preload("res://src/entities/enemy_damage_runtime.gd")
 const ENEMY_PERCEPTION_SYSTEM_SCRIPT := preload("res://src/systems/enemy_perception_system.gd")
 const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
@@ -2599,31 +2600,7 @@ func _shotgun_cooldown_sec() -> float:
 ## Apply damage from any source (projectile, explosion, etc.)
 ## Reduces HP, emits EventBus signals, handles death once.
 func apply_damage(amount: int, source: String) -> void:
-	if is_dead:
-		return
-	if _awareness and not bool(_awareness.hostile_damaged):
-		_awareness.hostile_damaged = true
-		if int(_awareness.get_state()) == int(ENEMY_AWARENESS_SYSTEM_SCRIPT.State.COMBAT):
-			_awareness.combat_phase = ENEMY_AWARENESS_SYSTEM_SCRIPT.CombatPhase.ENGAGED
-		else:
-			_awareness.combat_phase = ENEMY_AWARENESS_SYSTEM_SCRIPT.CombatPhase.NONE
-			if _awareness.has_method("_transition_to_combat_from_damage"):
-				var transitions: Array[Dictionary] = _awareness._transition_to_combat_from_damage()
-				_apply_awareness_transitions(transitions, "damage")
-		if EventBus and EventBus.has_method("emit_hostile_escalation"):
-			EventBus.emit_hostile_escalation(entity_id, "damaged")
-	hp -= amount
-	if sprite:
-		var flash_dur := GameConfig.hit_flash_duration if GameConfig else 0.06
-		sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
-		var tween := create_tween()
-		tween.tween_property(sprite, "modulate", Color.WHITE, flash_dur)
-	if RuntimeState:
-		RuntimeState.damage_dealt += amount
-	if EventBus:
-		EventBus.emit_damage_dealt(entity_id, amount, source)
-	if hp <= 0:
-		die()
+	ENEMY_DAMAGE_RUNTIME_SCRIPT.apply_damage(self, amount, source)
 
 
 ## Apply stagger (blocks movement for duration)
@@ -2636,21 +2613,9 @@ func apply_knockback(impulse: Vector2) -> void:
 	knockback_vel = impulse
 
 
-## Take damage (legacy, used by CombatSystem projectile pipeline)
+## Take damage (legacy compatibility wrapper)
 func take_damage(amount: int) -> void:
-	if is_dead:
-		return
-
-	hp -= amount
-
-	if sprite:
-		var flash_dur := GameConfig.hit_flash_duration if GameConfig else 0.06
-		sprite.modulate = Color(3.0, 3.0, 3.0, 1.0)
-		var tween := create_tween()
-		tween.tween_property(sprite, "modulate", Color.WHITE, flash_dur)
-
-	if hp <= 0:
-		die()
+	ENEMY_DAMAGE_RUNTIME_SCRIPT.take_damage_legacy(self, amount)
 
 
 ## Enemy death

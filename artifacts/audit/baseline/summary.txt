@@ -1,0 +1,6 @@
+timestamp_utc=2026-02-19T16:06:44Z
+godot_bin=/snap/godot-4/current/godot-4
+resolution_source=fallback:/snap/godot-4/current/godot-4
+command=/snap/godot-4/current/godot-4 --headless --path . --scene res://tests/test_runner.tscn
+exit_code=0
+duration_ms=86399

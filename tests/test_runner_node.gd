@@ -19,6 +19,9 @@ const UTILITY_BRAIN_TEST_SCENE := "res://tests/test_enemy_utility_brain.tscn"
 const BEHAVIOR_INTEGRATION_TEST_SCENE := "res://tests/test_enemy_behavior_integration.tscn"
 const RUNTIME_BUDGET_SCHEDULER_TEST_SCENE := "res://tests/test_enemy_runtime_budget_scheduler.tscn"
 const CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE := "res://tests/test_config_validator_ai_balance.tscn"
+const GAME_CONFIG_RESET_CONSISTENCY_NON_LAYOUT_TEST_SCENE := "res://tests/test_game_config_reset_consistency_non_layout.tscn"
+const GAME_SYSTEMS_RUNTIME_TEST_SCENE := "res://tests/test_game_systems_runtime.tscn"
+const PHYSICS_WORLD_RUNTIME_TEST_SCENE := "res://tests/test_physics_world_runtime.tscn"
 const ENEMY_SUSPICION_TEST_SCENE := "res://tests/test_enemy_suspicion.tscn"
 const FLASHLIGHT_CONE_TEST_SCENE := "res://tests/test_flashlight_cone.tscn"
 const ALERT_FLASHLIGHT_DETECTION_TEST_SCENE := "res://tests/test_alert_flashlight_detection.tscn"
@@ -62,7 +65,13 @@ const FIRST_SHOT_TIMER_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE := "res:
 const FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE := "res://tests/test_first_shot_timer_pause_and_reset_after_2_5s.tscn"
 const TELEGRAPH_PROFILE_PRODUCTION_VS_DEBUG_TEST_SCENE := "res://tests/test_telegraph_profile_production_vs_debug.tscn"
 const ENEMY_DAMAGE_IS_EXACTLY_1HP_PER_SUCCESSFUL_SHOT_TEST_SCENE := "res://tests/test_enemy_damage_is_exactly_1hp_per_successful_shot.tscn"
+const COMBAT_DAMAGE_ESCALATION_PIPELINE_TEST_SCENE := "res://tests/test_combat_damage_escalation_pipeline.tscn"
+const ENEMY_DAMAGE_API_SINGLE_SOURCE_TEST_SCENE := "res://tests/test_enemy_damage_api_single_source.tscn"
 const ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE := "res://tests/test_enemy_fire_cooldown_min_guard.tscn"
+const PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE := "res://tests/test_pursuit_intent_only_runtime.tscn"
+const PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE := "res://tests/test_pursuit_stall_fallback_invariants.tscn"
+const NAVIGATION_RUNTIME_QUERIES_TEST_SCENE := "res://tests/test_navigation_runtime_queries.tscn"
+const NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE := "res://tests/test_navigation_shadow_policy_runtime.tscn"
 const FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE := "res://tests/test_friendly_block_prevents_fire_and_triggers_reposition.tscn"
 const SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE := "res://tests/test_shadow_flashlight_rule_blocks_or_allows_fire.tscn"
 const SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE := "res://tests/test_shadow_single_source_of_truth_nav_and_detection.tscn"
@@ -71,6 +80,8 @@ const STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE := "res://tests/test_s
 const NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE := "res://tests/test_nearest_reachable_fallback_by_nav_distance.tscn"
 const ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE := "res://tests/test_zone_director_single_owner_transitions.tscn"
 const ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE := "res://tests/test_zone_hysteresis_hold_and_no_event_decay.tscn"
+const ZONE_STATE_MACHINE_CONTRACT_TEST_SCENE := "res://tests/test_zone_state_machine_contract.tscn"
+const ZONE_REINFORCEMENT_BUDGET_CONTRACT_TEST_SCENE := "res://tests/test_zone_reinforcement_budget_contract.tscn"
 const ZONE_PROFILE_MODIFIERS_EXACT_VALUES_TEST_SCENE := "res://tests/test_zone_profile_modifiers_exact_values.tscn"
 const CONFIRM_5S_INVARIANT_ACROSS_ZONE_PROFILES_TEST_SCENE := "res://tests/test_confirm_5s_invariant_across_zone_profiles.tscn"
 const WAVE_CALL_PERMISSION_MATRIX_AND_COOLDOWNS_TEST_SCENE := "res://tests/test_wave_call_permission_matrix_and_cooldowns.tscn"
@@ -101,6 +112,7 @@ const MISSION_TRANSITION_GATE_TEST_SCENE := "res://tests/test_mission_transition
 const EVENT_BUS_BACKPRESSURE_TEST_SCENE := "res://tests/test_event_bus_backpressure.tscn"
 const COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE := "res://tests/test_3zone_combat_transition_stress.tscn"
 const AI_LONG_RUN_STRESS_TEST_SCENE := "res://tests/test_ai_long_run_stress.tscn"
+const REFACTOR_KPI_CONTRACT_TEST_SCENE := "res://tests/test_refactor_kpi_contract.tscn"
 
 func _ready() -> void:
 	print("=" .repeat(60))
@@ -455,106 +467,110 @@ func _run_tests() -> void:
 	print("\n--- SECTION 18: AI/Door/Alert suites ---")
 
 	_test("Awareness test scene exists", func():
-		return load(AWARENESS_TEST_SCENE) is PackedScene
+		return _scene_exists(AWARENESS_TEST_SCENE)
 	)
 	_test("Aggro coordinator test scene exists", func():
-		return load(AGGRO_TEST_SCENE) is PackedScene
+		return _scene_exists(AGGRO_TEST_SCENE)
 	)
 	_test("Noise alert flow test scene exists", func():
-		return load(NOISE_FLOW_TEST_SCENE) is PackedScene
+		return _scene_exists(NOISE_FLOW_TEST_SCENE)
 	)
 	_test("Door controller test scene exists", func():
-		return load(DOOR_CONTROLLER_TEST_SCENE) is PackedScene
+		return _scene_exists(DOOR_CONTROLLER_TEST_SCENE)
 	)
 	_test("Door interaction flow test scene exists", func():
-		return load(DOOR_INTERACTION_FLOW_SCENE) is PackedScene
+		return _scene_exists(DOOR_INTERACTION_FLOW_SCENE)
 	)
 	_test("Door selection metric test scene exists", func():
-		return load(DOOR_SELECTION_METRIC_SCENE) is PackedScene
+		return _scene_exists(DOOR_SELECTION_METRIC_SCENE)
 	)
 	_test("Enemy alert marker test scene exists", func():
-		return load(ALERT_MARKER_TEST_SCENE) is PackedScene
+		return _scene_exists(ALERT_MARKER_TEST_SCENE)
 	)
 	_test("Enemy alert system test scene exists", func():
-		return load(ALERT_SYSTEM_TEST_SCENE) is PackedScene
+		return _scene_exists(ALERT_SYSTEM_TEST_SCENE)
 	)
 	_test("Enemy squad system test scene exists", func():
-		return load(SQUAD_SYSTEM_TEST_SCENE) is PackedScene
+		return _scene_exists(SQUAD_SYSTEM_TEST_SCENE)
 	)
 	_test("Enemy utility brain test scene exists", func():
-		return load(UTILITY_BRAIN_TEST_SCENE) is PackedScene
+		return _scene_exists(UTILITY_BRAIN_TEST_SCENE)
 	)
 	_test("Enemy behavior integration test scene exists", func():
-		return load(BEHAVIOR_INTEGRATION_TEST_SCENE) is PackedScene
+		return _scene_exists(BEHAVIOR_INTEGRATION_TEST_SCENE)
 	)
 	_test("Enemy runtime budget scheduler test scene exists", func():
-		return load(RUNTIME_BUDGET_SCHEDULER_TEST_SCENE) is PackedScene
+		return _scene_exists(RUNTIME_BUDGET_SCHEDULER_TEST_SCENE)
 	)
 	_test("Config validator AI balance test scene exists", func():
-		return load(CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE) is PackedScene
+		return _scene_exists(CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE)
+	)
+	_test("GameConfig reset consistency (non-layout) test scene exists", func():
+		return _scene_exists(GAME_CONFIG_RESET_CONSISTENCY_NON_LAYOUT_TEST_SCENE)
 	)
 	_test("Enemy suspicion test scene exists", func():
-		return load(ENEMY_SUSPICION_TEST_SCENE) is PackedScene
+		return _scene_exists(ENEMY_SUSPICION_TEST_SCENE)
 	)
 	_test("Flashlight cone test scene exists", func():
-		return load(FLASHLIGHT_CONE_TEST_SCENE) is PackedScene
+		return _scene_exists(FLASHLIGHT_CONE_TEST_SCENE)
 	)
 	_test("Alert flashlight detection test scene exists", func():
-		return load(ALERT_FLASHLIGHT_DETECTION_TEST_SCENE) is PackedScene
+		return _scene_exists(ALERT_FLASHLIGHT_DETECTION_TEST_SCENE)
 	)
 	_test("Stealth room smoke test scene exists", func():
-		return load(STEALTH_ROOM_SMOKE_TEST_SCENE) is PackedScene
+		return _scene_exists(STEALTH_ROOM_SMOKE_TEST_SCENE)
 	)
 	_test("Force state path test scene exists", func():
-		return load(FORCE_STATE_PATH_TEST_SCENE) is PackedScene
+		return _scene_exists(FORCE_STATE_PATH_TEST_SCENE)
 	)
 	_test("Weapons toggle gate test scene exists", func():
-		return load(WEAPONS_TOGGLE_GATE_TEST_SCENE) is PackedScene
+		return _scene_exists(WEAPONS_TOGGLE_GATE_TEST_SCENE)
 	)
 	_test("Player scene identity test scene exists", func():
-		return load(PLAYER_SCENE_IDENTITY_TEST_SCENE) is PackedScene
+		return _scene_exists(PLAYER_SCENE_IDENTITY_TEST_SCENE)
 	)
 	_test("Combat obstacle chase basic test scene exists", func():
-		return load(COMBAT_OBSTACLE_CHASE_BASIC_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_OBSTACLE_CHASE_BASIC_TEST_SCENE)
 	)
 	_test("DebugUI single owner test scene exists", func():
-		return load(DEBUGUI_SINGLE_OWNER_TEST_SCENE) is PackedScene
+		return _scene_exists(DEBUGUI_SINGLE_OWNER_TEST_SCENE)
 	)
 	_test("Stealth weapon pipeline equivalence test scene exists", func():
-		return load(STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE) is PackedScene
+		return _scene_exists(STEALTH_WEAPON_PIPELINE_EQ_TEST_SCENE)
 	)
 	_test("Stealth room alert flashlight integration test scene exists", func():
-		return load(STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE) is PackedScene
+		return _scene_exists(STEALTH_ROOM_ALERT_FLASHLIGHT_INTEGRATION_TEST_SCENE)
 	)
 	_test("Ring visibility policy test scene exists", func():
-		return load(RING_VISIBILITY_POLICY_TEST_SCENE) is PackedScene
+		return _scene_exists(RING_VISIBILITY_POLICY_TEST_SCENE)
 	)
 	_test("Shadow zone test scene exists", func():
-		return load(SHADOW_ZONE_TEST_SCENE) is PackedScene
+		return _scene_exists(SHADOW_ZONE_TEST_SCENE)
 	)
 	_test("Marker semantics mapping test scene exists", func():
-		return load(MARKER_SEMANTICS_MAPPING_TEST_SCENE) is PackedScene
+		return _scene_exists(MARKER_SEMANTICS_MAPPING_TEST_SCENE)
 	)
 	_test("Ring visible during decay test scene exists", func():
-		return load(RING_VISIBLE_DURING_DECAY_TEST_SCENE) is PackedScene
+		return _scene_exists(RING_VISIBLE_DURING_DECAY_TEST_SCENE)
 	)
 	_test("Weapons startup policy ON test scene exists", func():
-		return load(WEAPONS_STARTUP_POLICY_ON_TEST_SCENE) is PackedScene
+		return _scene_exists(WEAPONS_STARTUP_POLICY_ON_TEST_SCENE)
 	)
 	_test("DebugUI layout no overlap test scene exists", func():
-		return load(DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE) is PackedScene
+		return _scene_exists(DEBUGUI_LAYOUT_NO_OVERLAP_TEST_SCENE)
 	)
 	_test("EventBus backpressure test scene exists", func():
-		return load(EVENT_BUS_BACKPRESSURE_TEST_SCENE) is PackedScene
+		return _scene_exists(EVENT_BUS_BACKPRESSURE_TEST_SCENE)
 	)
 	_test("3zone combat transition stress test scene exists", func():
-		return load(COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE)
 	)
 	_test("AI long-run stress test scene exists", func():
-		return load(AI_LONG_RUN_STRESS_TEST_SCENE) is PackedScene
+		return _scene_exists(AI_LONG_RUN_STRESS_TEST_SCENE)
 	)
 
 	await _run_embedded_scene_suite("Config validator AI balance suite", CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE)
+	await _run_embedded_scene_suite("GameConfig reset consistency (non-layout) suite", GAME_CONFIG_RESET_CONSISTENCY_NON_LAYOUT_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy awareness suite", AWARENESS_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy aggro coordinator suite", AGGRO_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy noise alert flow suite", NOISE_FLOW_TEST_SCENE)
@@ -591,157 +607,181 @@ func _run_tests() -> void:
 	print("\n--- SECTION 18b: Stealth phases 1-7 suites ---")
 
 	_test("Stealth room combat fire test scene exists", func():
-		return load(STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE) is PackedScene
+		return _scene_exists(STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE)
 	)
 	_test("Stealth room LKP search test scene exists", func():
-		return load(STEALTH_ROOM_LKP_SEARCH_TEST_SCENE) is PackedScene
+		return _scene_exists(STEALTH_ROOM_LKP_SEARCH_TEST_SCENE)
 	)
 	_test("Combat room alert sync test scene exists", func():
-		return load(COMBAT_ROOM_ALERT_SYNC_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_ROOM_ALERT_SYNC_TEST_SCENE)
 	)
 	_test("AI transition single owner test scene exists", func():
-		return load(AI_TRANSITION_SINGLE_OWNER_TEST_SCENE) is PackedScene
+		return _scene_exists(AI_TRANSITION_SINGLE_OWNER_TEST_SCENE)
 	)
 	_test("AI no duplicate state change per tick test scene exists", func():
-		return load(AI_NO_DUPLICATE_STATE_CHANGE_PER_TICK_TEST_SCENE) is PackedScene
+		return _scene_exists(AI_NO_DUPLICATE_STATE_CHANGE_PER_TICK_TEST_SCENE)
 	)
 	_test("3zone player weapon switch test scene exists", func():
-		return load(THREE_ZONE_PLAYER_WEAPON_SWITCH_TEST_SCENE) is PackedScene
+		return _scene_exists(THREE_ZONE_PLAYER_WEAPON_SWITCH_TEST_SCENE)
 	)
 	_test("3zone player shotgun fire pipeline test scene exists", func():
-		return load(THREE_ZONE_PLAYER_SHOTGUN_FIRE_PIPELINE_TEST_SCENE) is PackedScene
+		return _scene_exists(THREE_ZONE_PLAYER_SHOTGUN_FIRE_PIPELINE_TEST_SCENE)
 	)
 	_test("Enemy shotgun fire block reasons test scene exists", func():
-		return load(ENEMY_SHOTGUN_FIRE_BLOCK_REASONS_TEST_SCENE) is PackedScene
+		return _scene_exists(ENEMY_SHOTGUN_FIRE_BLOCK_REASONS_TEST_SCENE)
 	)
 	_test("Alert->Combat requires 5s confirm test scene exists", func():
-		return load(ALERT_TO_COMBAT_REQUIRES_5S_CONFIRM_TEST_SCENE) is PackedScene
+		return _scene_exists(ALERT_TO_COMBAT_REQUIRES_5S_CONFIRM_TEST_SCENE)
 	)
 	_test("Peek corner confirm threshold test scene exists", func():
-		return load(PEEK_CORNER_CONFIRM_THRESHOLD_TEST_SCENE) is PackedScene
+		return _scene_exists(PEEK_CORNER_CONFIRM_THRESHOLD_TEST_SCENE)
 	)
 	_test("No combat latch before confirm complete test scene exists", func():
-		return load(NO_COMBAT_LATCH_BEFORE_CONFIRM_COMPLETE_TEST_SCENE) is PackedScene
+		return _scene_exists(NO_COMBAT_LATCH_BEFORE_CONFIRM_COMPLETE_TEST_SCENE)
 	)
 	_test("Last seen only in suspicious/alert test scene exists", func():
-		return load(LAST_SEEN_ONLY_IN_SUSPICIOUS_ALERT_TEST_SCENE) is PackedScene
+		return _scene_exists(LAST_SEEN_ONLY_IN_SUSPICIOUS_ALERT_TEST_SCENE)
 	)
 	_test("Teammate call dedup/cooldown test scene exists", func():
-		return load(TEAMMATE_CALL_DEDUP_AND_COOLDOWN_TEST_SCENE) is PackedScene
+		return _scene_exists(TEAMMATE_CALL_DEDUP_AND_COOLDOWN_TEST_SCENE)
 	)
 	_test("Alert call only on state entry test scene exists", func():
-		return load(ALERT_CALL_ONLY_ON_STATE_ENTRY_TEST_SCENE) is PackedScene
+		return _scene_exists(ALERT_CALL_ONLY_ON_STATE_ENTRY_TEST_SCENE)
 	)
 	_test("Alert degrade hold/grace/decay test scene exists", func():
-		return load(ALERT_DEGRADE_HOLD_GRACE_DECAY_TEST_SCENE) is PackedScene
+		return _scene_exists(ALERT_DEGRADE_HOLD_GRACE_DECAY_TEST_SCENE)
 	)
 	_test("Suspicion channels vs confirm channel test scene exists", func():
-		return load(SUSPICION_CHANNELS_VS_CONFIRM_CHANNEL_TEST_SCENE) is PackedScene
+		return _scene_exists(SUSPICION_CHANNELS_VS_CONFIRM_CHANNEL_TEST_SCENE)
 	)
 	_test("Teammate call room-graph gate test scene exists", func():
-		return load(TEAMMATE_CALL_ROOM_GRAPH_GATE_TEST_SCENE) is PackedScene
+		return _scene_exists(TEAMMATE_CALL_ROOM_GRAPH_GATE_TEST_SCENE)
 	)
 	_test("Combat role lock/reassign triggers test scene exists", func():
-		return load(COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE)
 	)
 	_test("Combat search per-room budget/total cap test scene exists", func():
-		return load(COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE)
 	)
 	_test("Combat next-room scoring test scene exists", func():
-		return load(COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE)
 	)
 	_test("Combat->Alert search/no-contact gate test scene exists", func():
-		return load(COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE)
 	)
 	_test("First-shot-delay on first valid firing solution test scene exists", func():
-		return load(FIRST_SHOT_DELAY_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE) is PackedScene
+		return _scene_exists(FIRST_SHOT_DELAY_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE)
 	)
 	_test("First-shot timer starts on first valid contact test scene exists", func():
-		return load(FIRST_SHOT_TIMER_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE) is PackedScene
+		return _scene_exists(FIRST_SHOT_TIMER_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE)
 	)
 	_test("First-shot timer pause/reset 2.5s test scene exists", func():
-		return load(FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE) is PackedScene
+		return _scene_exists(FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE)
 	)
 	_test("Telegraph profile production/debug test scene exists", func():
-		return load(TELEGRAPH_PROFILE_PRODUCTION_VS_DEBUG_TEST_SCENE) is PackedScene
+		return _scene_exists(TELEGRAPH_PROFILE_PRODUCTION_VS_DEBUG_TEST_SCENE)
 	)
 	_test("Enemy damage exactly 1hp per successful shot test scene exists", func():
-		return load(ENEMY_DAMAGE_IS_EXACTLY_1HP_PER_SUCCESSFUL_SHOT_TEST_SCENE) is PackedScene
+		return _scene_exists(ENEMY_DAMAGE_IS_EXACTLY_1HP_PER_SUCCESSFUL_SHOT_TEST_SCENE)
+	)
+	_test("Combat damage escalation pipeline test scene exists", func():
+		return _scene_exists(COMBAT_DAMAGE_ESCALATION_PIPELINE_TEST_SCENE)
+	)
+	_test("Enemy damage API single source test scene exists", func():
+		return _scene_exists(ENEMY_DAMAGE_API_SINGLE_SOURCE_TEST_SCENE)
 	)
 	_test("Enemy fire cooldown min guard test scene exists", func():
-		return load(ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE) is PackedScene
+		return _scene_exists(ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE)
 	)
 	_test("Friendly block prevents fire and triggers reposition test scene exists", func():
-		return load(FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE) is PackedScene
+		return _scene_exists(FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE)
 	)
 	_test("Shadow flashlight rule blocks/allows fire test scene exists", func():
-		return load(SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE) is PackedScene
+		return _scene_exists(SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE)
 	)
 	_test("Shadow single source of truth nav+detection test scene exists", func():
-		return load(SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE) is PackedScene
+		return _scene_exists(SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE)
 	)
 	_test("Shadow policy hard block without grant test scene exists", func():
-		return load(SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE) is PackedScene
+		return _scene_exists(SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE)
 	)
 	_test("Stall definition reproducible thresholds test scene exists", func():
-		return load(STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE) is PackedScene
+		return _scene_exists(STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
+	)
+	_test("Pursuit intent-only runtime test scene exists", func():
+		return _scene_exists(PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
+	)
+	_test("Pursuit stall/fallback invariants test scene exists", func():
+		return _scene_exists(PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE)
+	)
+	_test("Navigation runtime queries test scene exists", func():
+		return _scene_exists(NAVIGATION_RUNTIME_QUERIES_TEST_SCENE)
+	)
+	_test("Navigation shadow policy runtime test scene exists", func():
+		return _scene_exists(NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
 	)
 	_test("Nearest reachable fallback by nav distance test scene exists", func():
-		return load(NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE) is PackedScene
+		return _scene_exists(NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE)
 	)
 	_test("ZoneDirector single-owner transitions test scene exists", func():
-		return load(ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE) is PackedScene
+		return _scene_exists(ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE)
 	)
 	_test("Zone hysteresis hold/no-event decay test scene exists", func():
-		return load(ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE) is PackedScene
+		return _scene_exists(ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE)
+	)
+	_test("Zone state machine contract test scene exists", func():
+		return _scene_exists(ZONE_STATE_MACHINE_CONTRACT_TEST_SCENE)
+	)
+	_test("Zone reinforcement budget contract test scene exists", func():
+		return _scene_exists(ZONE_REINFORCEMENT_BUDGET_CONTRACT_TEST_SCENE)
 	)
 	_test("Zone profile exact values test scene exists", func():
-		return load(ZONE_PROFILE_MODIFIERS_EXACT_VALUES_TEST_SCENE) is PackedScene
+		return _scene_exists(ZONE_PROFILE_MODIFIERS_EXACT_VALUES_TEST_SCENE)
 	)
 	_test("Confirm 5s invariant across zone profiles test scene exists", func():
-		return load(CONFIRM_5S_INVARIANT_ACROSS_ZONE_PROFILES_TEST_SCENE) is PackedScene
+		return _scene_exists(CONFIRM_5S_INVARIANT_ACROSS_ZONE_PROFILES_TEST_SCENE)
 	)
 	_test("Wave call permission matrix/cooldowns test scene exists", func():
-		return load(WAVE_CALL_PERMISSION_MATRIX_AND_COOLDOWNS_TEST_SCENE) is PackedScene
+		return _scene_exists(WAVE_CALL_PERMISSION_MATRIX_AND_COOLDOWNS_TEST_SCENE)
 	)
 	_test("Combat no degrade test scene exists", func():
-		return load(COMBAT_NO_DEGRADE_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_NO_DEGRADE_TEST_SCENE)
 	)
 	_test("Combat utility intent aggressive test scene exists", func():
-		return load(COMBAT_UTILITY_INTENT_AGGRESSIVE_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_UTILITY_INTENT_AGGRESSIVE_TEST_SCENE)
 	)
 	_test("Main menu stealth entry test scene exists", func():
-		return load(MAIN_MENU_STEALTH_ENTRY_TEST_SCENE) is PackedScene
+		return _scene_exists(MAIN_MENU_STEALTH_ENTRY_TEST_SCENE)
 	)
 	_test("Enemy latch register/unregister test scene exists", func():
-		return load(ENEMY_LATCH_REGISTER_UNREGISTER_TEST_SCENE) is PackedScene
+		return _scene_exists(ENEMY_LATCH_REGISTER_UNREGISTER_TEST_SCENE)
 	)
 	_test("Enemy latch migration test scene exists", func():
-		return load(ENEMY_LATCH_MIGRATION_TEST_SCENE) is PackedScene
+		return _scene_exists(ENEMY_LATCH_MIGRATION_TEST_SCENE)
 	)
 	_test("Combat uses last seen test scene exists", func():
-		return load(COMBAT_USES_LAST_SEEN_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_USES_LAST_SEEN_TEST_SCENE)
 	)
 	_test("Last seen grace window test scene exists", func():
-		return load(LAST_SEEN_GRACE_WINDOW_TEST_SCENE) is PackedScene
+		return _scene_exists(LAST_SEEN_GRACE_WINDOW_TEST_SCENE)
 	)
 	_test("Combat no LOS never hold range test scene exists", func():
-		return load(COMBAT_NO_LOS_NEVER_HOLD_RANGE_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_NO_LOS_NEVER_HOLD_RANGE_TEST_SCENE)
 	)
 	_test("Combat intent push to search test scene exists", func():
-		return load(COMBAT_INTENT_PUSH_TO_SEARCH_TEST_SCENE) is PackedScene
+		return _scene_exists(COMBAT_INTENT_PUSH_TO_SEARCH_TEST_SCENE)
 	)
 	_test("Detour side flip on stall test scene exists", func():
-		return load(DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE) is PackedScene
+		return _scene_exists(DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE)
 	)
 	_test("Honest repath without teleport test scene exists", func():
-		return load(HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE) is PackedScene
+		return _scene_exists(HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE)
 	)
 	_test("Flashlight active in combat test scene exists", func():
-		return load(FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE) is PackedScene
+		return _scene_exists(FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE)
 	)
 	_test("Flashlight bonus in combat test scene exists", func():
-		return load(FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE) is PackedScene
+		return _scene_exists(FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE)
 	)
 
 	await _run_embedded_scene_suite("Stealth room combat fire suite", STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE)
@@ -770,15 +810,23 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("First-shot timer pause/reset 2.5s suite", FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE)
 	await _run_embedded_scene_suite("Telegraph profile production/debug suite", TELEGRAPH_PROFILE_PRODUCTION_VS_DEBUG_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy damage exactly 1hp per successful shot suite", ENEMY_DAMAGE_IS_EXACTLY_1HP_PER_SUCCESSFUL_SHOT_TEST_SCENE)
+	await _run_embedded_scene_suite("Combat damage escalation pipeline suite", COMBAT_DAMAGE_ESCALATION_PIPELINE_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy damage API single source suite", ENEMY_DAMAGE_API_SINGLE_SOURCE_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy fire cooldown min guard suite", ENEMY_FIRE_COOLDOWN_MIN_GUARD_TEST_SCENE)
 	await _run_embedded_scene_suite("Friendly block prevents fire + reposition suite", FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow flashlight rule blocks/allows fire suite", SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow single source of truth nav+detection suite", SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow policy hard block without grant suite", SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE)
 	await _run_embedded_scene_suite("Stall definition reproducible thresholds suite", STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
+	await _run_embedded_scene_suite("Pursuit intent-only runtime suite", PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
+	await _run_embedded_scene_suite("Pursuit stall/fallback invariants suite", PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation runtime queries suite", NAVIGATION_RUNTIME_QUERIES_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation shadow policy runtime suite", NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Nearest reachable fallback by nav distance suite", NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE)
 	await _run_embedded_scene_suite("ZoneDirector single-owner transitions suite", ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE)
 	await _run_embedded_scene_suite("Zone hysteresis hold/no-event decay suite", ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE)
+	await _run_embedded_scene_suite("Zone state machine contract suite", ZONE_STATE_MACHINE_CONTRACT_TEST_SCENE)
+	await _run_embedded_scene_suite("Zone reinforcement budget contract suite", ZONE_REINFORCEMENT_BUDGET_CONTRACT_TEST_SCENE)
 	await _run_embedded_scene_suite("Zone profile exact values suite", ZONE_PROFILE_MODIFIERS_EXACT_VALUES_TEST_SCENE)
 	await _run_embedded_scene_suite("Confirm 5s invariant across zone profiles suite", CONFIRM_5S_INVARIANT_ACROSS_ZONE_PROFILES_TEST_SCENE)
 	await _run_embedded_scene_suite("Wave call permission matrix/cooldowns suite", WAVE_CALL_PERMISSION_MATRIX_AND_COOLDOWNS_TEST_SCENE)
@@ -799,37 +847,46 @@ func _run_tests() -> void:
 	print("\n--- SECTION 19: Level decomposition controller suites ---")
 
 	_test("Level runtime guard test scene exists", func():
-		return load(LEVEL_RUNTIME_GUARD_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_RUNTIME_GUARD_TEST_SCENE)
 	)
 	_test("Level input controller test scene exists", func():
-		return load(LEVEL_INPUT_CONTROLLER_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_INPUT_CONTROLLER_TEST_SCENE)
 	)
 	_test("Level HUD controller test scene exists", func():
-		return load(LEVEL_HUD_CONTROLLER_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_HUD_CONTROLLER_TEST_SCENE)
 	)
 	_test("Level camera controller test scene exists", func():
-		return load(LEVEL_CAMERA_CONTROLLER_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_CAMERA_CONTROLLER_TEST_SCENE)
 	)
 	_test("Level layout regen test scene exists", func():
-		return load(LEVEL_LAYOUT_REGEN_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_LAYOUT_REGEN_TEST_SCENE)
 	)
 	_test("Level layout floor test scene exists", func():
-		return load(LEVEL_LAYOUT_FLOOR_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_LAYOUT_FLOOR_TEST_SCENE)
 	)
 	_test("Level transition controller test scene exists", func():
-		return load(LEVEL_TRANSITION_CONTROLLER_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_TRANSITION_CONTROLLER_TEST_SCENE)
 	)
 	_test("Level enemy runtime controller test scene exists", func():
-		return load(LEVEL_ENEMY_RUNTIME_CONTROLLER_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_ENEMY_RUNTIME_CONTROLLER_TEST_SCENE)
 	)
 	_test("Level events controller test scene exists", func():
-		return load(LEVEL_EVENTS_CONTROLLER_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_EVENTS_CONTROLLER_TEST_SCENE)
 	)
 	_test("Level bootstrap controller test scene exists", func():
-		return load(LEVEL_BOOTSTRAP_CONTROLLER_TEST_SCENE) is PackedScene
+		return _scene_exists(LEVEL_BOOTSTRAP_CONTROLLER_TEST_SCENE)
 	)
 	_test("Mission transition gate test scene exists", func():
-		return load(MISSION_TRANSITION_GATE_TEST_SCENE) is PackedScene
+		return _scene_exists(MISSION_TRANSITION_GATE_TEST_SCENE)
+	)
+	_test("Game systems runtime test scene exists", func():
+		return _scene_exists(GAME_SYSTEMS_RUNTIME_TEST_SCENE)
+	)
+	_test("Physics world runtime test scene exists", func():
+		return _scene_exists(PHYSICS_WORLD_RUNTIME_TEST_SCENE)
+	)
+	_test("Refactor KPI contract test scene exists", func():
+		return _scene_exists(REFACTOR_KPI_CONTRACT_TEST_SCENE)
 	)
 
 	await _run_embedded_scene_suite("Level runtime guard suite", LEVEL_RUNTIME_GUARD_TEST_SCENE)
@@ -843,6 +900,9 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Level events controller suite", LEVEL_EVENTS_CONTROLLER_TEST_SCENE)
 	await _run_embedded_scene_suite("Level bootstrap controller suite", LEVEL_BOOTSTRAP_CONTROLLER_TEST_SCENE)
 	await _run_embedded_scene_suite("Mission transition gate suite", MISSION_TRANSITION_GATE_TEST_SCENE)
+	await _run_embedded_scene_suite("Game systems runtime suite", GAME_SYSTEMS_RUNTIME_TEST_SCENE)
+	await _run_embedded_scene_suite("Physics world runtime suite", PHYSICS_WORLD_RUNTIME_TEST_SCENE)
+	await _run_embedded_scene_suite("Refactor KPI contract suite", REFACTOR_KPI_CONTRACT_TEST_SCENE)
 
 	print("\nAll tests completed (Core + AI + Door + Alert + Decomposition suites).")
 
@@ -862,6 +922,9 @@ func _test(name: String, test_func: Callable) -> void:
 
 func _run_embedded_scene_suite(name: String, scene_path: String) -> void:
 	_tests_run += 1
+	if not _scene_exists(scene_path):
+		print("[FAIL] %s (scene missing: %s)" % [name, scene_path])
+		return
 	var scene := load(scene_path) as PackedScene
 	if scene == null:
 		print("[FAIL] %s (scene load failed: %s)" % [name, scene_path])
@@ -901,3 +964,7 @@ func _has_property(obj: Object, property_name: String) -> bool:
 		if String(p.get("name", "")) == property_name:
 			return true
 	return false
+
+
+func _scene_exists(scene_path: String) -> bool:
+	return ResourceLoader.exists(scene_path, "PackedScene")
