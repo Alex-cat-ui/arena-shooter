@@ -24,11 +24,7 @@ var _debug_time_override_sec: float = -1.0
 
 
 func initialize(p_entities_container: Node = null, p_navigation_service: Node = null, p_player_node: Node = null) -> void:
-	# Backward compatibility: initialize(navigation_service)
-	if p_navigation_service == null and p_player_node == null and p_entities_container != null and p_entities_container.has_method("get_enemies_in_room"):
-		bind_context(null, p_entities_container, null)
-	else:
-		bind_context(p_entities_container, p_navigation_service, p_player_node)
+	bind_context(p_entities_container, p_navigation_service, p_player_node)
 	_connect_event_bus_signals()
 
 

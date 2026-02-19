@@ -45,35 +45,6 @@ var _enemy_runtime_controller = LEVEL_ENEMY_RUNTIME_CONTROLLER_SCRIPT.new()
 var _events_controller = LEVEL_EVENTS_CONTROLLER_SCRIPT.new()
 var _bootstrap_controller = LEVEL_BOOTSTRAP_CONTROLLER_SCRIPT.new()
 
-# Thin compatibility proxies for legacy tests during migration.
-var _mission_cycle_pos: int:
-	get:
-		return _ctx.mission_cycle_pos if _ctx else 0
-	set(value):
-		if _ctx:
-			_ctx.mission_cycle_pos = value
-
-var _north_transition_enabled: bool:
-	get:
-		return _ctx.north_transition_enabled if _ctx else false
-	set(value):
-		if _ctx:
-			_ctx.north_transition_enabled = value
-
-var _north_transition_rect: Rect2:
-	get:
-		return _ctx.north_transition_rect if _ctx else Rect2()
-	set(value):
-		if _ctx:
-			_ctx.north_transition_rect = value
-
-var _north_transition_cooldown: float:
-	get:
-		return _ctx.north_transition_cooldown if _ctx else 0.0
-	set(value):
-		if _ctx:
-			_ctx.north_transition_cooldown = value
-
 
 func _ready() -> void:
 	print("[LevelMVP] Ready - Visual Polish Pass")
