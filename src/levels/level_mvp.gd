@@ -226,7 +226,7 @@ func resume() -> void:
 	print("[LevelMVP] Resumed")
 
 
-# Legacy wrappers kept temporarily while tests migrate to controller APIs.
+# Public transition facade used by tests and debug flows.
 func _current_mission_index() -> int:
 	return _transition_controller.current_mission_index(_ctx) if _ctx else 3
 

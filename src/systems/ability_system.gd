@@ -66,9 +66,7 @@ func set_weapon_by_name(weapon_name: String) -> void:
 
 
 ## Try to fire current weapon. Returns true if fired.
-func try_fire(pos: Vector2, direction: Vector2, delta: float) -> bool:
-	# Keep backward-compatible cooldown ticking for callers that still pass delta here.
-	tick_cooldown(delta)
+func try_fire(pos: Vector2, direction: Vector2) -> bool:
 	if _weapon_cooldown > 0:
 		return false
 

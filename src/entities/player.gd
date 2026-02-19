@@ -135,7 +135,7 @@ func _handle_shooting(delta: float) -> void:
 		else:
 			aim_dir = (get_global_mouse_position() - position).normalized()
 		var spawn_pos := position + aim_dir * 20
-		ability_system.try_fire(spawn_pos, aim_dir, 0.0)
+		ability_system.try_fire(spawn_pos, aim_dir)
 
 
 ## Get current position as Vector3 (CANON)
