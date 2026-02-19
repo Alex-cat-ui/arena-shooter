@@ -20,7 +20,6 @@
 - `src/systems/layout_room_shapes.gd`
 - `src/systems/layout_wall_builder.gd`
 - `src/levels/level_layout_controller.gd`
-- `src/levels/stealth_test_layout.gd`
 - `tests/test_layout_*`
 
 ## Explicit Exclusions
