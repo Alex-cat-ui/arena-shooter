@@ -2642,11 +2642,6 @@ func apply_knockback(impulse: Vector2) -> void:
 	knockback_vel = impulse
 
 
-## Take damage (legacy compatibility wrapper)
-func take_damage(amount: int) -> void:
-	ENEMY_DAMAGE_RUNTIME_SCRIPT.take_damage_legacy(self, amount)
-
-
 ## Enemy death
 func die() -> void:
 	if is_dead:

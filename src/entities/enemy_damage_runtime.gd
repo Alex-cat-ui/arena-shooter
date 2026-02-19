@@ -44,7 +44,3 @@ static func apply_damage(enemy: Node, amount: int, source: String, from_player: 
 
 	if hp_now <= 0 and enemy.has_method("die"):
 		enemy.call("die")
-
-
-static func take_damage_legacy(enemy: Node, amount: int) -> void:
-	apply_damage(enemy, amount, "legacy_take_damage", true)

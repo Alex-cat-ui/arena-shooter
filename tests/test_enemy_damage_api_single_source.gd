@@ -23,7 +23,7 @@ func run_suite() -> Dictionary:
 	print("ENEMY DAMAGE API SINGLE SOURCE TEST")
 	print("============================================================")
 
-	await _test_take_damage_uses_canonical_damage_flow()
+	await _test_apply_damage_uses_canonical_damage_flow()
 	await _test_apply_damage_emits_single_event_path()
 
 	_t.summary("ENEMY DAMAGE API SINGLE SOURCE RESULTS")
@@ -34,7 +34,7 @@ func run_suite() -> Dictionary:
 	}
 
 
-func _test_take_damage_uses_canonical_damage_flow() -> void:
+func _test_apply_damage_uses_canonical_damage_flow() -> void:
 	var world := Node2D.new()
 	add_child(world)
 	_connect_signals()
@@ -42,7 +42,8 @@ func _test_take_damage_uses_canonical_damage_flow() -> void:
 
 	var enemy := await _spawn_enemy(world, 9201)
 	var hp_before := enemy.hp
-	enemy.take_damage(2)
+	var no_legacy_api := not enemy.has_method("take_damage")
+	enemy.apply_damage(2, "api_direct_hostile", true)
 	_flush_event_bus_once()
 	await get_tree().process_frame
 
@@ -59,14 +60,15 @@ func _test_take_damage_uses_canonical_damage_flow() -> void:
 		_damage_dealt_events.size() == 1
 		and int(_damage_dealt_events[0].get("target_id", -1)) == enemy.entity_id
 		and int(_damage_dealt_events[0].get("amount", -1)) == 2
-		and String(_damage_dealt_events[0].get("source", "")) == "legacy_take_damage"
+		and String(_damage_dealt_events[0].get("source", "")) == "api_direct_hostile"
 	)
 
-	_t.run_test("take_damage delegates to canonical flow: hp reduced", enemy.hp == hp_before - 2)
-	_t.run_test("take_damage delegates to canonical flow: hostile_damaged true", hostile_damaged)
-	_t.run_test("take_damage delegates to canonical flow: state escalated above CALM", state_escalated)
-	_t.run_test("take_damage delegates to canonical flow: hostile_escalation once", escalation_ok)
-	_t.run_test("take_damage delegates to canonical flow: damage_dealt once with legacy source", damage_event_ok)
+	_t.run_test("legacy take_damage API removed", no_legacy_api)
+	_t.run_test("apply_damage canonical flow: hp reduced", enemy.hp == hp_before - 2)
+	_t.run_test("apply_damage canonical flow: hostile_damaged true", hostile_damaged)
+	_t.run_test("apply_damage canonical flow: state escalated above CALM", state_escalated)
+	_t.run_test("apply_damage canonical flow: hostile_escalation once", escalation_ok)
+	_t.run_test("apply_damage canonical flow: damage_dealt once with direct source", damage_event_ok)
 
 	_disconnect_signals()
 	world.queue_free()
