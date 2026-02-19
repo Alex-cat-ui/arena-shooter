@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -41,7 +41,7 @@ func _test_enemy_combat_without_toggle_gate() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 
-	var controller := room.get_node_or_null("StealthTestController")
+	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	var player := room.get_node_or_null("Entities/Player") as CharacterBody2D
 	var enemy := _first_member_in_group_under("enemies", room) as Enemy
 
@@ -53,10 +53,8 @@ func _test_enemy_combat_without_toggle_gate() -> void:
 		await get_tree().process_frame
 		return
 
-	player.global_position = Vector2(520.0, -40.0)
+	player.global_position = enemy.global_position + Vector2(500.0, 0.0)
 	player.velocity = Vector2.ZERO
-	if enemy.has_method("disable_suspicion_test_profile"):
-		enemy.disable_suspicion_test_profile()
 	if controller.has_method("_force_enemy_combat"):
 		controller.call("_force_enemy_combat")
 	await get_tree().physics_frame
@@ -83,7 +81,7 @@ func _test_enemy_toggle_input_removed() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 
-	var controller := room.get_node_or_null("StealthTestController")
+	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	var enemy := _first_member_in_group_under("enemies", room) as Enemy
 
 	_t.run_test("weapons same-tick: controller exists", controller != null)

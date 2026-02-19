@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()

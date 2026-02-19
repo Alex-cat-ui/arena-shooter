@@ -118,14 +118,20 @@ func _test_each_spawn_can_fire_and_declares_shotgun_weapon() -> void:
 
 		if shooter.has_method("debug_force_awareness_state"):
 			shooter.call("debug_force_awareness_state", "COMBAT")
+		if shooter.has_method("set_physics_process"):
+			shooter.set_physics_process(false)
 
 		var fired := false
 		for _frame in range(FIRE_WAIT_FRAMES):
+			if shooter.has_method("runtime_budget_tick"):
+				shooter.call("runtime_budget_tick", 0.1)
 			await get_tree().physics_frame
 			await get_tree().process_frame
 			if int(_shots_by_enemy.get(shooter_id, 0)) > 0:
 				fired = true
 				break
+		if shooter.has_method("set_physics_process"):
+			shooter.set_physics_process(true)
 
 		var total_shots := int(_shots_by_enemy.get(shooter_id, 0))
 		var shotgun_shots := int(_shotgun_shots_by_enemy.get(shooter_id, 0))

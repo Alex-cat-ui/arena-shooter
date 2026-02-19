@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 const ROOM_NAV_SYSTEM_SCRIPT := preload("res://src/systems/navigation_service.gd")
 const ENEMY_ALERT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_alert_system.gd")
 const ENEMY_SQUAD_SYSTEM_SCRIPT := preload("res://src/systems/enemy_squad_system.gd")
@@ -41,7 +41,7 @@ func _test_scene_bootstrap_and_entities() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 
-	var controller := room.get_node_or_null("StealthTestController")
+	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	_t.run_test("stealth room has controller node", controller != null)
 
 	var players := _members_in_group_under("player", room)
@@ -58,26 +58,11 @@ func _test_scene_bootstrap_and_entities() -> void:
 	if debug_label:
 		var text := debug_label.text
 		var has_required_fields := (
-			text.find("state=") >= 0
-			and text.find("intent=") >= 0
-			and text.find("LOS=") >= 0
-			and text.find("suspicion=") >= 0
-			and text.find("vis=") >= 0
-			and text.find("dist=") >= 0
-			and text.find("last_seen=") >= 0
-			and text.find("fire_gate=") >= 0
-			and text.find("active=") >= 0
-			and text.find("cone=") >= 0
-			and text.find("hit=") >= 0
-			and text.find("bonus=") >= 0
-			and text.find("vis_pre=") >= 0
-			and text.find("vis_post=") >= 0
-			and text.find("room_eff=") >= 0
-			and text.find("room_trans=") >= 0
-			and text.find("latch=") >= 0
-			and text.find("grace=") >= 0
-			and text.find("target_lkp=") >= 0
-			and text.find("reason=") >= 0
+			text.find("zones:") >= 0
+			and text.find("door_a1a2_closed=") >= 0
+			and text.find("player_weapon=") >= 0
+			and text.find("runtime state=") >= 0
+			and text.find("enemy#") >= 0
 		)
 		_t.run_test("stealth overlay exposes required telemetry fields", has_required_fields)
 
@@ -97,18 +82,14 @@ func _test_autoload_reuse_without_local_duplicates() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 
-	var controller := room.get_node_or_null("StealthTestController")
+	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	_t.run_test("controller available in autoload reuse case", controller != null)
 	if controller and controller.has_method("debug_get_system_summary"):
 		var summary := controller.call("debug_get_system_summary") as Dictionary
-		_t.run_test("room nav reuses root singleton", bool(summary.get("navigation_service_from_autoload", false)))
-		_t.run_test("alert reuses root singleton", bool(summary.get("enemy_alert_from_autoload", false)))
-		_t.run_test("squad reuses root singleton", bool(summary.get("enemy_squad_from_autoload", false)))
-		_t.run_test("aggro reuses root singleton", bool(summary.get("enemy_aggro_from_autoload", false)))
-		_t.run_test("no local NavigationService duplicate", not bool(summary.get("local_navigation_service_exists", true)))
-		_t.run_test("no local EnemyAlertSystem duplicate", not bool(summary.get("local_enemy_alert_exists", true)))
-		_t.run_test("no local EnemySquadSystem duplicate", not bool(summary.get("local_enemy_squad_exists", true)))
-		_t.run_test("no local EnemyAggroCoordinator duplicate", not bool(summary.get("local_enemy_aggro_exists", true)))
+		_t.run_test("3zone uses local navigation service", bool(summary.get("local_navigation_service_exists", false)))
+		_t.run_test("3zone uses local enemy alert service", bool(summary.get("local_enemy_alert_exists", false)))
+		_t.run_test("3zone uses local enemy squad service", bool(summary.get("local_enemy_squad_exists", false)))
+		_t.run_test("3zone uses local enemy aggro coordinator", bool(summary.get("local_enemy_aggro_exists", false)))
 	else:
 		_t.run_test("debug_get_system_summary available", false)
 

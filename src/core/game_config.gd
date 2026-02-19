@@ -242,20 +242,14 @@ var ai_fire_profiles: Dictionary = DEFAULT_AI_FIRE_PROFILES.duplicate(true)
 @export_group("Stealth")
 
 @export var stealth_enabled: bool = true
-## Time (sec) for full confirm-to-engage from clear LOS.
-@export_range(1.0, 15.0) var stealth_confirm_time_sec: float = 5.0
-## Suspicion threshold to enter SUSPICIOUS state (0..1).
-@export_range(0.0, 1.0) var stealth_suspicious_enter: float = 0.25
-## Suspicion threshold to enter ALERT state (0..1).
-@export_range(0.0, 1.0) var stealth_alert_enter: float = 0.55
-## Flashlight active for ALL stealth enemies.
-@export var stealth_flashlight_enabled: bool = true
 
 ## Canon stealth timing and behavior toggles.
 const DEFAULT_STEALTH_CANON := {
 	"confirm_time_to_engage": 5.0,
 	"confirm_decay_rate": 1.25,
 	"confirm_grace_window": 0.50,
+	"suspicious_enter": 0.25,
+	"alert_enter": 0.55,
 	"minimum_hold_alert_sec": 2.5,
 	"shadow_is_binary": true,
 	"flashlight_works_in_alert": true,
@@ -328,10 +322,6 @@ const DEFAULT_NON_LAYOUT_SCALARS := {
 	"player_speed_tiles": 10.0,
 	"ai_fire_profile_mode": DEFAULT_AI_FIRE_PROFILE_MODE,
 	"stealth_enabled": true,
-	"stealth_confirm_time_sec": 5.0,
-	"stealth_suspicious_enter": 0.25,
-	"stealth_alert_enter": 0.55,
-	"stealth_flashlight_enabled": true,
 	"footprints_enabled": true,
 	"footprint_step_distance_px": 40.0,
 	"footprint_rear_offset_px": 12.0,

@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 
 const REASON_NO_COMBAT_STATE := "no_combat_state"
 const REASON_NO_LOS := "no_los"
@@ -53,9 +53,7 @@ func _test_shotgun_fire_block_reasons_snapshot() -> void:
 	if player == null or enemy == null:
 		await _cleanup(room)
 		return
-
-	if enemy.has_method("disable_suspicion_test_profile"):
-		enemy.disable_suspicion_test_profile()
+	
 	if RuntimeState:
 		RuntimeState.is_frozen = false
 	if GameConfig:

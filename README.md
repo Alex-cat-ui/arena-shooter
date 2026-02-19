@@ -19,6 +19,8 @@
 Кодовая база находится в активной миграции:
 
 - legacy-контуры ближнего боя удалены из рабочего runtime/UI и актуальной документации;
+- legacy-пайплайн `suspicion profile` (включая `process_suspicion`) удален; канонический контур детекции: `stealth_canon` + `process_confirm`;
+- одиночная тестовая сцена `stealth_test_room.tscn` удалена; канонический стенд: `res://src/levels/stealth_3zone_test.tscn` (`Stealth3ZoneTestController`);
 - текущий фокус миграции: data-driven баланс и унификация AI-сигналов.
 
 ## Технологии
@@ -71,7 +73,7 @@ godot --path . --scene res://scenes/app_root.tscn
 - `F3`: debug overlay
 - `F4`: регенерация процедурного layout
 - `F7`: включение/выключение огнестрела у врагов
-- `F8`: загрузка `res://src/levels/stealth_test_room.tscn` (если `F8` не занят в `InputMap`)
+- `F8`: загрузка `res://src/levels/stealth_3zone_test.tscn` (если `F8` не занят в `InputMap`)
 
 ## Что Уже Есть В Геймплее
 
@@ -156,6 +158,12 @@ arena-shooter/
 
 ```bash
 godot --headless --path . --scene res://tests/test_runner.tscn
+```
+
+Канонический smoke для stealth-стенда:
+
+```bash
+godot --headless --path . --scene res://tests/test_3zone_smoke.tscn
 ```
 
 Smoke-тест:

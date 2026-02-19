@@ -521,9 +521,13 @@ func _test_3zone_enemy_combat_fire(level: Node2D) -> void:
 
 	if shooter.has_method("debug_force_awareness_state"):
 		shooter.call("debug_force_awareness_state", "COMBAT")
+	if shooter.has_method("set_physics_process"):
+		shooter.set_physics_process(false)
 
 	var fired := false
 	for _i in range(360):
+		if shooter.has_method("runtime_budget_tick"):
+			shooter.call("runtime_budget_tick", 0.1)
 		await get_tree().physics_frame
 		await get_tree().process_frame
 		if _observed_enemy_shots > 0:
@@ -534,6 +538,8 @@ func _test_3zone_enemy_combat_fire(level: Node2D) -> void:
 		EventBus.enemy_shot.disconnect(_on_enemy_shot)
 	_observed_enemy_id = -1
 	_observed_enemy_shots = 0
+	if shooter.has_method("set_physics_process"):
+		shooter.set_physics_process(true)
 
 	player.global_position = player_start
 	player.velocity = Vector2.ZERO

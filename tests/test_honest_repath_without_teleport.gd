@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -38,7 +38,7 @@ func _test_honest_repath_without_teleport() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 
-	var controller := room.get_node_or_null("StealthTestController")
+	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	var player := room.get_node_or_null("Entities/Player") as CharacterBody2D
 	var enemy := _first_member_in_group_under("enemies", room) as Enemy
 
@@ -56,8 +56,6 @@ func _test_honest_repath_without_teleport() -> void:
 	player.velocity = Vector2.ZERO
 	if controller.has_method("_set_test_weapons_enabled"):
 		controller.call("_set_test_weapons_enabled", false)
-	if enemy.has_method("disable_suspicion_test_profile"):
-		enemy.disable_suspicion_test_profile()
 	await get_tree().physics_frame
 	var nav_ready := await _wait_for_navmesh_path(enemy, enemy.global_position, player.global_position)
 	_t.run_test("honest repath: navmesh path is ready", nav_ready)

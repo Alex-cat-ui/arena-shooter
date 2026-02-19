@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_config.gd")
 
 var embedded_mode: bool = false
@@ -46,7 +46,7 @@ func _test_controller_pipeline_still_wired() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 
-	var controller := room.get_node_or_null("StealthTestController")
+	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	_t.run_test("startup: controller exists", controller != null)
 	if controller == null:
 		room.queue_free()

@@ -25,7 +25,6 @@ func run_suite() -> Dictionary:
 	await _test_flashlight_clamp_prevents_jump()
 	await _test_flashlight_boosts_shadow_detection_in_alert()
 	await _test_flashlight_does_not_work_without_los()
-	await _test_flashlight_inactive_reason_profile_off()
 	await _test_flashlight_inactive_reason_state_blocked()
 
 	_t.summary("ALERT FLASHLIGHT DETECTION RESULTS")
@@ -34,10 +33,6 @@ func run_suite() -> Dictionary:
 		"run": _t.tests_run,
 		"passed": _t.tests_passed,
 	}
-
-
-func _profile() -> Dictionary:
-	return STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile()
 
 
 func _config_values() -> Dictionary:
@@ -104,15 +99,8 @@ func _test_flashlight_does_not_work_without_los() -> void:
 	_t.run_test("suspicion does not grow when LOS is blocked", is_zero_approx(blocked_suspicion))
 
 
-func _test_flashlight_inactive_reason_profile_off() -> void:
-	var profile_off := await _run_detection_case(Vector2(300.0, 0.0), false, -1.0, false, true)
-	var snapshot := profile_off.get("snapshot", {}) as Dictionary
-	_t.run_test("profile-off keeps flashlight inactive", not bool(snapshot.get("flashlight_active", true)))
-	_t.run_test("profile-off reason is exposed", String(snapshot.get("flashlight_inactive_reason", "")) == "profile_off")
-
-
 func _test_flashlight_inactive_reason_state_blocked() -> void:
-	var calm_state := await _run_detection_case(Vector2(300.0, 0.0), false, -1.0, true, false)
+	var calm_state := await _run_detection_case(Vector2(300.0, 0.0), false, -1.0, false)
 	var snapshot := calm_state.get("snapshot", {}) as Dictionary
 	_t.run_test("CALM blocks flashlight activity", not bool(snapshot.get("flashlight_active", true)))
 	_t.run_test("state-blocked reason is exposed", String(snapshot.get("flashlight_inactive_reason", "")) == "state_blocked")
@@ -122,7 +110,6 @@ func _run_detection_case(
 	player_position: Vector2,
 	add_blocker: bool,
 	flashlight_bonus_override: float = -1.0,
-	enable_profile: bool = true,
 	force_alert_state: bool = true
 ) -> Dictionary:
 	if RuntimeState:
@@ -163,10 +150,6 @@ func _run_detection_case(
 	await get_tree().process_frame
 
 	enemy.initialize(8801, "zombie")
-	if enable_profile:
-		enemy.enable_suspicion_test_profile(_profile())
-	elif enemy.has_method("disable_suspicion_test_profile"):
-		enemy.disable_suspicion_test_profile()
 	if enemy.has_method("configure_stealth_test_flashlight"):
 		var cfg := _config_values()
 		var flashlight_bonus := float(cfg.get("flashlight_bonus", 2.5))

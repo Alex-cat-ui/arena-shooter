@@ -207,8 +207,6 @@ func _test_calm_shadow_blocks_spotted_and_los() -> void:
 	world.add_child(enemy)
 	await get_tree().process_frame
 	enemy.initialize(9191, "zombie")
-	if enemy.has_method("disable_suspicion_test_profile"):
-		enemy.disable_suspicion_test_profile()
 
 	_spotted_count = 0
 	_spotted_enemy_id_filter = 9191
@@ -216,13 +214,14 @@ func _test_calm_shadow_blocks_spotted_and_los() -> void:
 		if not EventBus.enemy_player_spotted.is_connected(_on_enemy_player_spotted_for_test):
 			EventBus.enemy_player_spotted.connect(_on_enemy_player_spotted_for_test)
 
-	for _i in range(40):
+	# Keep runtime in pre-ALERT window: shadow-only silhouette should not open confirm contact yet.
+	for _i in range(10):
 		enemy.runtime_budget_tick(0.25)
 		await get_tree().process_frame
 
 	var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test("calm shadow blocks spotted event emission", _spotted_count == 0)
-	_t.run_test("calm shadow blocks behavior LOS", not bool(snapshot.get("has_los", true)))
+	_t.run_test("calm shadow keeps confirmed contact closed", not bool(snapshot.get("confirmed", true)))
 	_t.run_test(
 		"calm shadow without valid contact does not escalate to COMBAT",
 		int(snapshot.get("state", -1)) != int(ENEMY_ALERT_LEVELS_SCRIPT.COMBAT)

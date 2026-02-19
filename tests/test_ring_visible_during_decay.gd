@@ -2,7 +2,6 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
-const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_config.gd")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -38,7 +37,6 @@ func _spawn_enemy(world: Node2D, seed_id: int) -> Enemy:
 	world.add_child(enemy)
 	await get_tree().process_frame
 	enemy.initialize(seed_id, "zombie")
-	enemy.enable_suspicion_test_profile(STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile())
 	await get_tree().process_frame
 	# Stop enemy physics so runtime_budget_tick doesn't overwrite awareness_state meta
 	enemy.set_physics_process(false)

@@ -36,7 +36,6 @@ func _test_flashlight_bonus_applies_in_combat() -> void:
 	if RuntimeState:
 		RuntimeState.player_hp = 100
 	var cfg := STEALTH_TEST_CONFIG_SCRIPT.values()
-	var profile := STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile()
 
 	var world := Node2D.new()
 	add_child(world)
@@ -52,7 +51,6 @@ func _test_flashlight_bonus_applies_in_combat() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 	enemy.initialize(5201, "zombie")
-	enemy.enable_suspicion_test_profile(profile)
 	enemy.configure_stealth_test_flashlight(
 		float(cfg.get("flashlight_angle_deg", 55.0)),
 		float(cfg.get("flashlight_distance_px", 1000.0)),

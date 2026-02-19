@@ -27,7 +27,6 @@ var combat_phase: CombatPhase = CombatPhase.NONE
 var _confirm_progress: float = 0.0 # 0..1, replaces _suspicion for canon mode
 var _has_confirmed_visual: bool = false
 var _los_lost_time: float = 0.0
-var _suspicion_profile_enabled: bool = false
 var _combat_timer: float = 0.0
 var _alert_timer: float = 0.0
 var _suspicious_timer: float = 0.0
@@ -114,101 +113,6 @@ func get_last_suspicion_debug() -> Dictionary:
 		"effective_visibility_pre_clamp": _debug_last_effective_visibility_pre_clamp,
 		"effective_visibility_post_clamp": _debug_last_effective_visibility_post_clamp,
 	}
-
-
-func set_suspicion_profile_enabled(enabled: bool) -> void:
-	_suspicion_profile_enabled = enabled
-	if not enabled:
-		_has_confirmed_visual = false
-		_los_lost_time = 0.0
-
-
-func process_suspicion(
-	delta: float,
-	has_los: bool,
-	visibility_factor: float,
-	flashlight_hit: bool,
-	profile: Dictionary
-) -> Array[Dictionary]:
-	var transitions: Array[Dictionary] = []
-	var dt := maxf(delta, 0.0)
-	var gain_rate_calm := float(profile.get("suspicion_gain_rate_calm", 0.35))
-	var gain_rate_alert := float(profile.get("suspicion_gain_rate_alert", 1.2))
-	var decay_rate := float(profile.get("suspicion_decay_rate", 0.45))
-	var combat_threshold := clampf(float(profile.get("combat_threshold", 1.0)), 0.0, 1.0)
-	var suspicious_threshold := clampf(float(profile.get("suspicious_threshold", 0.25)), 0.0, 1.0)
-	var alert_threshold := clampf(float(profile.get("alert_threshold", 0.55)), 0.0, 1.0)
-	var grace_time := maxf(float(profile.get("los_grace_time", 0.3)), 0.0)
-	var grace_decay_mult := clampf(float(profile.get("los_grace_decay_mult", 0.25)), 0.0, 1.0)
-	var flashlight_bonus := maxf(float(profile.get("flashlight_bonus", 2.5)), 0.0)
-	var flashlight_bonus_in_alert := bool(profile.get("flashlight_bonus_in_alert", true))
-	var flashlight_bonus_in_combat := bool(profile.get("flashlight_bonus_in_combat", true))
-
-	if _state == State.COMBAT:
-		_suspicion = maxf(_suspicion, combat_threshold)
-		if has_los:
-			_los_lost_time = 0.0
-			var combat_effective_visibility := maxf(visibility_factor, 0.0)
-			var combat_flashlight_bonus_raw := 1.0
-			if flashlight_hit and flashlight_bonus_in_combat:
-				combat_flashlight_bonus_raw = flashlight_bonus
-				combat_effective_visibility *= combat_flashlight_bonus_raw
-			var combat_effective_visibility_post_clamp := clampf(combat_effective_visibility, 0.0, 1.0)
-			_debug_last_flashlight_bonus_raw = combat_flashlight_bonus_raw
-			_debug_last_effective_visibility_pre_clamp = combat_effective_visibility
-			_debug_last_effective_visibility_post_clamp = combat_effective_visibility_post_clamp
-			_visibility = combat_effective_visibility_post_clamp
-			_suspicion = clampf(_suspicion + gain_rate_alert * combat_effective_visibility_post_clamp * dt, 0.0, 1.0)
-		else:
-			_debug_last_flashlight_bonus_raw = 1.0
-			_debug_last_effective_visibility_pre_clamp = 0.0
-			_debug_last_effective_visibility_post_clamp = 0.0
-		_advance_timers(dt, has_los, transitions)
-		if _state != State.COMBAT:
-			_has_confirmed_visual = false
-		return transitions
-
-	if has_los:
-		_los_lost_time = 0.0
-		var effective_visibility := maxf(visibility_factor, 0.0)
-		var flashlight_bonus_raw := 1.0
-		if _state == State.ALERT and flashlight_hit and flashlight_bonus_in_alert:
-			flashlight_bonus_raw = flashlight_bonus
-			effective_visibility *= flashlight_bonus_raw
-		var effective_visibility_post_clamp := clampf(effective_visibility, 0.0, 1.0)
-		_debug_last_flashlight_bonus_raw = flashlight_bonus_raw
-		_debug_last_effective_visibility_pre_clamp = effective_visibility
-		_debug_last_effective_visibility_post_clamp = effective_visibility_post_clamp
-		_visibility = effective_visibility_post_clamp
-		var gain_rate := gain_rate_alert if _state == State.ALERT else gain_rate_calm
-		_suspicion = clampf(_suspicion + gain_rate * effective_visibility_post_clamp * dt, 0.0, 1.0)
-	else:
-		var suspicion_before_decay := _suspicion
-		_los_lost_time += dt
-		_debug_last_flashlight_bonus_raw = 1.0
-		_debug_last_effective_visibility_pre_clamp = 0.0
-		_debug_last_effective_visibility_post_clamp = 0.0
-		var decay_mult := 1.0
-		if _los_lost_time < grace_time:
-			decay_mult = grace_decay_mult
-		_suspicion = clampf(_suspicion - decay_rate * decay_mult * dt, 0.0, 1.0)
-		# Keep micro-LOS grace from hard-resetting suspicion because of tiny residual values.
-		if _los_lost_time < grace_time and suspicion_before_decay > 0.0 and _suspicion <= 0.0:
-			_suspicion = suspicion_before_decay
-		_decay_visibility(dt)
-
-	if _state != State.COMBAT and _suspicion >= combat_threshold:
-		_has_confirmed_visual = true
-		_transition_to(State.COMBAT, "suspicion_visual_confirmed", transitions)
-		return transitions
-
-	if (_state == State.CALM or _state == State.SUSPICIOUS) and _suspicion >= alert_threshold:
-		_transition_to(State.ALERT, "suspicion", transitions)
-	elif _state == State.CALM and _suspicion >= suspicious_threshold:
-		_transition_to(State.SUSPICIOUS, "suspicion", transitions)
-
-	_advance_timers(dt, has_los, transitions)
-	return transitions
 
 
 func process_confirm(

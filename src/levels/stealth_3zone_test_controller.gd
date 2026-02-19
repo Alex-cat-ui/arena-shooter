@@ -140,7 +140,6 @@ class ThreeZoneLayout:
 
 
 var _layout: ThreeZoneLayout = null
-var _suspicion_profile: Dictionary = {}
 var _test_values: Dictionary = {}
 var _enemy_id_counter: int = 15000
 var _spawned_enemies: Array[Enemy] = []
@@ -184,7 +183,6 @@ func _ready() -> void:
 		RuntimeState.player_visibility_mul = 1.0
 
 	_test_values = STEALTH_TEST_CONFIG_SCRIPT.values()
-	_suspicion_profile = STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile()
 	_ensure_playing_state_for_test_level()
 
 	_build_geometry()
@@ -201,6 +199,31 @@ func _ready() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event == null:
 		return
+	var key := event as InputEventKey
+	if key and key.pressed and not key.echo:
+		match key.physical_keycode:
+			KEY_1:
+				_force_enemy_calm()
+				_refresh_debug_label(true)
+				return
+			KEY_2:
+				_force_enemy_alert()
+				_refresh_debug_label(true)
+				return
+			KEY_3:
+				_force_enemy_combat()
+				_refresh_debug_label(true)
+				return
+			KEY_TAB:
+				_set_overlay_visible(not (_debug_layer != null and _debug_layer.visible))
+				_refresh_debug_label(true)
+				return
+			KEY_R:
+				_reset_positions()
+				_refresh_debug_label(true)
+				return
+			_:
+				pass
 	if event.is_action_pressed("pause", true):
 		if StateManager and StateManager.current_state in [GameState.State.GAME_OVER, GameState.State.LEVEL_COMPLETE]:
 			StateManager.change_state(GameState.State.MAIN_MENU)
@@ -454,6 +477,23 @@ func debug_get_combat_pipeline_summary() -> Dictionary:
 	}
 
 
+func debug_get_test_config() -> Dictionary:
+	return _test_values.duplicate(true)
+
+
+func debug_get_system_summary() -> Dictionary:
+	return {
+		"navigation_service_from_autoload": false,
+		"enemy_alert_from_autoload": false,
+		"enemy_squad_from_autoload": false,
+		"enemy_aggro_from_autoload": false,
+		"local_navigation_service_exists": _systems_root.get_node_or_null("NavigationService") != null,
+		"local_enemy_alert_exists": _systems_root.get_node_or_null("EnemyAlertSystem") != null,
+		"local_enemy_squad_exists": _systems_root.get_node_or_null("EnemySquadSystem") != null,
+		"local_enemy_aggro_exists": _systems_root.get_node_or_null("EnemyAggroCoordinator") != null,
+	}
+
+
 func _ensure_combat_pipeline_ready() -> void:
 	if not _systems_root or not _player:
 		return
@@ -520,7 +560,6 @@ func _spawn_enemies() -> void:
 		enemy.initialize(_enemy_id_counter, String(spawn.get("type", "zombie")))
 		enemy.set_runtime_budget_scheduler_enabled(false)
 		enemy.configure_stealth_test_flashlight(_flashlight_angle_deg(), _flashlight_distance_px(), _flashlight_bonus())
-		enemy.enable_suspicion_test_profile(_suspicion_profile)
 		enemy.set_flashlight_hit_for_detection(false)
 		if _door_system:
 			enemy.set_meta("door_system", _door_system)
@@ -538,6 +577,58 @@ func _spawn_position(spawn: Dictionary) -> Vector2:
 		if node:
 			return node.global_position
 	return spawn.get("pos", Vector2.ZERO) as Vector2
+
+
+func _reset_positions() -> void:
+	_setup_player()
+	var spawn_index := 0
+	for enemy in _spawned_enemies:
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		var spawn_data := ENEMY_SPAWNS[min(spawn_index, ENEMY_SPAWNS.size() - 1)] as Dictionary
+		enemy.global_position = _spawn_position(spawn_data)
+		enemy.velocity = Vector2.ZERO
+		if enemy.has_method("set_flashlight_hit_for_detection"):
+			enemy.set_flashlight_hit_for_detection(false)
+		if enemy.has_method("debug_force_awareness_state"):
+			enemy.debug_force_awareness_state("CALM")
+		spawn_index += 1
+	if RuntimeState:
+		RuntimeState.player_visibility_mul = 1.0
+
+
+func _force_enemy_calm() -> void:
+	_force_enemy_state("CALM")
+
+
+func _force_enemy_alert() -> void:
+	_force_enemy_state("ALERT")
+
+
+func _force_enemy_combat() -> void:
+	_force_enemy_state("COMBAT")
+
+
+func _force_enemy_state(target_state: String) -> void:
+	var enemy := _primary_enemy()
+	if enemy == null:
+		return
+	if enemy.has_method("debug_force_awareness_state"):
+		enemy.debug_force_awareness_state(target_state)
+
+
+func _primary_enemy() -> Enemy:
+	for enemy in _spawned_enemies:
+		if enemy == null or not is_instance_valid(enemy):
+			continue
+		return enemy
+	for child_variant in _entities_root.get_children():
+		var child := child_variant as Enemy
+		if child == null:
+			continue
+		if child.is_in_group("enemies"):
+			return child
+	return null
 
 
 func _flashlight_angle_deg() -> float:
@@ -761,6 +852,11 @@ func _update_hint_text() -> void:
 	if _hint_label == null:
 		return
 	_hint_label.text = "3-Zone test level (Phase 5)\nA(rooms 0,1) <-> B(room 2) <-> C(room 3) | 5 enemies deterministic | door A1<->A2 starts closed\nE = interact door | Q = kick door"
+
+
+func _set_overlay_visible(visible: bool) -> void:
+	if _debug_layer:
+		_debug_layer.visible = visible
 
 
 func _refresh_debug_label(force: bool) -> void:

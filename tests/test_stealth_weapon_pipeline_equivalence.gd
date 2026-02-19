@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -36,7 +36,7 @@ func _test_stealth_weapon_pipeline_equivalence() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 
-	var controller := room.get_node_or_null("StealthTestController")
+	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	var player := room.get_node_or_null("Entities/Player") as CharacterBody2D
 	var enemy := _first_member_in_group_under("enemies", room) as Enemy
 
@@ -62,11 +62,11 @@ func _test_stealth_weapon_pipeline_equivalence() -> void:
 	_t.run_test("pipeline eq: ability->projectile wiring exists", bool(pipeline_summary.get("ability_projectile_wired", false)))
 	_t.run_test("pipeline eq: ability->combat wiring exists", bool(pipeline_summary.get("ability_combat_wired", false)))
 
-	var combat_node := room.get_node_or_null("CombatSystem")
-	var projectile_node := room.get_node_or_null("ProjectileSystem")
-	var ability_node := room.get_node_or_null("AbilitySystem")
+	var combat_node := room.get_node_or_null("Systems/CombatSystem")
+	var projectile_node := room.get_node_or_null("Systems/ProjectileSystem")
+	var ability_node := room.get_node_or_null("Systems/AbilitySystem")
 	_t.run_test(
-		"pipeline eq: room has canonical system node names",
+		"pipeline eq: 3zone has canonical system node names",
 		combat_node != null and projectile_node != null and ability_node != null
 	)
 	_t.run_test(

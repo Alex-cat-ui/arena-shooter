@@ -4,7 +4,6 @@ const TestHelpers = preload("res://tests/test_helpers.gd")
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
 const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
-const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_config.gd")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -44,10 +43,6 @@ func run_suite() -> Dictionary:
 	}
 
 
-func _profile() -> Dictionary:
-	return STEALTH_TEST_CONFIG_SCRIPT.suspicion_profile()
-
-
 func _test_confirm_path_not_instant_combat() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
@@ -58,47 +53,43 @@ func _test_confirm_path_not_instant_combat() -> void:
 func _test_suspicion_accumulates_without_instant_combat() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
-	awareness.set_suspicion_profile_enabled(true)
-	awareness.process_suspicion(0.1, true, 0.25, false, _profile())
-	_t.run_test("suspicion mode: no instant COMBAT on first LOS tick", awareness.get_state_name() != "COMBAT")
-	_t.run_test("suspicion mode: suspicion increases on LOS", float(awareness.get_suspicion()) > 0.0)
+	awareness.process_confirm(0.1, true, false, false, CANON_CONFIG)
+	var snapshot := awareness.get_ui_snapshot()
+	_t.run_test("confirm mode: no instant COMBAT on first LOS tick", awareness.get_state_name() != "COMBAT")
+	_t.run_test("confirm mode: suspicion increases on LOS", float(awareness.get_suspicion()) > 0.0)
+	_t.run_test("confirm mode: confirm progress increases on LOS", float(snapshot.get("confirm01", 0.0)) > 0.0)
 
 
 func _test_only_threshold_confirms_visual_and_enters_combat() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
-	awareness.set_suspicion_profile_enabled(true)
-	var profile := _profile()
 
 	var steps: int = 0
 	while awareness.get_state_name() != "COMBAT" and steps < 128:
-		awareness.process_suspicion(0.1, true, 1.0, false, profile)
+		awareness.process_confirm(0.1, true, false, false, CANON_CONFIG)
 		steps += 1
 
-	_t.run_test("suspicion threshold eventually enters COMBAT", awareness.get_state_name() == "COMBAT")
-	_t.run_test("COMBAT in suspicion mode sets confirmed visual", bool(awareness.has_confirmed_visual()))
+	_t.run_test("confirm threshold eventually enters COMBAT", awareness.get_state_name() == "COMBAT")
+	_t.run_test("COMBAT in confirm mode sets confirmed visual", bool(awareness.has_confirmed_visual()))
 
 
 func _test_micro_los_grace_reduced_decay() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
-	awareness.set_suspicion_profile_enabled(true)
-	var profile := _profile()
+	awareness.process_confirm(1.0, true, false, false, CANON_CONFIG)
+	var before_loss := float(awareness.get_ui_snapshot().get("confirm01", 0.0))
+	awareness.process_confirm(0.1, false, false, false, CANON_CONFIG)
+	var during_grace := float(awareness.get_ui_snapshot().get("confirm01", 0.0))
+	awareness.process_confirm(0.6, false, false, false, CANON_CONFIG)
+	var after_grace := float(awareness.get_ui_snapshot().get("confirm01", 0.0))
 
-	awareness.process_suspicion(1.0, true, 0.5, false, profile)
-	var before_loss: float = float(awareness.get_suspicion())
-	awareness.process_suspicion(0.1, false, 0.5, false, profile)
-	var after_loss: float = float(awareness.get_suspicion())
-
-	var expected_decay := float(profile["suspicion_decay_rate"]) * float(profile["los_grace_decay_mult"]) * 0.1
-	var expected_after := clampf(before_loss - expected_decay, 0.0, 1.0)
-	_t.run_test("micro LOS loss uses reduced decay", absf(after_loss - expected_after) <= 0.0001)
+	_t.run_test("confirm grace keeps progress before decay window", is_equal_approx(during_grace, before_loss))
+	_t.run_test("confirm progress decays after grace window", after_grace < during_grace)
 
 
 func _test_noise_does_not_trigger_combat_or_confirmation() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
-	awareness.set_suspicion_profile_enabled(true)
 	awareness.register_noise()
 
 	_t.run_test("noise sets ALERT (not COMBAT)", awareness.get_state_name() == "ALERT")
@@ -107,24 +98,19 @@ func _test_noise_does_not_trigger_combat_or_confirmation() -> void:
 
 
 func _test_flashlight_bonus_requires_los() -> void:
-	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
-	awareness.reset()
-	awareness.set_suspicion_profile_enabled(true)
-	var profile := _profile()
-	awareness.register_noise() # -> ALERT
+	var without_flashlight = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+	without_flashlight.reset()
+	without_flashlight.process_confirm(1.0, true, true, false, CANON_CONFIG)
+	var without_snapshot := without_flashlight.get_ui_snapshot()
 
-	awareness.process_suspicion(1.0, false, 0.4, true, profile)
-	var no_los_value: float = float(awareness.get_suspicion())
+	var with_flashlight = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+	with_flashlight.reset()
+	with_flashlight.process_confirm(1.0, true, true, true, CANON_CONFIG)
+	var with_snapshot := with_flashlight.get_ui_snapshot()
 
-	awareness.reset()
-	awareness.set_suspicion_profile_enabled(true)
-	awareness.register_noise() # -> ALERT
-	awareness.process_suspicion(1.0, true, 0.4, true, profile)
-	var with_los_value: float = float(awareness.get_suspicion())
-
-	var baseline_without_bonus := float(profile["suspicion_gain_rate_alert"]) * 0.4
-	_t.run_test("flashlight has no effect without LOS", is_equal_approx(no_los_value, 0.0))
-	_t.run_test("flashlight boosts suspicion only with LOS", with_los_value > baseline_without_bonus)
+	_t.run_test("shadow LOS without flashlight does not progress confirm", is_equal_approx(float(without_snapshot.get("confirm01", 0.0)), 0.0))
+	_t.run_test("shadow LOS with flashlight opens confirm channel", float(with_snapshot.get("confirm01", 0.0)) > float(without_snapshot.get("confirm01", 0.0)))
+	_t.run_test("flashlight in shadow increases suspicion vs no flashlight", float(with_flashlight.get_suspicion()) > float(without_flashlight.get_suspicion()))
 
 
 func _test_enemy_debug_snapshot_contract() -> void:
@@ -149,7 +135,6 @@ func _test_enemy_debug_snapshot_contract() -> void:
 	await get_tree().process_frame
 
 	enemy.initialize(9911, "zombie")
-	enemy.enable_suspicion_test_profile(_profile())
 	enemy.set_flashlight_hit_for_detection(false)
 	enemy.runtime_budget_tick(0.1)
 

@@ -1,7 +1,7 @@
 extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
-const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_test_room.tscn")
+const STEALTH_ROOM_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_config.gd")
 const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 
@@ -38,7 +38,7 @@ func _test_alert_flashlight_growth_in_scene() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 
-	var controller := room.get_node_or_null("StealthTestController")
+	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	var player := room.get_node_or_null("Entities/Player") as CharacterBody2D
 	var enemy := _first_member_in_group_under("enemies", room) as Enemy
 
@@ -56,7 +56,7 @@ func _test_alert_flashlight_growth_in_scene() -> void:
 		RuntimeState.player_visibility_mul = 1.0
 
 	var cfg := STEALTH_TEST_CONFIG_SCRIPT.values()
-	player.global_position = Vector2(300.0, -40.0)
+	player.global_position = enemy.global_position + Vector2(300.0, 0.0)
 	player.velocity = Vector2.ZERO
 	await get_tree().physics_frame
 
