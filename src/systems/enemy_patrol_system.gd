@@ -197,6 +197,20 @@ func _rebuild_route() -> void:
 			while candidates.size() < min_pts:
 				var margin := _rng.randf_range(18.0, 34.0)
 				candidates.append(nav_system.random_point_in_room(home_room_id, margin))
+
+		# --- 8B: cross-room patrol (shallow penetration into adjacent room) ---
+		if nav_system.has_method("get_neighbors") and nav_system.has_method("get_door_center_between") and \
+				_rng.randf() < _patrol_cfg_float("cross_room_patrol_chance", 0.20):
+			var neighbors := nav_system.get_neighbors(home_room_id) as Array
+			if not neighbors.is_empty():
+				var adj_id := int(neighbors[_rng.randi_range(0, neighbors.size() - 1)])
+				var door_pos := nav_system.get_door_center_between(
+						home_room_id, adj_id, center) as Vector2
+				if door_pos != Vector2.ZERO and nav_system.has_method("get_room_center"):
+					var adj_center := nav_system.get_room_center(adj_id) as Vector2
+					var pen := _patrol_cfg_float("cross_room_patrol_penetration", 0.25)
+					candidates.append(door_pos)
+					candidates.append(door_pos.lerp(adj_center, pen))
 	else:
 		candidates.append(fallback)
 
