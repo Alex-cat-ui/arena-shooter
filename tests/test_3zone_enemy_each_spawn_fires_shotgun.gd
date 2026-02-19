@@ -62,8 +62,8 @@ func _test_each_spawn_can_fire_and_declares_shotgun_weapon() -> void:
 	var enemies := _members_in_group_under("enemies", level)
 
 	_t.run_test("3zone each enemy fire: player exists", player != null)
-	_t.run_test("3zone each enemy fire: all 5 enemies exist", enemies.size() == 5)
-	if player == null or enemies.size() != 5:
+	_t.run_test("3zone each enemy fire: all 6 enemies exist", enemies.size() == 6)
+	if player == null or enemies.size() != 6:
 		await _cleanup(level, previous_god_mode)
 		return
 

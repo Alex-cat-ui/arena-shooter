@@ -46,6 +46,9 @@ position = Vector2(1300, 780)
 [node name="SpawnC2" type="Node2D" parent="Spawns"]
 position = Vector2(1300, 1000)
 
+[node name="SpawnD" type="Node2D" parent="Spawns"]
+position = Vector2(1910, 400)
+
 [node name="Systems" type="Node2D" parent="."]
 
 [node name="ZoneDirector" type="Node" parent="Systems"]
@@ -87,15 +90,15 @@ layer = 8
 offset_left = 12.0
 offset_top = 8.0
 offset_right = 1120.0
-offset_bottom = 220.0
+offset_bottom = 420.0
 autowrap_mode = 2
-text = "zones: A=CALM B=CALM C=CALM"
+text = "zones: A=CALM B=CALM C=CALM D=CALM"
 
 [node name="HintLabel" type="Label" parent="DebugUI"]
 offset_left = 12.0
-offset_top = 228.0
+offset_top = 428.0
 offset_right = 1120.0
-offset_bottom = 312.0
+offset_bottom = 520.0
 autowrap_mode = 2
 text = "Phase 5: 3-zone deterministic test level"
 

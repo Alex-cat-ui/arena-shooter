@@ -22,17 +22,23 @@ const ROOM_A1 := Rect2(0.0, 0.0, 640.0, 480.0)
 const ROOM_A2 := Rect2(640.0, 0.0, 640.0, 480.0)
 const ROOM_B := Rect2(0.0, 568.0, 800.0, 480.0)
 const ROOM_C := Rect2(900.0, 568.0, 800.0, 600.0)
+const ROOM_D := Rect2(1700.0, 0.0, 420.0, 800.0)
 
 const CHOKE_AB := Rect2(270.0, 480.0, 128.0, 88.0)
 const CHOKE_BC := Rect2(800.0, 680.0, 100.0, 128.0)
+const CORRIDOR_A2D := Rect2(1280.0, 192.0, 420.0, 96.0)
+const CHOKE_DC_OPENING := Rect2(1692.0, 630.0, 16.0, 128.0)
 const DOOR_A1A2_OPENING := Rect2(632.0, 200.0, 16.0, 80.0)
+const DOOR_CHOKEAB_OPENING := Rect2(270.0, 560.0, 128.0, 16.0)
+const DOOR_A2D_OPENING := Rect2(1692.0, 192.0, 16.0, 96.0)
 
 const ZONE_CONFIG := [
 	{"id": 0, "name": "A", "rooms": [0, 1]},
 	{"id": 1, "name": "B", "rooms": [2]},
 	{"id": 2, "name": "C", "rooms": [3]},
+	{"id": 3, "name": "D", "rooms": [4]},
 ]
-const ZONE_EDGES := [[0, 1], [1, 2]]
+const ZONE_EDGES := [[0, 1], [1, 2], [2, 3], [3, 0]]
 
 const ENEMY_SPAWNS := [
 	{"spawn_name": "SpawnA1", "pos": Vector2(320.0, 240.0), "room": 0, "type": "zombie"},
@@ -40,6 +46,7 @@ const ENEMY_SPAWNS := [
 	{"spawn_name": "SpawnB", "pos": Vector2(400.0, 820.0), "room": 2, "type": "zombie"},
 	{"spawn_name": "SpawnC1", "pos": Vector2(1300.0, 780.0), "room": 3, "type": "zombie"},
 	{"spawn_name": "SpawnC2", "pos": Vector2(1300.0, 1000.0), "room": 3, "type": "zombie"},
+	{"spawn_name": "SpawnD", "pos": Vector2(1910.0, 400.0), "room": 4, "type": "zombie"},
 ]
 
 const SHADOW_DEFS := [
@@ -48,6 +55,7 @@ const SHADOW_DEFS := [
 	{"name": "ShadowB", "pos": Vector2(200.0, 700.0), "size": Vector2(220.0, 180.0)},
 	{"name": "ShadowC1", "pos": Vector2(1000.0, 700.0), "size": Vector2(160.0, 200.0)},
 	{"name": "ShadowC2", "pos": Vector2(1500.0, 900.0), "size": Vector2(200.0, 180.0)},
+	{"name": "ShadowD", "pos": Vector2(1830.0, 200.0), "size": Vector2(220.0, 180.0)},
 ]
 
 const PLAYER_SPAWN_FALLBACK := Vector2(100.0, 240.0)
@@ -56,6 +64,9 @@ const FLASHLIGHT_DISTANCE_PX := 1000.0
 const FLASHLIGHT_BONUS := 2.5
 const DOOR_INTERACT_RADIUS_PX := 20.0
 const DOOR_KICK_RADIUS_PX := 40.0
+const BACK_CONE_ANGLE_THRESHOLD_DEG := 150.0
+const BACK_CONE_RANGE_PX := 80.0
+const EVENT_LOG_MAX := 10
 const GEOMETRY_COLOR := Color(0.24, 0.26, 0.30, 1.0)
 const PROP_COLOR := Color(0.72, 0.58, 0.38, 1.0)
 const FLOOR_COLORS := [
@@ -63,6 +74,7 @@ const FLOOR_COLORS := [
 	Color(0.12, 0.13, 0.16, 1.0),
 	Color(0.10, 0.12, 0.14, 1.0),
 	Color(0.11, 0.13, 0.15, 1.0),
+	Color(0.09, 0.11, 0.13, 1.0),
 ]
 
 class ThreeZoneLayout:
@@ -82,6 +94,8 @@ class ThreeZoneLayout:
 		door_a1a2: Rect2,
 		choke_ab: Rect2,
 		choke_bc: Rect2,
+		corridor_a2d: Rect2,
+		choke_dc: Rect2,
 		navigation_obstacle_rects: Array[Rect2] = []
 	) -> void:
 		rooms = []
@@ -93,17 +107,20 @@ class ThreeZoneLayout:
 				"center": rect.get_center(),
 				"is_corridor": false,
 			})
-		doors = [door_a1a2, choke_ab, choke_bc]
+		doors = [door_a1a2, choke_ab, choke_bc, corridor_a2d, choke_dc]
 		_door_adj = {
 			0: [1, 2],
-			1: [0],
+			1: [0, 4],
 			2: [0, 3],
-			3: [2],
+			3: [2, 4],
+			4: [1, 3],
 		}
 		_door_map = {
 			_rect_key(door_a1a2): [0, 1],
 			_rect_key(choke_ab): [0, 2],
 			_rect_key(choke_bc): [2, 3],
+			_rect_key(corridor_a2d): [1, 4],
+			_rect_key(choke_dc): [3, 4],
 		}
 		_void_ids = []
 		player_room_id = 0
@@ -144,6 +161,8 @@ var _test_values: Dictionary = {}
 var _enemy_id_counter: int = 15000
 var _spawned_enemies: Array[Enemy] = []
 var _door_a1a2: Node2D = null
+var _door_a_to_b: Node2D = null
+var _door_a2_to_d: Node2D = null
 var _door_system: Node = null
 var _debug_accum: float = 0.0
 var _pause_menu: Control = null
@@ -151,6 +170,7 @@ var _state_overlay: Control = null
 var _main_menu_transition_pending: bool = false
 var _level_restart_pending: bool = false
 var _prop_obstacle_rects: Array[Rect2] = []
+var _event_log: Array[String] = []
 
 @onready var _level_root := get_parent() as Node2D
 @onready var _navigation_root := _level_root.get_node("Navigation") as Node2D
@@ -183,6 +203,7 @@ func _ready() -> void:
 		RuntimeState.player_visibility_mul = 1.0
 
 	_test_values = STEALTH_TEST_CONFIG_SCRIPT.values()
+	_connect_event_bus_debug_signals()
 	_ensure_playing_state_for_test_level()
 
 	_build_geometry()
@@ -194,6 +215,10 @@ func _ready() -> void:
 	_spawn_enemies()
 	_update_hint_text()
 	_refresh_debug_label(true)
+
+
+func _exit_tree() -> void:
+	_disconnect_event_bus_debug_signals()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -262,6 +287,56 @@ func _process(delta: float) -> void:
 	if _debug_accum >= 0.1:
 		_debug_accum = 0.0
 		_refresh_debug_label(false)
+
+
+func _connect_event_bus_debug_signals() -> void:
+	if not EventBus:
+		return
+	if EventBus.has_signal("enemy_state_changed") and not EventBus.enemy_state_changed.is_connected(_on_enemy_state_changed):
+		EventBus.enemy_state_changed.connect(_on_enemy_state_changed)
+	if EventBus.has_signal("enemy_teammate_call") and not EventBus.enemy_teammate_call.is_connected(_on_enemy_teammate_call):
+		EventBus.enemy_teammate_call.connect(_on_enemy_teammate_call)
+	if EventBus.has_signal("hostile_escalation") and not EventBus.hostile_escalation.is_connected(_on_hostile_escalation):
+		EventBus.hostile_escalation.connect(_on_hostile_escalation)
+	if EventBus.has_signal("enemy_killed") and not EventBus.enemy_killed.is_connected(_on_enemy_killed):
+		EventBus.enemy_killed.connect(_on_enemy_killed)
+
+
+func _disconnect_event_bus_debug_signals() -> void:
+	if not EventBus:
+		return
+	if EventBus.has_signal("enemy_state_changed") and EventBus.enemy_state_changed.is_connected(_on_enemy_state_changed):
+		EventBus.enemy_state_changed.disconnect(_on_enemy_state_changed)
+	if EventBus.has_signal("enemy_teammate_call") and EventBus.enemy_teammate_call.is_connected(_on_enemy_teammate_call):
+		EventBus.enemy_teammate_call.disconnect(_on_enemy_teammate_call)
+	if EventBus.has_signal("hostile_escalation") and EventBus.hostile_escalation.is_connected(_on_hostile_escalation):
+		EventBus.hostile_escalation.disconnect(_on_hostile_escalation)
+	if EventBus.has_signal("enemy_killed") and EventBus.enemy_killed.is_connected(_on_enemy_killed):
+		EventBus.enemy_killed.disconnect(_on_enemy_killed)
+
+
+func _on_enemy_state_changed(enemy_id: int, from_state: String, to_state: String, room_id: int, reason: String) -> void:
+	_append_event_log("[#%d] %s -> %s room=%d (%s)" % [enemy_id, from_state, to_state, room_id, reason])
+
+
+func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, _timestamp_sec: float) -> void:
+	_append_event_log("[#%d] TEAM_CALL room=%d call=%d" % [source_enemy_id, source_room_id, call_id])
+
+
+func _on_hostile_escalation(enemy_id: int, reason: String) -> void:
+	_append_event_log("[#%d] HOSTILE_ESCALATION (%s)" % [enemy_id, reason])
+
+
+func _on_enemy_killed(enemy_id: int, enemy_type: String) -> void:
+	_append_event_log("[#%d:%s] KILLED" % [enemy_id, enemy_type])
+
+
+func _append_event_log(line: String) -> void:
+	if line == "":
+		return
+	_event_log.append(line)
+	while _event_log.size() > EVENT_LOG_MAX:
+		_event_log.remove_at(0)
 
 
 func _ensure_playing_state_for_test_level() -> void:
@@ -380,7 +455,7 @@ func _try_restart_test_scene() -> void:
 
 
 func debug_get_room_rects() -> Array[Rect2]:
-	return [ROOM_A1, ROOM_A2, ROOM_B, ROOM_C]
+	return [ROOM_A1, ROOM_A2, ROOM_B, ROOM_C, ROOM_D]
 
 
 func debug_get_choke_rect(name: String) -> Rect2:
@@ -389,6 +464,8 @@ func debug_get_choke_rect(name: String) -> Rect2:
 			return CHOKE_AB
 		"BC":
 			return CHOKE_BC
+		"DC":
+			return CHOKE_DC_OPENING
 		_:
 			return Rect2()
 
@@ -399,10 +476,12 @@ func debug_get_wall_thickness() -> float:
 
 func _setup_layout_and_systems() -> void:
 	_layout = ThreeZoneLayout.new(
-		[ROOM_A1, ROOM_A2, ROOM_B, ROOM_C],
+		[ROOM_A1, ROOM_A2, ROOM_B, ROOM_C, ROOM_D],
 		DOOR_A1A2_OPENING,
 		CHOKE_AB,
 		CHOKE_BC,
+		CORRIDOR_A2D,
+		CHOKE_DC_OPENING,
 		_prop_obstacle_rects
 	)
 	if _door_system:
@@ -655,11 +734,24 @@ func _setup_door_system() -> void:
 
 func _build_door() -> void:
 	_clear_children(_doors_root)
+
 	_door_a1a2 = DOOR_CONTROLLER_SCRIPT.new()
 	_door_a1a2.name = "DoorA1A2"
 	_doors_root.add_child(_door_a1a2)
 	_door_a1a2.configure_from_opening(DOOR_A1A2_OPENING, WALL_THICKNESS)
 	_door_a1a2.reset_to_closed()
+
+	_door_a_to_b = DOOR_CONTROLLER_SCRIPT.new()
+	_door_a_to_b.name = "DoorAtoB"
+	_doors_root.add_child(_door_a_to_b)
+	_door_a_to_b.configure_from_opening(DOOR_CHOKEAB_OPENING, WALL_THICKNESS)
+	_door_a_to_b.command_open_action(ROOM_A1.get_center())
+
+	_door_a2_to_d = DOOR_CONTROLLER_SCRIPT.new()
+	_door_a2_to_d.name = "DoorA2toD"
+	_doors_root.add_child(_door_a2_to_d)
+	_door_a2_to_d.configure_from_opening(DOOR_A2D_OPENING, WALL_THICKNESS)
+	_door_a2_to_d.command_open_action(CORRIDOR_A2D.get_center())
 
 
 func _build_shadows() -> void:
@@ -702,8 +794,10 @@ func _build_geometry() -> void:
 	_add_floor(floor_root, ROOM_A2, FLOOR_COLORS[1], "FloorA2")
 	_add_floor(floor_root, ROOM_B, FLOOR_COLORS[2], "FloorB")
 	_add_floor(floor_root, ROOM_C, FLOOR_COLORS[3], "FloorC")
+	_add_floor(floor_root, ROOM_D, FLOOR_COLORS[4], "FloorD")
 	_add_floor(floor_root, CHOKE_AB, FLOOR_COLORS[2], "FloorChokeAB")
 	_add_floor(floor_root, CHOKE_BC, FLOOR_COLORS[3], "FloorChokeBC")
+	_add_floor(floor_root, CORRIDOR_A2D, FLOOR_COLORS[1], "FloorCorridorA2D")
 
 	_build_wall_body(_geometry_root, "WallsA1", [
 		_h_segment(ROOM_A1.position.x, ROOM_A1.end.x, ROOM_A1.position.y),
@@ -717,7 +811,8 @@ func _build_geometry() -> void:
 	_build_wall_body(_geometry_root, "WallsA2", [
 		_h_segment(ROOM_A2.position.x, ROOM_A2.end.x, ROOM_A2.position.y),
 		_h_segment(ROOM_A2.position.x, ROOM_A2.end.x, ROOM_A2.end.y),
-		_v_segment(ROOM_A2.end.x, ROOM_A2.position.y, ROOM_A2.end.y),
+		_v_segment(ROOM_A2.end.x, ROOM_A2.position.y, CORRIDOR_A2D.position.y),
+		_v_segment(ROOM_A2.end.x, CORRIDOR_A2D.end.y, ROOM_A2.end.y),
 	])
 
 	_build_wall_body(_geometry_root, "WallsB", [
@@ -732,9 +827,24 @@ func _build_geometry() -> void:
 	_build_wall_body(_geometry_root, "WallsC", [
 		_h_segment(ROOM_C.position.x, ROOM_C.end.x, ROOM_C.position.y),
 		_h_segment(ROOM_C.position.x, ROOM_C.end.x, ROOM_C.end.y),
-		_v_segment(ROOM_C.end.x, ROOM_C.position.y, ROOM_C.end.y),
+		_v_segment(ROOM_C.end.x, ROOM_C.position.y, CHOKE_DC_OPENING.position.y),
+		_v_segment(ROOM_C.end.x, CHOKE_DC_OPENING.end.y, ROOM_C.end.y),
 		_v_segment(ROOM_C.position.x, ROOM_C.position.y, CHOKE_BC.position.y),
 		_v_segment(ROOM_C.position.x, CHOKE_BC.end.y, ROOM_C.end.y),
+	])
+
+	_build_wall_body(_geometry_root, "WallsCorridorA2D", [
+		_h_segment(CORRIDOR_A2D.position.x, CORRIDOR_A2D.end.x, CORRIDOR_A2D.position.y),
+		_h_segment(CORRIDOR_A2D.position.x, CORRIDOR_A2D.end.x, CORRIDOR_A2D.end.y),
+	])
+
+	_build_wall_body(_geometry_root, "WallsD", [
+		_h_segment(ROOM_D.position.x, ROOM_D.end.x, ROOM_D.position.y),
+		_v_segment(ROOM_D.end.x, ROOM_D.position.y, ROOM_D.end.y),
+		_h_segment(ROOM_D.position.x, ROOM_D.end.x, ROOM_D.end.y),
+		_v_segment(ROOM_D.position.x, ROOM_D.position.y, CORRIDOR_A2D.position.y),
+		_v_segment(ROOM_D.position.x, CORRIDOR_A2D.end.y, CHOKE_DC_OPENING.position.y),
+		_v_segment(ROOM_D.position.x, CHOKE_DC_OPENING.end.y, ROOM_D.end.y),
 	])
 
 	_build_wall_body(_geometry_root, "ChokeAB", [
@@ -851,7 +961,7 @@ func _v_segment(x: float, y0: float, y1: float) -> Rect2:
 func _update_hint_text() -> void:
 	if _hint_label == null:
 		return
-	_hint_label.text = "3-Zone test level (Phase 5)\nA(rooms 0,1) <-> B(room 2) <-> C(room 3) | 5 enemies deterministic | door A1<->A2 starts closed\nE = interact door | Q = kick door"
+	_hint_label.text = "Stealth test level (Phase 5)\nA(rooms 0,1) <-> B(room 2) <-> C(room 3) <-> D(room 4) | corridor A2<->D | 6 enemies deterministic\nE = interact door | Q = kick door | [BACK!] = player in rear cone (<=80px)"
 
 
 func _set_overlay_visible(visible: bool) -> void:
@@ -868,9 +978,10 @@ func _refresh_debug_label(force: bool) -> void:
 	var zone_a := _zone_state_name(_zone_state(0))
 	var zone_b := _zone_state_name(_zone_state(1))
 	var zone_c := _zone_state_name(_zone_state(2))
+	var zone_d := _zone_state_name(_zone_state(3))
 
 	var lines: Array[String] = []
-	lines.append("zones: A=%s B=%s C=%s" % [zone_a, zone_b, zone_c])
+	lines.append("zones: A=%s B=%s C=%s D=%s" % [zone_a, zone_b, zone_c, zone_d])
 	lines.append("door_a1a2_closed=%s enemies=%d" % [str(_door_closed()), _spawned_enemies.size()])
 	var player_weapon := "none"
 	if _player and "ability_system" in _player and _player.ability_system != null and _player.ability_system.has_method("get_current_weapon"):
@@ -882,12 +993,44 @@ func _refresh_debug_label(force: bool) -> void:
 		if enemy == null or not is_instance_valid(enemy):
 			continue
 		var snap := enemy.get_ui_awareness_snapshot() if enemy.has_method("get_ui_awareness_snapshot") else {}
+		var debug_snap := enemy.get_debug_detection_snapshot() if enemy.has_method("get_debug_detection_snapshot") else {}
 		var state_name := ENEMY_ALERT_LEVELS_SCRIPT.level_name(int(snap.get("state", 0)))
+		var suspicion01 := float(snap.get("suspicion01", debug_snap.get("suspicion", 0.0)))
 		var confirm01 := float(snap.get("confirm01", 0.0))
 		var zone_state := _zone_state_name(int(snap.get("zone_state", -1)))
-		lines.append("enemy#%d state=%s confirm=%.2f zone=%s" % [enemy.entity_id, state_name, confirm01, zone_state])
+		var back_tag := " [BACK!]" if _is_player_in_back_cone(enemy, debug_snap) else ""
+		lines.append("enemy#%d state=%s sus=%.2f confirm=%.2f zone=%s%s" % [
+			enemy.entity_id,
+			state_name,
+			suspicion01,
+			confirm01,
+			zone_state,
+			back_tag,
+		])
+
+	if not _event_log.is_empty():
+		lines.append("events:")
+		for entry in _event_log:
+			lines.append(entry)
 
 	_debug_label.text = "\n".join(lines)
+
+
+func _is_player_in_back_cone(enemy: Enemy, snap: Dictionary) -> bool:
+	if enemy == null or _player == null or not is_instance_valid(_player):
+		return false
+	var to_player := _player.global_position - enemy.global_position
+	var distance := to_player.length()
+	if distance > BACK_CONE_RANGE_PX or distance <= 0.001:
+		return false
+	var facing := snap.get("facing_dir", Vector2.RIGHT) as Vector2
+	if facing.length_squared() <= 0.0001:
+		return false
+	var facing_n := facing.normalized()
+	var dir_to_player := to_player / distance
+	var dot := clampf(facing_n.dot(dir_to_player), -1.0, 1.0)
+	var angle_deg := rad_to_deg(acos(dot))
+	return angle_deg > BACK_CONE_ANGLE_THRESHOLD_DEG
 
 
 func _door_closed() -> bool:

@@ -44,8 +44,8 @@ func run_suite() -> Dictionary:
 	var shadow_root := level.get_node_or_null("ShadowAreas")
 	var controller := level.get_node_or_null("Stealth3ZoneTestController")
 
-	_test_five_enemies_spawned(level)
-	_test_three_zones_calm(zone_director)
+	_test_six_enemies_spawned(level)
+	_test_four_zones_calm(zone_director)
 	_test_player_in_room_a1(nav, player)
 	await _test_3zone_player_weapon_pipeline(level, controller, player)
 	await _test_3zone_spawn_shadow_blocks_calm_detection(level)
@@ -89,19 +89,20 @@ func _cleanup_fixture(fixture: Dictionary) -> void:
 	await get_tree().process_frame
 
 
-func _test_five_enemies_spawned(level: Node) -> void:
+func _test_six_enemies_spawned(level: Node) -> void:
 	var enemies := _members_in_group_under("enemies", level)
-	_t.run_test("five_enemies_spawned", enemies.size() == 5)
+	_t.run_test("six_enemies_spawned", enemies.size() == 6)
 
 
-func _test_three_zones_calm(zone_director: Node) -> void:
+func _test_four_zones_calm(zone_director: Node) -> void:
 	if zone_director == null or not zone_director.has_method("get_zone_state"):
-		_t.run_test("three_zones_calm", false)
+		_t.run_test("four_zones_calm", false)
 		return
 	var ok := int(zone_director.get_zone_state(0)) == ZONE_CALM
 	ok = ok and int(zone_director.get_zone_state(1)) == ZONE_CALM
 	ok = ok and int(zone_director.get_zone_state(2)) == ZONE_CALM
-	_t.run_test("three_zones_calm", ok)
+	ok = ok and int(zone_director.get_zone_state(3)) == ZONE_CALM
+	_t.run_test("four_zones_calm", ok)
 
 
 func _test_player_in_room_a1(nav: Node, player: Node2D) -> void:
@@ -213,7 +214,7 @@ func _test_shadow_areas_present(shadow_root: Node) -> void:
 			continue
 		if child.get("shadow_multiplier") != null:
 			count += 1
-	_t.run_test("shadow_areas_present", count == 5)
+	_t.run_test("shadow_areas_present", count == 6)
 
 
 func _test_all_spawns_inside_rooms(level: Node, nav: Node) -> void:
@@ -224,7 +225,7 @@ func _test_all_spawns_inside_rooms(level: Node, nav: Node) -> void:
 	if spawns == null:
 		_t.run_test("all_spawns_inside_rooms", false)
 		return
-	var spawn_names := ["SpawnA1", "SpawnA2", "SpawnB", "SpawnC1", "SpawnC2"]
+	var spawn_names := ["SpawnA1", "SpawnA2", "SpawnB", "SpawnC1", "SpawnC2", "SpawnD"]
 	var ok := true
 	for spawn_name_variant in spawn_names:
 		var spawn_name := String(spawn_name_variant)

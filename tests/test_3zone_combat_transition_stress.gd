@@ -92,8 +92,8 @@ func _test_mass_combat_transition_no_hard_freeze() -> void:
 	var enemies := _members_in_group_under("enemies", level)
 	_t.run_test("stress: 3zone level controller exists", controller != null)
 	_t.run_test("stress: player exists", player != null)
-	_t.run_test("stress: all 5 enemies exist", enemies.size() == 5)
-	if controller == null or player == null or enemies.size() != 5:
+	_t.run_test("stress: all 6 enemies exist", enemies.size() == 6)
+	if controller == null or player == null or enemies.size() != 6:
 		_disconnect_event_bus_hooks()
 		level.queue_free()
 		await get_tree().process_frame
