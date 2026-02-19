@@ -66,8 +66,6 @@ func _ready() -> void:
 	)
 	_bootstrap_controller.init_visual_polish(_ctx, _hud_controller)
 
-	if _ctx.player and _ctx.projectile_system:
-		_ctx.player.projectile_system = _ctx.projectile_system
 	if _ctx.player and _ctx.ability_system:
 		_ctx.player.ability_system = _ctx.ability_system
 
@@ -118,8 +116,6 @@ func _exit_tree() -> void:
 		_ctx.runtime_budget_controller.unbind()
 		_ctx.runtime_budget_controller = null
 	if _ctx and _ctx.player:
-		if "projectile_system" in _ctx.player:
-			_ctx.player.projectile_system = null
 		if "ability_system" in _ctx.player:
 			_ctx.player.ability_system = null
 	_ctx = null

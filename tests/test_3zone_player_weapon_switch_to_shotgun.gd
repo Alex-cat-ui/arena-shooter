@@ -53,10 +53,10 @@ func _test_weapon_2_switches_to_shotgun_20_of_20() -> void:
 		bool(summary.get("combat_system_exists", false))
 		and bool(summary.get("projectile_system_exists", false))
 		and bool(summary.get("ability_system_exists", false))
-		and bool(summary.get("player_projectile_wired", false))
 		and bool(summary.get("player_ability_wired", false))
 		and bool(summary.get("ability_projectile_wired", false))
 		and bool(summary.get("ability_combat_wired", false))
+		and not ("projectile_system" in player)
 	)
 	_t.run_test("3zone switch: player weapon pipeline is wired", pipeline_ok)
 

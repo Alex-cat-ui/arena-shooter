@@ -535,10 +535,8 @@ func _setup_player() -> void:
 
 
 func debug_get_combat_pipeline_summary() -> Dictionary:
-	var player_has_projectile := false
 	var player_has_ability := false
 	if _player:
-		player_has_projectile = "projectile_system" in _player and _player.projectile_system != null
 		player_has_ability = "ability_system" in _player and _player.ability_system != null
 	var ability_has_projectile := false
 	var ability_has_combat := false
@@ -549,7 +547,6 @@ func debug_get_combat_pipeline_summary() -> Dictionary:
 		"combat_system_exists": _combat_system != null and is_instance_valid(_combat_system),
 		"projectile_system_exists": _projectile_system != null and is_instance_valid(_projectile_system),
 		"ability_system_exists": _ability_system != null and is_instance_valid(_ability_system),
-		"player_projectile_wired": player_has_projectile,
 		"player_ability_wired": player_has_ability,
 		"ability_projectile_wired": ability_has_projectile,
 		"ability_combat_wired": ability_has_combat,
@@ -606,8 +603,6 @@ func _ensure_combat_pipeline_ready() -> void:
 		_ability_system.projectile_system = _projectile_system
 	if _ability_system and "combat_system" in _ability_system:
 		_ability_system.combat_system = _combat_system
-	if "projectile_system" in _player:
-		_player.projectile_system = _projectile_system
 	if "ability_system" in _player:
 		_player.ability_system = _ability_system
 

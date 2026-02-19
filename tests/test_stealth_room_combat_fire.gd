@@ -72,7 +72,7 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		return
 
 	_t.run_test("stealth fire: player ability system wired", "ability_system" in player and player.ability_system != null)
-	_t.run_test("stealth fire: player projectile system wired", "projectile_system" in player and player.projectile_system != null)
+	_t.run_test("stealth fire: player projectile fallback API removed", not ("projectile_system" in player))
 	if controller.has_method("debug_get_combat_pipeline_summary"):
 		var summary := controller.call("debug_get_combat_pipeline_summary") as Dictionary
 		_t.run_test("stealth fire: combat system exists", bool(summary.get("combat_system_exists", false)))

@@ -57,10 +57,10 @@ func _test_stealth_weapon_pipeline_equivalence() -> void:
 	_t.run_test("pipeline eq: combat system exists", bool(pipeline_summary.get("combat_system_exists", false)))
 	_t.run_test("pipeline eq: projectile system exists", bool(pipeline_summary.get("projectile_system_exists", false)))
 	_t.run_test("pipeline eq: ability system exists", bool(pipeline_summary.get("ability_system_exists", false)))
-	_t.run_test("pipeline eq: player projectile is wired", bool(pipeline_summary.get("player_projectile_wired", false)))
 	_t.run_test("pipeline eq: player ability is wired", bool(pipeline_summary.get("player_ability_wired", false)))
 	_t.run_test("pipeline eq: ability->projectile wiring exists", bool(pipeline_summary.get("ability_projectile_wired", false)))
 	_t.run_test("pipeline eq: ability->combat wiring exists", bool(pipeline_summary.get("ability_combat_wired", false)))
+	_t.run_test("pipeline eq: player projectile fallback API removed", not ("projectile_system" in player))
 
 	var combat_node := room.get_node_or_null("Systems/CombatSystem")
 	var projectile_node := room.get_node_or_null("Systems/ProjectileSystem")

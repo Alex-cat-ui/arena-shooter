@@ -123,7 +123,6 @@ func _test_3zone_player_weapon_pipeline(level: Node2D, controller: Node, player:
 		bool(summary.get("combat_system_exists", false))
 		and bool(summary.get("projectile_system_exists", false))
 		and bool(summary.get("ability_system_exists", false))
-		and bool(summary.get("player_projectile_wired", false))
 		and bool(summary.get("player_ability_wired", false))
 		and bool(summary.get("ability_projectile_wired", false))
 		and bool(summary.get("ability_combat_wired", false))
@@ -522,6 +521,12 @@ func _test_3zone_enemy_combat_fire(level: Node2D) -> void:
 
 	if shooter.has_method("debug_force_awareness_state"):
 		shooter.call("debug_force_awareness_state", "COMBAT")
+	if "_combat_first_shot_delay_armed" in shooter:
+		shooter.set("_combat_first_shot_delay_armed", true)
+	if "_combat_first_attack_delay_timer" in shooter:
+		shooter.set("_combat_first_attack_delay_timer", 0.0)
+	if "_shot_cooldown" in shooter:
+		shooter.set("_shot_cooldown", 0.0)
 	if shooter.has_method("set_physics_process"):
 		shooter.set_physics_process(false)
 

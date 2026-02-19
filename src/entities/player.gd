@@ -15,15 +15,6 @@ var speed_tiles: float = 5.0
 ## Tile size in pixels (from GameConfig)
 var tile_size: int = 32
 
-## Current weapon type (kept for backward compat, reads from ability_system)
-var current_weapon: String = "pistol"
-
-## Weapon cooldown remaining (legacy fallback)
-var _weapon_cooldown: float = 0.0
-
-## Reference to ProjectileSystem (set by level, legacy fallback)
-var projectile_system: Node = null
-
 ## Reference to AbilitySystem (set by level, Phase 3)
 var ability_system: Node = null
 var _weapons_enabled_for_test: bool = true
@@ -129,60 +120,22 @@ func _handle_weapon_switch() -> void:
 
 
 func _handle_shooting(delta: float) -> void:
-	# Use AbilitySystem if available (Phase 3), else fallback to legacy
-	if ability_system:
-		if ability_system.has_method("tick_cooldown"):
-			ability_system.tick_cooldown(delta)
-		if not _weapons_enabled_for_test:
-			return
-		if Input.is_action_pressed("shoot"):
-			var aim_dir := Vector2.ZERO
-			if RuntimeState:
-				aim_dir = Vector2(RuntimeState.player_aim_dir.x, RuntimeState.player_aim_dir.y)
-			else:
-				aim_dir = (get_global_mouse_position() - position).normalized()
-			var spawn_pos := position + aim_dir * 20
-			ability_system.try_fire(spawn_pos, aim_dir, 0.0)
+	if not ability_system:
 		return
 
+	if ability_system.has_method("tick_cooldown"):
+		ability_system.tick_cooldown(delta)
 	if not _weapons_enabled_for_test:
 		return
 
-	# Legacy fallback (no ability system)
-	if _weapon_cooldown > 0:
-		_weapon_cooldown -= delta
-	if Input.is_action_pressed("shoot") and _weapon_cooldown <= 0:
-		_fire_weapon()
-
-
-func _fire_weapon() -> void:
-	if not projectile_system:
-		return
-
-	# Get aim direction
-	var aim_dir := Vector2.ZERO
-	if RuntimeState:
-		aim_dir = Vector2(RuntimeState.player_aim_dir.x, RuntimeState.player_aim_dir.y)
-	else:
-		aim_dir = (get_global_mouse_position() - position).normalized()
-
-	# Spawn position slightly in front of player
-	var spawn_offset := aim_dir * 20  # 20 pixels in front
-	var spawn_pos := position + spawn_offset
-
-	# Fire through ProjectileSystem
-	if projectile_system.has_method("fire_weapon"):
-		projectile_system.fire_weapon(current_weapon, spawn_pos, aim_dir)
-
-	# Set cooldown
-	if projectile_system.has_method("get_weapon_cooldown"):
-		_weapon_cooldown = projectile_system.get_weapon_cooldown(current_weapon)
-	else:
-		_weapon_cooldown = 0.33  # Default ~180 rpm
-
-	# Emit event
-	if EventBus:
-		EventBus.emit_player_shot(current_weapon, Vector3(spawn_pos.x, spawn_pos.y, 0), RuntimeState.player_aim_dir if RuntimeState else Vector3.ZERO)
+	if Input.is_action_pressed("shoot"):
+		var aim_dir := Vector2.ZERO
+		if RuntimeState:
+			aim_dir = Vector2(RuntimeState.player_aim_dir.x, RuntimeState.player_aim_dir.y)
+		else:
+			aim_dir = (get_global_mouse_position() - position).normalized()
+		var spawn_pos := position + aim_dir * 20
+		ability_system.try_fire(spawn_pos, aim_dir, 0.0)
 
 
 ## Get current position as Vector3 (CANON)
