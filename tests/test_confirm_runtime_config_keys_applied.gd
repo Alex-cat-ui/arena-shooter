@@ -114,7 +114,6 @@ func _cfg(confirm_time: float, decay_rate: float, grace_window: float, minimum_h
 		"confirm_grace_window": grace_window,
 		"suspicious_enter": 0.25,
 		"alert_enter": 0.55,
-		"alert_fallback": 0.25,
 		"minimum_hold_alert_sec": minimum_hold_alert_sec,
 	}
 

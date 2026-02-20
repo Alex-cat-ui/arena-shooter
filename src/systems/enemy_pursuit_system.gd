@@ -169,22 +169,27 @@ func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 		owner.set_meta("room_id", own_room)
 	if own_room < 0:
 		return
-	var same_or_adjacent := false
-	if nav_system.has_method("is_same_or_adjacent_room"):
-		same_or_adjacent = bool(nav_system.call("is_same_or_adjacent_room", own_room, shot_room_id))
-	else:
-		same_or_adjacent = own_room == shot_room_id
-		if not same_or_adjacent and nav_system.has_method("get_neighbors"):
-			same_or_adjacent = (nav_system.get_neighbors(own_room) as Array).has(shot_room_id)
-		elif not same_or_adjacent and nav_system.has_method("is_adjacent"):
-			same_or_adjacent = bool(nav_system.is_adjacent(own_room, shot_room_id))
-	if not same_or_adjacent:
+	if not _is_same_or_adjacent_room(own_room, shot_room_id):
 		return
 
 	_set_last_seen(shot_pos)
 	_plan_path_to(_last_seen_pos)
 	if _patrol:
 		_patrol.notify_alert()
+
+
+func _is_same_or_adjacent_room(room_a: int, room_b: int) -> bool:
+	if room_a < 0 or room_b < 0:
+		return false
+	if nav_system and nav_system.has_method("is_same_or_adjacent_room"):
+		return bool(nav_system.call("is_same_or_adjacent_room", room_a, room_b))
+	if room_a == room_b:
+		return true
+	if nav_system and nav_system.has_method("is_adjacent"):
+		return bool(nav_system.call("is_adjacent", room_a, room_b))
+	if nav_system and nav_system.has_method("get_neighbors"):
+		return (nav_system.get_neighbors(room_a) as Array).has(room_b)
+	return false
 
 
 func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Dictionary:
@@ -693,6 +698,10 @@ func _validate_path_policy(from_pos: Vector2, path_points: Array[Vector2]) -> Di
 		)
 		if validation_variant is Dictionary:
 			return validation_variant as Dictionary
+	return _validate_path_policy_with_traverse_samples(from_pos, path_points)
+
+
+func _validate_path_policy_with_traverse_samples(from_pos: Vector2, path_points: Array[Vector2]) -> Dictionary:
 	if nav_system == null or not nav_system.has_method("can_enemy_traverse_point"):
 		return {"valid": true, "segment_index": -1}
 	var prev := from_pos

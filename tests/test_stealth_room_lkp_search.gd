@@ -87,7 +87,9 @@ func _test_lkp_investigate_then_search() -> void:
 	if enemy.has_method("debug_force_awareness_state"):
 		enemy.call("debug_force_awareness_state", "ALERT")
 
-	enemy.runtime_budget_tick(0.2)
+	# Drain utility timers so intent assertion is stable in full test-runner order.
+	for _i in range(4):
+		enemy.runtime_budget_tick(0.2)
 	var investigate_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test(
 		"lkp search: precondition has_los is false",

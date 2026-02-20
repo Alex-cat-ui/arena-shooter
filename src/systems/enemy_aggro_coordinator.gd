@@ -4,7 +4,6 @@ class_name EnemyAggroCoordinator
 extends Node
 
 const ALERT_STATE := "ALERT"
-const COMBAT_STATE := "COMBAT"
 const REASON_ROOM_ALERT_PROPAGATION := "room_alert_propagation"
 const REASON_REINFORCEMENT := "reinforcement"
 const REASON_TEAMMATE_CALL := "teammate_call"
@@ -135,15 +134,21 @@ func _can_target_accept_teammate_call(target_enemy_id: int) -> bool:
 
 
 func _teammate_call_room_gate(source_room_id: int, target_room_id: int) -> bool:
-	if source_room_id < 0 or target_room_id < 0:
+	return _is_same_or_adjacent_room(source_room_id, target_room_id)
+
+
+func _is_same_or_adjacent_room(room_a: int, room_b: int) -> bool:
+	if room_a < 0 or room_b < 0:
 		return false
-	if source_room_id == target_room_id:
+	if navigation_service and navigation_service.has_method("is_same_or_adjacent_room"):
+		return bool(navigation_service.call("is_same_or_adjacent_room", room_a, room_b))
+	if room_a == room_b:
 		return true
 	if navigation_service and navigation_service.has_method("is_adjacent"):
-		return bool(navigation_service.is_adjacent(source_room_id, target_room_id))
+		return bool(navigation_service.call("is_adjacent", room_a, room_b))
 	if navigation_service and navigation_service.has_method("get_neighbors"):
-		var neighbors := navigation_service.get_neighbors(source_room_id) as Array
-		return neighbors.has(target_room_id)
+		var neighbors := navigation_service.get_neighbors(room_a) as Array
+		return neighbors.has(room_b)
 	return false
 
 
@@ -174,24 +179,6 @@ func debug_set_time_override_sec(time_sec: float) -> void:
 
 func debug_clear_time_override_sec() -> void:
 	_debug_time_override_sec = -1.0
-
-
-func _propagate_room_alert(source_enemy_id: int, source_room_id: int, reason: String) -> void:
-	if reason == REASON_ROOM_ALERT_PROPAGATION:
-		return
-
-	var enemies := _get_enemies_in_room(source_room_id)
-	for enemy_variant in enemies:
-		var enemy := enemy_variant as Node
-		if not enemy:
-			continue
-		if "entity_id" in enemy and int(enemy.entity_id) == source_enemy_id:
-			continue
-		var awareness_state := String(enemy.get_meta("awareness_state", "CALM"))
-		if awareness_state == COMBAT_STATE:
-			continue
-		if enemy.has_method("apply_room_alert_propagation"):
-			enemy.apply_room_alert_propagation(source_enemy_id, source_room_id)
 
 
 func _call_reinforcements(source_enemy_id: int, source_room_id: int, reason: String, source_awareness_state: String = ALERT_STATE) -> void:
@@ -295,24 +282,6 @@ func _resolve_zone_director() -> Node:
 	if resolved:
 		zone_director = resolved
 	return zone_director
-
-
-func _get_enemies_in_room(room_id: int) -> Array:
-	if navigation_service and navigation_service.has_method("get_enemies_in_room"):
-		return navigation_service.get_enemies_in_room(room_id) as Array
-	if not entities_container:
-		return []
-	var result: Array = []
-	for node_variant in entities_container.get_children():
-		var enemy := node_variant as Node
-		if not enemy:
-			continue
-		if not enemy.is_in_group("enemies"):
-			continue
-		if _resolve_enemy_room_id(enemy) != room_id:
-			continue
-		result.append(enemy)
-	return result
 
 
 func _resolve_enemy_room_id(enemy: Node) -> int:

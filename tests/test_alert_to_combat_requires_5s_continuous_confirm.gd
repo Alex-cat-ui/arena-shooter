@@ -9,7 +9,6 @@ const CONFIRM_CONFIG := {
 	"confirm_grace_window": 0.50,
 	"suspicious_enter": 0.25,
 	"alert_enter": 0.55,
-	"alert_fallback": 0.25,
 }
 
 var embedded_mode: bool = false

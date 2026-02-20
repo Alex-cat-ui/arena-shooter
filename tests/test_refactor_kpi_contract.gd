@@ -113,6 +113,16 @@ func _test_refactor_kpi_contracts() -> void:
 		coord_text.find("_is_valid_escalation_source") >= 0
 			and coord_text.find("_is_valid_teammate_call_source") >= 0
 	)
+	_t.run_test(
+		"KPI: coordinator has no dead room-alert propagation helper",
+		coord_text.find("func _propagate_room_alert(") < 0
+	)
+
+	var enemy_text := _read_text("res://src/entities/enemy.gd")
+	_t.run_test(
+		"KPI: enemy has no dead lockdown combat-window helper",
+		enemy_text.find("func _lockdown_combat_no_contact_window_sec(") < 0
+	)
 
 	var perception_text := _read_text("res://src/systems/enemy_perception_system.gd")
 	_t.run_test(

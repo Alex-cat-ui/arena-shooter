@@ -1377,12 +1377,6 @@ func _is_zone_lockdown() -> bool:
 	return int(_zone_director.get_zone_state(zone_id)) == ZONE_STATE_LOCKDOWN
 
 
-func _lockdown_combat_no_contact_window_sec() -> float:
-	if not _is_zone_lockdown():
-		return 0.0
-	return COMBAT_NO_CONTACT_WINDOW_LOCKDOWN_SEC
-
-
 func _effective_squad_role_for_context(role: int) -> int:
 	if not _is_zone_lockdown():
 		return role
