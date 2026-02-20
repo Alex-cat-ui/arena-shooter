@@ -52,6 +52,19 @@ func _test_refactor_kpi_contracts() -> void:
 		"KPI: navigation service preloads runtime helper modules",
 		_contains_all(nav_service_text, ["NAV_RUNTIME_QUERIES_SCRIPT", "NAV_SHADOW_POLICY_SCRIPT", "NAV_ENEMY_WIRING_SCRIPT"])
 	)
+	_t.run_test(
+		"KPI: navigation service has no dead wrapper methods",
+		_contains_none(
+			nav_service_text,
+			[
+				"func _is_enemy_flashlight_active",
+				"func _build_room_graph_path_points(",
+				"func _get_zone_director(",
+				"func _resolve_door_system_for_enemy(",
+				"func _connect_regions_at_door(",
+			]
+		)
+	)
 
 	var zone_director_text := _read_text("res://src/systems/zone_director.gd")
 	_t.run_test(

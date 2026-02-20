@@ -169,11 +169,15 @@ func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 		owner.set_meta("room_id", own_room)
 	if own_room < 0:
 		return
-	var same_or_adjacent := own_room == shot_room_id
-	if not same_or_adjacent and nav_system.has_method("get_neighbors"):
-		same_or_adjacent = (nav_system.get_neighbors(own_room) as Array).has(shot_room_id)
-	elif not same_or_adjacent and nav_system.has_method("is_adjacent"):
-		same_or_adjacent = bool(nav_system.is_adjacent(own_room, shot_room_id))
+	var same_or_adjacent := false
+	if nav_system.has_method("is_same_or_adjacent_room"):
+		same_or_adjacent = bool(nav_system.call("is_same_or_adjacent_room", own_room, shot_room_id))
+	else:
+		same_or_adjacent = own_room == shot_room_id
+		if not same_or_adjacent and nav_system.has_method("get_neighbors"):
+			same_or_adjacent = (nav_system.get_neighbors(own_room) as Array).has(shot_room_id)
+		elif not same_or_adjacent and nav_system.has_method("is_adjacent"):
+			same_or_adjacent = bool(nav_system.is_adjacent(own_room, shot_room_id))
 	if not same_or_adjacent:
 		return
 
@@ -679,6 +683,16 @@ func _build_reachable_path_points_for_enemy(target_pos: Vector2, has_target: boo
 func _validate_path_policy(from_pos: Vector2, path_points: Array[Vector2]) -> Dictionary:
 	if path_points.is_empty():
 		return {"valid": false, "segment_index": -1}
+	if nav_system and nav_system.has_method("validate_enemy_path_policy"):
+		var validation_variant: Variant = nav_system.call(
+			"validate_enemy_path_policy",
+			owner,
+			from_pos,
+			path_points,
+			PATH_POLICY_SAMPLE_STEP_PX
+		)
+		if validation_variant is Dictionary:
+			return validation_variant as Dictionary
 	if nav_system == null or not nav_system.has_method("can_enemy_traverse_point"):
 		return {"valid": true, "segment_index": -1}
 	var prev := from_pos

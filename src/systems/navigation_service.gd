@@ -254,6 +254,16 @@ func can_enemy_traverse_point(enemy: Node, point: Vector2) -> bool:
 	return bool(_shadow_policy.can_enemy_traverse_point(enemy, point))
 
 
+func validate_enemy_path_policy(
+	enemy: Node,
+	from_pos: Vector2,
+	path_points: Array,
+	sample_step_px: float = POLICY_SAMPLE_STEP_PX
+) -> Dictionary:
+	_ensure_runtime_components()
+	return _shadow_policy.validate_enemy_path_policy(enemy, from_pos, path_points, sample_step_px)
+
+
 func is_point_in_shadow(point: Vector2) -> bool:
 	_ensure_runtime_components()
 	return bool(_shadow_policy.is_point_in_shadow(point))
@@ -282,6 +292,11 @@ func get_nearest_shadow_zone_direction(pos: Vector2, range_px: float) -> Diction
 func is_adjacent(a: int, b: int) -> bool:
 	_ensure_runtime_components()
 	return bool(_runtime_queries.is_adjacent(a, b))
+
+
+func is_same_or_adjacent_room(room_a: int, room_b: int) -> bool:
+	_ensure_runtime_components()
+	return bool(_runtime_queries.is_same_or_adjacent_room(room_a, room_b))
 
 
 func get_enemy_room_id(enemy: Node) -> int:
@@ -329,11 +344,6 @@ func get_door_center_between(room_a: int, room_b: int, anchor: Vector2) -> Vecto
 	return _runtime_queries.get_door_center_between(room_a, room_b, anchor)
 
 
-func _is_enemy_flashlight_active(enemy: Node) -> bool:
-	_ensure_runtime_components()
-	return bool(_shadow_policy.is_enemy_flashlight_active(enemy))
-
-
 func get_player_position() -> Vector2:
 	_ensure_runtime_components()
 	return _runtime_queries.get_player_position()
@@ -369,13 +379,6 @@ func nav_path_length(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> 
 	return float(_runtime_queries.nav_path_length(from_pos, to_pos, enemy))
 
 
-func _build_room_graph_path_points(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
-	var path := _build_room_graph_path_points_reachable(from_pos, to_pos)
-	if not path.is_empty():
-		return path
-	return [to_pos]
-
-
 func _build_room_graph_path_points_reachable(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
 	var from_room := room_id_at_point(from_pos)
 	var to_room := room_id_at_point(to_pos)
@@ -403,17 +406,10 @@ func _build_room_graph_path_points_reachable(from_pos: Vector2, to_pos: Vector2)
 func _path_crosses_policy_block(enemy: Node, from_pos: Vector2, path_points: Array[Vector2]) -> bool:
 	if enemy == null:
 		return false
-	var prev := from_pos
-	for point in path_points:
-		var segment_len := prev.distance_to(point)
-		var steps := maxi(int(ceil(segment_len / POLICY_SAMPLE_STEP_PX)), 1)
-		for step in range(1, steps + 1):
-			var t := float(step) / float(steps)
-			var sample := prev.lerp(point, t)
-			if not can_enemy_traverse_point(enemy, sample):
-				return true
-		prev = point
-	return false
+	if path_points.is_empty():
+		return false
+	var validation := validate_enemy_path_policy(enemy, from_pos, path_points, POLICY_SAMPLE_STEP_PX)
+	return not bool(validation.get("valid", false))
 
 
 func _on_player_shot(_weapon: String, position: Vector3, _direction: Vector3) -> void:
@@ -430,7 +426,7 @@ func _on_player_shot(_weapon: String, position: Vector3, _direction: Vector3) ->
 		if not enemy.has_method("on_heard_shot"):
 			continue
 		var own_room := get_enemy_room_id(enemy)
-		if own_room == shot_room or is_adjacent(own_room, shot_room):
+		if is_same_or_adjacent_room(own_room, shot_room):
 			enemy.on_heard_shot(shot_room, shot_pos)
 
 
@@ -447,16 +443,6 @@ func _on_entity_child_entered(node: Node) -> void:
 func _configure_enemy(node: Node) -> void:
 	_ensure_runtime_components()
 	_enemy_wiring.configure_enemy(node)
-
-
-func _get_zone_director() -> Node:
-	_ensure_runtime_components()
-	return _enemy_wiring.get_zone_director()
-
-
-func _resolve_door_system_for_enemy() -> Node:
-	_ensure_runtime_components()
-	return _enemy_wiring.resolve_door_system_for_enemy()
 
 
 func _adjacent_room_ids_for_door(door: Rect2) -> Array:
@@ -655,41 +641,6 @@ func _subtract_rect(source: Rect2, obstacle: Rect2) -> Array[Rect2]:
 			intersection.size.y
 		))
 	return out
-
-
-func _connect_regions_at_door(door_rect: Rect2, p_layout) -> void:
-	if door_rect == Rect2():
-		return
-	if not (p_layout is Object):
-		return
-	if not p_layout.has_method("_door_adjacent_room_ids"):
-		return
-	var adjacent := p_layout._door_adjacent_room_ids(door_rect) as Array
-	if adjacent.size() != 2:
-		return
-
-	var a := int(adjacent[0])
-	var b := int(adjacent[1])
-	var overlap_rect := door_rect.grow(DOOR_NAV_OVERLAP_PX)
-
-	for room_id in [a, b]:
-		if not _room_to_region.has(room_id):
-			continue
-		var region := _room_to_region[room_id] as NavigationRegion2D
-		if region == null:
-			continue
-		var nav_poly := region.navigation_polygon
-		if nav_poly == null:
-			continue
-		var existing_outlines: Array = []
-		for idx in range(nav_poly.get_outline_count()):
-			existing_outlines.append(nav_poly.get_outline(idx))
-		var merged_outlines := _merge_overlapping_outlines(existing_outlines, _rect_to_outline(overlap_rect))
-		var rebuilt := NavigationPolygon.new()
-		for outline_variant in merged_outlines:
-			rebuilt.add_outline(outline_variant as PackedVector2Array)
-		_bake_navigation_polygon(rebuilt)
-		region.navigation_polygon = rebuilt
 
 
 static func _bake_navigation_polygon(nav_poly: NavigationPolygon) -> void:

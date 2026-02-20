@@ -27,6 +27,12 @@ func is_adjacent(a: int, b: int) -> bool:
 	return (_service._room_graph[a] as Array).has(b)
 
 
+func is_same_or_adjacent_room(room_a: int, room_b: int) -> bool:
+	if room_a < 0 or room_b < 0:
+		return false
+	return room_a == room_b or is_adjacent(room_a, room_b)
+
+
 func get_enemy_room_id(enemy: Node) -> int:
 	if not enemy:
 		return -1

@@ -43,6 +43,37 @@ func is_enemy_flashlight_active(enemy: Node) -> bool:
 	return false
 
 
+func validate_enemy_path_policy(
+	enemy: Node,
+	from_pos: Vector2,
+	path_points: Array,
+	sample_step_px: float
+) -> Dictionary:
+	if path_points.is_empty():
+		return {"valid": false, "segment_index": -1}
+	if enemy == null:
+		return {"valid": true, "segment_index": -1}
+	var sample_step := maxf(sample_step_px, 0.001)
+	var prev := from_pos
+	var segment_index := 0
+	for point_variant in path_points:
+		var point := point_variant as Vector2
+		var segment_len := prev.distance_to(point)
+		var steps := maxi(int(ceil(segment_len / sample_step)), 1)
+		for step in range(1, steps + 1):
+			var t := float(step) / float(steps)
+			var sample := prev.lerp(point, t)
+			if not can_enemy_traverse_point(enemy, sample):
+				return {
+					"valid": false,
+					"segment_index": segment_index,
+					"blocked_point": sample,
+				}
+		prev = point
+		segment_index += 1
+	return {"valid": true, "segment_index": -1}
+
+
 func _enemy_is_currently_inside_shadow(enemy: Node) -> bool:
 	var enemy_node := enemy as Node2D
 	if enemy_node == null:
