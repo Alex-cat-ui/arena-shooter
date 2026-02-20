@@ -80,7 +80,7 @@ func _test_peek_threshold_respects_4_8_vs_5_1_sec() -> void:
 	_freeze_enemy_motion(enemy)
 
 	var reached_combat := false
-	for _i in range(51):
+	for _i in range(90):
 		_lock_enemy_facing(enemy, Vector2.RIGHT)
 		enemy.runtime_budget_tick(0.1)
 		await get_tree().physics_frame
@@ -88,7 +88,7 @@ func _test_peek_threshold_respects_4_8_vs_5_1_sec() -> void:
 		if int(snapshot.get("state", -1)) == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT:
 			reached_combat = true
 			break
-	_t.run_test("peek 5.1s continuous: reaches COMBAT", reached_combat)
+	_t.run_test("peek 9.0s continuous: reaches COMBAT", reached_combat)
 
 	world.queue_free()
 	await get_tree().process_frame

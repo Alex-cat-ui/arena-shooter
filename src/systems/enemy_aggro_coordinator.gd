@@ -92,7 +92,7 @@ func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id:
 				director.record_accepted_teammate_call(source_room_id, target_room_id)
 
 
-func _is_valid_teammate_call_source(reason: String) -> bool:
+func _is_valid_escalation_source(reason: String) -> bool:
 	if reason == "":
 		return false
 	if reason == REASON_ROOM_ALERT_PROPAGATION:
@@ -102,6 +102,10 @@ func _is_valid_teammate_call_source(reason: String) -> bool:
 	if reason == REASON_TEAMMATE_CALL:
 		return false
 	return true
+
+
+func _is_valid_teammate_call_source(reason: String) -> bool:
+	return _is_valid_escalation_source(reason)
 
 
 func _emit_teammate_call(source_enemy_id: int, source_room_id: int) -> void:
@@ -221,15 +225,7 @@ func _call_reinforcements(source_enemy_id: int, source_room_id: int, reason: Str
 
 
 func _is_valid_reinforcement_source(reason: String) -> bool:
-	if reason == "":
-		return false
-	if reason == REASON_ROOM_ALERT_PROPAGATION:
-		return false
-	if reason == REASON_REINFORCEMENT:
-		return false
-	if reason == REASON_TEAMMATE_CALL:
-		return false
-	return true
+	return _is_valid_escalation_source(reason)
 
 
 func _select_reinforcement_rooms(source_room_id: int) -> Array[int]:

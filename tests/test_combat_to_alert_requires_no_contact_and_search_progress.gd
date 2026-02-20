@@ -35,9 +35,8 @@ func _test_non_lockdown_gates() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
 
-	# Enter COMBAT first.
-	for _i in range(52):
-		awareness.process_confirm(0.1, true, false, false, _cfg(false, 0.0, 0.0, 0.0, false))
+	# Enter COMBAT directly; this suite validates COMBAT->ALERT gate logic, not confirm ramp timing.
+	awareness._transition_to_combat_from_damage()
 	_t.run_test("setup: entered COMBAT", awareness.get_state_name() == "COMBAT")
 
 	var total_elapsed := 0.0
@@ -63,8 +62,7 @@ func _test_non_lockdown_gates() -> void:
 func _test_lockdown_window_12_sec() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
-	for _i in range(52):
-		awareness.process_confirm(0.1, true, false, false, _cfg(true, 0.0, 0.0, 0.0, false))
+	awareness._transition_to_combat_from_damage()
 
 	var total_elapsed := 0.0
 	var before_12_transition := false

@@ -22,6 +22,13 @@ const LOOK_MIN_SEC := 0.35
 const LOOK_MAX_SEC := 0.85
 const LOOK_SWEEP_RAD := 0.62
 const LOOK_SWEEP_SPEED := 2.6
+const STUCK_CHECK_INTERVAL_SEC := 2.0
+const STUCK_PROGRESS_THRESHOLD_PX := 8.0
+const SHADOW_CHECK_RANGE_PX := 96.0
+const SHADOW_CHECK_CHANCE := 0.30
+const SHADOW_CHECK_DURATION_MIN_SEC := 1.5
+const SHADOW_CHECK_DURATION_MAX_SEC := 2.5
+const SHADOW_CHECK_SWEEP_RAD := 0.70
 
 var owner: CharacterBody2D = null
 var nav_system: Node = null
@@ -35,6 +42,12 @@ var _route_rebuild_timer: float = 0.0
 var _look_phase: float = 0.0
 var _look_base_dir: Vector2 = Vector2.RIGHT
 var _rng := RandomNumberGenerator.new()
+var _stuck_check_timer: float = 0.0
+var _stuck_check_last_pos: Vector2 = Vector2.ZERO
+var _shadow_check_active: bool = false
+var _shadow_check_dir: Vector2 = Vector2.RIGHT
+var _shadow_check_phase: float = 0.0
+var _shadow_check_timer: float = 0.0
 
 
 func _init(p_owner: CharacterBody2D) -> void:
@@ -55,11 +68,20 @@ func configure(p_nav_system: Node, p_home_room_id: int) -> void:
 	_look_phase = 0.0
 	_look_base_dir = Vector2.RIGHT
 	_rebuild_route()
+	_stuck_check_timer = STUCK_CHECK_INTERVAL_SEC
+	_stuck_check_last_pos = Vector2.ZERO
+	_shadow_check_active = false
+	_shadow_check_dir = Vector2.RIGHT
+	_shadow_check_phase = 0.0
+	_shadow_check_timer = 0.0
 
 
 func notify_alert() -> void:
 	_state = PatrolState.MOVE
 	_state_timer = 0.0
+	_stuck_check_timer = STUCK_CHECK_INTERVAL_SEC
+	_stuck_check_last_pos = owner.global_position if owner else Vector2.ZERO
+	_shadow_check_active = false
 
 
 func notify_calm() -> void:
@@ -70,6 +92,9 @@ func notify_calm() -> void:
 		_patrol_cfg_float("pause_min_sec", PAUSE_MIN_SEC),
 		_patrol_cfg_float("pause_max_sec", PAUSE_MAX_SEC)
 	)
+	_stuck_check_timer = STUCK_CHECK_INTERVAL_SEC
+	_stuck_check_last_pos = owner.global_position if owner else Vector2.ZERO
+	_shadow_check_active = false
 
 
 func update(delta: float, facing_dir: Vector2) -> Dictionary:
@@ -88,8 +113,33 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 
 	match _state:
 		PatrolState.PAUSE:
+			if _shadow_check_active:
+				_shadow_check_timer -= delta
+				_shadow_check_phase += delta * _patrol_cfg_float("look_sweep_speed", LOOK_SWEEP_SPEED)
+				var shadow_angle := sin(_shadow_check_phase) * _patrol_cfg_float("shadow_check_sweep_rad", SHADOW_CHECK_SWEEP_RAD)
+				var shadow_look_dir := _shadow_check_dir.rotated(shadow_angle)
+				if _shadow_check_timer <= 0.0:
+					_shadow_check_active = false
+				return {"waiting": true, "look_dir": shadow_look_dir, "shadow_check": true}
 			_state_timer -= delta
 			if _state_timer <= 0.0:
+				if not _shadow_check_active and _rng.randf() < _patrol_cfg_float("shadow_check_chance", SHADOW_CHECK_CHANCE):
+					if nav_system and nav_system.has_method("get_nearest_shadow_zone_direction"):
+						var shadow_result := nav_system.get_nearest_shadow_zone_direction(
+							owner.global_position,
+							_patrol_cfg_float("shadow_check_range_px", SHADOW_CHECK_RANGE_PX)
+						) as Dictionary
+						if bool(shadow_result.get("found", false)):
+							_shadow_check_active = true
+							_shadow_check_dir = shadow_result.get("direction", Vector2.RIGHT) as Vector2
+							if _shadow_check_dir.length_squared() <= 0.0001:
+								_shadow_check_dir = Vector2.RIGHT
+							_shadow_check_phase = 0.0
+							_shadow_check_timer = _rng.randf_range(
+								_patrol_cfg_float("shadow_check_duration_min_sec", SHADOW_CHECK_DURATION_MIN_SEC),
+								_patrol_cfg_float("shadow_check_duration_max_sec", SHADOW_CHECK_DURATION_MAX_SEC)
+							)
+							return {"waiting": true}
 				if _rng.randf() < _patrol_cfg_float("look_chance", LOOK_CHANCE):
 					_state = PatrolState.LOOK
 					_state_timer = _rng.randf_range(
@@ -111,6 +161,19 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 			return {"waiting": true, "look_dir": look_dir}
 		_:
 			pass
+
+	_stuck_check_timer -= delta
+	if _stuck_check_timer <= 0.0:
+		_stuck_check_timer = STUCK_CHECK_INTERVAL_SEC
+		var moved := owner.global_position.distance_to(_stuck_check_last_pos)
+		if moved < STUCK_PROGRESS_THRESHOLD_PX and not _route.is_empty():
+			_route_index = (_route_index + 1) % _route.size()
+			_state = PatrolState.PAUSE
+			_state_timer = _rng.randf_range(
+				_patrol_cfg_float("pause_min_sec", PAUSE_MIN_SEC),
+				_patrol_cfg_float("pause_max_sec", PAUSE_MAX_SEC)
+			)
+		_stuck_check_last_pos = owner.global_position
 
 	var target := _route[_route_index] as Vector2
 	if owner.global_position.distance_to(target) <= _patrol_cfg_float("point_reached_px", POINT_REACHED_PX):

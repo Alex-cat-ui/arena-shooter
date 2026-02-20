@@ -12,7 +12,6 @@ const CANON_CONFIG := {
 	"confirm_grace_window": 0.50,
 	"suspicious_enter": 0.25,
 	"alert_enter": 0.55,
-	"alert_fallback": 0.25,
 }
 
 
@@ -32,6 +31,8 @@ func run_suite() -> Dictionary:
 	_test_alert_to_combat_requires_5s_continuous_confirm()
 	_test_continuous_5s_confirm_hits_combat_in_tolerance()
 	_test_combat_degrades_to_alert_after_timer_without_contact()
+	_test_room_alert_propagation_does_not_refresh_combat_timer()
+	_test_reinforcement_refreshes_combat_timer()
 	_test_deterministic_repeated_runs()
 
 	_t.summary("ENEMY AWARENESS RESULTS")
@@ -64,27 +65,36 @@ func _test_continuous_5s_confirm_hits_combat_in_tolerance() -> void:
 	awareness.reset()
 
 	var elapsed := 0.0
+	var entered_alert_at := -1.0
 	var reached_combat_at := -1.0
-	for _i in range(80):
+	for _i in range(120):
 		elapsed += 0.1
 		var transitions := awareness.process_confirm(0.1, true, false, false, CANON_CONFIG)
-		if _has_transition(transitions, "CALM", "COMBAT", "confirmed_contact") or _has_transition(transitions, "ALERT", "COMBAT", "confirmed_contact"):
-			reached_combat_at = elapsed
+		for tr_variant in transitions:
+			var tr := tr_variant as Dictionary
+			if String(tr.get("to_state", "")) == "ALERT" and String(tr.get("reason", "")) == "confirm_rising" and entered_alert_at < 0.0:
+				entered_alert_at = elapsed
+			if String(tr.get("to_state", "")) == "COMBAT" and String(tr.get("reason", "")) == "confirmed_contact":
+				reached_combat_at = elapsed
+				break
+		if reached_combat_at >= 0.0:
 			break
 
 	_t.run_test(
-		"continuous confirm reaches COMBAT in 5.0±0.2s",
-		reached_combat_at >= 4.8 and reached_combat_at <= 5.2
+		"continuous confirm reaches COMBAT in 5.0±0.2s after ALERT entry",
+		entered_alert_at >= 0.0
+			and reached_combat_at >= 0.0
+			and (reached_combat_at - entered_alert_at) >= 4.8
+			and (reached_combat_at - entered_alert_at) <= 5.2
+			and awareness.get_state_name() == "COMBAT"
 	)
 
 
 func _test_combat_degrades_to_alert_after_timer_without_contact() -> void:
 	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 	awareness.reset()
-
-	for _i in range(52):
-		awareness.process_confirm(0.1, true, false, false, CANON_CONFIG)
-	_t.run_test("LOS enters COMBAT after confirm contract", awareness.get_state_name() == "COMBAT")
+	awareness._transition_to_combat_from_damage()
+	_t.run_test("damage transition enters COMBAT", awareness.get_state_name() == "COMBAT")
 
 	var combat_ttl := ENEMY_ALERT_LEVELS_SCRIPT.ttl_for_level(ENEMY_ALERT_LEVELS_SCRIPT.COMBAT)
 	var steps := maxi(int(ceil((combat_ttl + 0.5) / 0.1)), 1)
@@ -98,6 +108,31 @@ func _test_combat_degrades_to_alert_after_timer_without_contact() -> void:
 	_t.run_test(
 		"COMBAT degrades to ALERT after no-contact timer",
 		dropped and awareness.get_state_name() == "ALERT"
+	)
+
+
+func _test_room_alert_propagation_does_not_refresh_combat_timer() -> void:
+	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+	awareness.reset()
+	awareness._transition_to_combat_from_damage()
+	var combat_timer_before := float(awareness._combat_timer)
+	awareness.register_room_alert_propagation()
+	var combat_timer_after := float(awareness._combat_timer)
+	_t.run_test(
+		"room_alert_propagation in COMBAT does not refresh combat timer",
+		is_equal_approx(combat_timer_after, combat_timer_before)
+	)
+
+
+func _test_reinforcement_refreshes_combat_timer() -> void:
+	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+	awareness.reset()
+	awareness._transition_to_combat_from_damage()
+	awareness._combat_timer = 0.01
+	awareness.register_reinforcement()
+	_t.run_test(
+		"reinforcement in COMBAT refreshes combat timer",
+		float(awareness._combat_timer) > 0.01
 	)
 
 

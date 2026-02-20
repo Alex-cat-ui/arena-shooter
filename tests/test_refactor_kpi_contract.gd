@@ -94,6 +94,13 @@ func _test_refactor_kpi_contracts() -> void:
 			and runner_text.find("return load(") < 0
 	)
 
+	var coord_text := _read_text("res://src/systems/enemy_aggro_coordinator.gd")
+	_t.run_test(
+		"KPI: coordinator has unified escalation source guard",
+		coord_text.find("_is_valid_escalation_source") >= 0
+			and coord_text.find("_is_valid_teammate_call_source") >= 0
+	)
+
 
 func _read_text(path: String) -> String:
 	if not FileAccess.file_exists(path):

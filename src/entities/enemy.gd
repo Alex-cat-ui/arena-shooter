@@ -65,6 +65,7 @@ const COMBAT_SEARCH_DOOR_COST_PER_HOP := 80.0
 const COMBAT_SEARCH_PROGRESS_THRESHOLD := 0.8
 const COMBAT_NO_CONTACT_WINDOW_SEC := 8.0
 const COMBAT_NO_CONTACT_WINDOW_LOCKDOWN_SEC := 12.0
+const FLASHLIGHT_NEAR_THRESHOLD_PX := 400.0
 const RUNTIME_BUDGET_ORPHAN_FALLBACK_SEC := 2.0
 const TRANSITION_BLOCK_SINGLE_TICK := "single_transition_per_tick"
 const SHOTGUN_FIRE_BLOCK_NO_COMBAT_STATE := "no_combat_state"
@@ -145,6 +146,8 @@ var _investigate_anchor_valid: bool = false
 var _last_seen_grace_timer: float = 0.0
 var _current_alert_level: int = ENEMY_ALERT_LEVELS_SCRIPT.CALM
 var _flashlight_hit_override: bool = false
+var _flashlight_activation_delay_timer: float = 0.0
+var _shadow_check_flashlight_override: bool = false
 var _debug_last_has_los: bool = false
 var _debug_last_visibility_factor: float = 0.0
 var _debug_last_distance_factor: float = 0.0
@@ -310,6 +313,8 @@ func initialize(id: int, type: String) -> void:
 	_investigate_anchor = Vector2.ZERO
 	_investigate_anchor_valid = false
 	_last_seen_grace_timer = 0.0
+	_flashlight_activation_delay_timer = 0.0
+	_shadow_check_flashlight_override = false
 	_player_visible_prev = false
 	_confirmed_visual_prev = false
 	_test_los_look_grace_timer = 0.0
@@ -401,6 +406,8 @@ func _physics_process(delta: float) -> void:
 		_shot_cooldown = maxf(0.0, _shot_cooldown - delta)
 	if _friendly_block_reposition_cooldown_left > 0.0:
 		_friendly_block_reposition_cooldown_left = maxf(0.0, _friendly_block_reposition_cooldown_left - delta)
+	if _flashlight_activation_delay_timer > 0.0:
+		_flashlight_activation_delay_timer = maxf(0.0, _flashlight_activation_delay_timer - delta)
 
 	# Handle stagger (blocks normal movement)
 	if stagger_timer > 0:
@@ -491,16 +498,9 @@ func runtime_budget_tick(delta: float) -> void:
 	var awareness_state_before := ENEMY_ALERT_LEVELS_SCRIPT.CALM
 	if _awareness and _awareness.has_method("get_awareness_state"):
 		awareness_state_before = int(_awareness.get_awareness_state())
-	if _awareness and _awareness.has_method("set_combat_no_contact_window_override"):
-		_awareness.set_combat_no_contact_window_override(_lockdown_combat_no_contact_window_sec())
 	var flashlight_active := false
 	var flashlight_inactive_reason := "state_blocked"
-	var state_is_alert := awareness_state_before == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
-	var state_is_combat := awareness_state_before == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT or _combat_latched
-	var alert_allowed := state_is_alert and _flashlight_policy_active_in_alert()
-	var combat_allowed := state_is_combat and _flashlight_policy_active_in_combat()
-	var lockdown_allowed := _is_zone_lockdown() and _flashlight_policy_active_in_lockdown()
-	flashlight_active = alert_allowed or combat_allowed or lockdown_allowed
+	flashlight_active = _compute_flashlight_active(awareness_state_before)
 	if flashlight_active:
 		flashlight_inactive_reason = ""
 	var flashlight_in_cone := false
@@ -780,6 +780,13 @@ func set_zone_director(director: Node) -> void:
 func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 	if _awareness:
 		_apply_awareness_transitions(_awareness.register_noise(), "heard_shot")
+	_investigate_anchor = shot_pos
+	_investigate_anchor_valid = true
+	var dist_to_shot := global_position.distance_to(shot_pos)
+	if dist_to_shot < FLASHLIGHT_NEAR_THRESHOLD_PX:
+		_flashlight_activation_delay_timer = randf_range(0.5, 1.2)
+	else:
+		_flashlight_activation_delay_timer = randf_range(1.5, 3.0)
 	if _pursuit:
 		_pursuit.on_heard_shot(shot_room_id, shot_pos)
 
@@ -809,12 +816,16 @@ func debug_force_awareness_state(target_state: String) -> void:
 			_confirmed_visual_prev = false
 			_player_visible_prev = false
 			_last_seen_age = INF
+			_flashlight_activation_delay_timer = 0.0
+			_shadow_check_flashlight_override = false
 			_set_awareness_meta_from_system()
 			_apply_alert_level(ENEMY_ALERT_LEVELS_SCRIPT.CALM)
 		AWARENESS_ALERT:
 			_awareness.reset()
 			var alert_transitions: Array[Dictionary] = _awareness.register_noise()
 			_apply_awareness_transitions(alert_transitions, "debug_force_alert")
+			_flashlight_activation_delay_timer = 0.0
+			_shadow_check_flashlight_override = false
 			_set_awareness_meta_from_system()
 			_apply_alert_level(ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
 		AWARENESS_COMBAT:
@@ -1120,16 +1131,25 @@ func set_flashlight_hit_for_detection(hit: bool) -> void:
 	_flashlight_hit_override = hit
 
 
+func set_shadow_check_flashlight(active: bool) -> void:
+	_shadow_check_flashlight_override = active
+
+
+func _compute_flashlight_active(awareness_state: int) -> bool:
+	var state_is_calm := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	var state_is_alert := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
+	var state_is_combat := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT or _combat_latched
+	return (state_is_alert and _flashlight_policy_active_in_alert()) \
+		or (state_is_combat and _flashlight_policy_active_in_combat()) \
+		or (_is_zone_lockdown() and _flashlight_policy_active_in_lockdown()) \
+		or (state_is_calm and _flashlight_policy_active_in_calm())
+
+
 func is_flashlight_active_for_navigation() -> bool:
 	var awareness_state := ENEMY_ALERT_LEVELS_SCRIPT.CALM
 	if _awareness and _awareness.has_method("get_awareness_state"):
 		awareness_state = int(_awareness.get_awareness_state())
-	var state_is_alert := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
-	var state_is_combat := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT or _combat_latched
-	var alert_allowed := state_is_alert and _flashlight_policy_active_in_alert()
-	var combat_allowed := state_is_combat and _flashlight_policy_active_in_combat()
-	var lockdown_allowed := _is_zone_lockdown() and _flashlight_policy_active_in_lockdown()
-	return alert_allowed or combat_allowed or lockdown_allowed
+	return _compute_flashlight_active(awareness_state)
 
 
 func set_stealth_test_debug_logging(enabled: bool) -> void:
@@ -1337,7 +1357,13 @@ func _confirm_config_with_defaults() -> Dictionary:
 
 
 func _flashlight_policy_active_in_alert() -> bool:
+	if _flashlight_activation_delay_timer > 0.0:
+		return false
 	return _flashlight_policy_flag("flashlight_active_in_alert", true)
+
+
+func _flashlight_policy_active_in_calm() -> bool:
+	return _shadow_check_flashlight_override
 
 
 func _flashlight_policy_active_in_combat() -> bool:

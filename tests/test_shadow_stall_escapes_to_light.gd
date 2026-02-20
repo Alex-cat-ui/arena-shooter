@@ -78,6 +78,7 @@ func _test_shadow_stall_prefers_escape_to_light() -> void:
 
 	var owner := FakeEnemy.new()
 	owner.global_position = Vector2(-40.0, 0.0)
+	owner.set_meta("awareness_state", "ALERT")
 	var sprite := Sprite2D.new()
 	owner.add_child(sprite)
 	world.add_child(owner)

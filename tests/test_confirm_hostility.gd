@@ -7,6 +7,9 @@ const CANON_CONFIG := {
 	"confirm_time_to_engage": 2.50,
 	"confirm_decay_rate": 0.275,
 	"confirm_grace_window": 0.50,
+	# Keep this suite focused on confirm channel dynamics without ALERT reset side effects.
+	"suspicious_enter": 1.0,
+	"alert_enter": 1.0,
 }
 
 var embedded_mode: bool = false

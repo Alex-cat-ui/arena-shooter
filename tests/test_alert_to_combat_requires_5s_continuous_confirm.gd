@@ -56,18 +56,29 @@ func _test_alert_to_combat_requires_continuous_confirm() -> void:
 	)
 
 	awareness.reset()
+	var entered_alert_at := -1.0
 	var reached_at := -1.0
 	var elapsed := 0.0
-	for _i in range(80):
+	for _i in range(120):
 		elapsed += 0.1
 		var transitions := awareness.process_confirm(0.1, true, false, false, CONFIRM_CONFIG)
-		if _has_confirmed_contact_transition(transitions):
-			reached_at = elapsed
+		for tr_variant in transitions:
+			var tr := tr_variant as Dictionary
+			if String(tr.get("to_state", "")) == "ALERT" and String(tr.get("reason", "")) == "confirm_rising" and entered_alert_at < 0.0:
+				entered_alert_at = elapsed
+			if String(tr.get("to_state", "")) == "COMBAT" and String(tr.get("reason", "")) == "confirmed_contact":
+				reached_at = elapsed
+				break
+		if reached_at >= 0.0:
 			break
 
 	_t.run_test(
-		"continuous LOS enters COMBAT in 5.0±0.2s",
-		reached_at >= 4.8 and reached_at <= 5.2 and awareness.get_state_name() == "COMBAT"
+		"continuous LOS enters COMBAT in 5.0±0.2s after ALERT",
+		entered_alert_at >= 0.0
+			and reached_at >= 0.0
+			and (reached_at - entered_alert_at) >= 4.8
+			and (reached_at - entered_alert_at) <= 5.2
+			and awareness.get_state_name() == "COMBAT"
 	)
 
 

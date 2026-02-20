@@ -35,7 +35,6 @@ var _alert_elapsed_sec: float = 0.0
 var _alert_no_contact_sec: float = 0.0
 var _combat_no_contact_elapsed_sec: float = 0.0
 var _minimum_alert_hold_sec: float = 0.0
-var _combat_no_contact_window_override: float = -1.0
 var _combat_lock: bool = false
 var _debug_last_flashlight_bonus_raw: float = 1.0
 var _debug_last_effective_visibility_pre_clamp: float = 0.0
@@ -46,7 +45,6 @@ const DEFAULT_CONFIRM_DECAY_RATE := 1.25
 const DEFAULT_CONFIRM_GRACE_WINDOW_SEC := 0.50
 const DEFAULT_SUSPICIOUS_ENTER := 0.25
 const DEFAULT_ALERT_ENTER := 0.55
-const DEFAULT_ALERT_FALLBACK := 0.25
 const DEFAULT_MINIMUM_ALERT_HOLD_SEC := 2.5
 const DEFAULT_SUSPICION_DECAY_RATE := 0.55
 const DEFAULT_SUSPICION_GAIN_PARTIAL := 0.24
@@ -72,7 +70,6 @@ func reset() -> void:
 	_alert_no_contact_sec = 0.0
 	_combat_no_contact_elapsed_sec = 0.0
 	_minimum_alert_hold_sec = DEFAULT_MINIMUM_ALERT_HOLD_SEC
-	_combat_no_contact_window_override = -1.0
 	_combat_lock = false
 	_debug_last_flashlight_bonus_raw = 1.0
 	_debug_last_effective_visibility_pre_clamp = 0.0
@@ -228,37 +225,27 @@ func register_noise() -> Array[Dictionary]:
 
 
 func register_room_alert_propagation() -> Array[Dictionary]:
-	var transitions: Array[Dictionary] = []
-	if _state == State.COMBAT:
-		return transitions
-	if _state == State.ALERT:
-		_alert_timer = ENEMY_ALERT_LEVELS_SCRIPT.ttl_for_level(State.ALERT)
-		return transitions
-	_transition_to(State.ALERT, "room_alert_propagation", transitions)
-	return transitions
+	return _promote_to_alert("room_alert_propagation", false)
 
 
 func register_reinforcement() -> Array[Dictionary]:
-	var transitions: Array[Dictionary] = []
-	if _state == State.COMBAT:
-		_combat_timer = _combat_ttl_sec()
-		return transitions
-	if _state == State.ALERT:
-		_alert_timer = ENEMY_ALERT_LEVELS_SCRIPT.ttl_for_level(State.ALERT)
-		return transitions
-	_transition_to(State.ALERT, "reinforcement", transitions)
-	return transitions
+	return _promote_to_alert("reinforcement", true)
 
 
 func register_teammate_call() -> Array[Dictionary]:
+	return _promote_to_alert("teammate_call", true)
+
+
+func _promote_to_alert(reason: String, refresh_combat_timer: bool) -> Array[Dictionary]:
 	var transitions: Array[Dictionary] = []
 	if _state == State.COMBAT:
-		_combat_timer = _combat_ttl_sec()
+		if refresh_combat_timer:
+			_combat_timer = _combat_ttl_sec()
 		return transitions
 	if _state == State.ALERT:
 		_alert_timer = ENEMY_ALERT_LEVELS_SCRIPT.ttl_for_level(State.ALERT)
 		return transitions
-	_transition_to(State.ALERT, "teammate_call", transitions)
+	_transition_to(State.ALERT, reason, transitions)
 	return transitions
 
 
@@ -287,11 +274,6 @@ func get_ui_snapshot() -> Dictionary:
 		"hostile_contact": hostile_contact,
 		"hostile_damaged": hostile_damaged,
 	}
-
-
-func set_combat_no_contact_window_override(window_sec: float) -> void:
-	var clamped := maxf(window_sec, 0.0)
-	_combat_no_contact_window_override = clamped if clamped > 0.0 else -1.0
 
 
 func _advance_timers(
@@ -378,6 +360,8 @@ func _transition_to(new_state: State, reason: String, transitions: Array[Diction
 			_alert_elapsed_sec = 0.0
 			_alert_no_contact_sec = 0.0
 			_has_confirmed_visual = false
+			if from_state != State.COMBAT:
+				_confirm_progress = 0.0
 		State.SUSPICIOUS:
 			_combat_lock = false
 			_combat_timer = 0.0
@@ -421,6 +405,4 @@ static func state_to_name(state: int) -> String:
 
 
 func _combat_ttl_sec() -> float:
-	if _combat_no_contact_window_override > 0.0:
-		return _combat_no_contact_window_override
 	return ENEMY_ALERT_LEVELS_SCRIPT.ttl_for_level(State.COMBAT)

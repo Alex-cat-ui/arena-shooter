@@ -166,6 +166,8 @@ func _run_detection_case(
 		pursuit_controller.set("_target_facing_dir", Vector2.RIGHT)
 	if force_alert_state:
 		enemy.on_heard_shot(0, player_position)
+		# This suite validates flashlight cone/detection behavior, not stagger delay timing.
+		enemy.set("_flashlight_activation_delay_timer", 0.0)
 
 	var pre_direct_in_cone := false
 	var pre_pursuit = enemy.get("_pursuit")

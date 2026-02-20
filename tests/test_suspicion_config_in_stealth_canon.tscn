@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_suspicion_config_in_stealth_canon.gd" id="1_script"]
+
+[node name="TestSuspicionConfigInStealthCanon" type="Node"]
+script = ExtResource("1_script")

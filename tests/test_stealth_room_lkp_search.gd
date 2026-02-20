@@ -82,6 +82,8 @@ func _test_lkp_investigate_then_search() -> void:
 	var lkp := enemy.global_position + Vector2(260.0, 0.0)
 	enemy.set("_last_seen_pos", lkp)
 	enemy.set("_last_seen_age", 0.1)
+	enemy.set("_investigate_anchor", lkp)
+	enemy.set("_investigate_anchor_valid", true)
 	if enemy.has_method("debug_force_awareness_state"):
 		enemy.call("debug_force_awareness_state", "ALERT")
 

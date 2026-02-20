@@ -24,6 +24,7 @@ const GAME_CONFIG_RESET_CONSISTENCY_NON_LAYOUT_TEST_SCENE := "res://tests/test_g
 const GAME_SYSTEMS_RUNTIME_TEST_SCENE := "res://tests/test_game_systems_runtime.tscn"
 const PHYSICS_WORLD_RUNTIME_TEST_SCENE := "res://tests/test_physics_world_runtime.tscn"
 const ENEMY_SUSPICION_TEST_SCENE := "res://tests/test_enemy_suspicion.tscn"
+const SUSPICION_CONFIG_IN_STEALTH_CANON_TEST_SCENE := "res://tests/test_suspicion_config_in_stealth_canon.tscn"
 const FLASHLIGHT_CONE_TEST_SCENE := "res://tests/test_flashlight_cone.tscn"
 const ALERT_FLASHLIGHT_DETECTION_TEST_SCENE := "res://tests/test_alert_flashlight_detection.tscn"
 const STEALTH_ROOM_SMOKE_TEST_SCENE := "res://tests/test_stealth_room_smoke.tscn"
@@ -106,6 +107,7 @@ const COMBAT_INTENT_PUSH_TO_SEARCH_TEST_SCENE := "res://tests/test_combat_intent
 const DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE := "res://tests/test_detour_side_flip_on_stall.tscn"
 const HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE := "res://tests/test_honest_repath_without_teleport.tscn"
 const FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_active_in_combat_when_latched.tscn"
+const FLASHLIGHT_SINGLE_SOURCE_PARITY_TEST_SCENE := "res://tests/test_flashlight_single_source_parity.tscn"
 const FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_bonus_applies_in_combat.tscn"
 const LEVEL_RUNTIME_GUARD_TEST_SCENE := "res://tests/test_level_runtime_guard.tscn"
 const LEVEL_INPUT_CONTROLLER_TEST_SCENE := "res://tests/test_level_input_controller.tscn"
@@ -122,6 +124,36 @@ const EVENT_BUS_BACKPRESSURE_TEST_SCENE := "res://tests/test_event_bus_backpress
 const COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE := "res://tests/test_3zone_combat_transition_stress.tscn"
 const AI_LONG_RUN_STRESS_TEST_SCENE := "res://tests/test_ai_long_run_stress.tscn"
 const REFACTOR_KPI_CONTRACT_TEST_SCENE := "res://tests/test_refactor_kpi_contract.tscn"
+const ENEMY_SCRIPT := preload("res://src/entities/enemy.gd")
+const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
+const ENEMY_PATROL_SYSTEM_SCRIPT := preload("res://src/systems/enemy_patrol_system.gd")
+const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
+const NAVIGATION_SERVICE_SCRIPT := preload("res://src/systems/navigation_service.gd")
+
+
+class PhaseShadowNavStub:
+	extends Node
+
+	var in_shadow: bool = true
+
+	func is_point_in_shadow(_point: Vector2) -> bool:
+		return in_shadow
+
+
+class PhaseShadowOwner:
+	extends CharacterBody2D
+
+	var flashlight_active_for_nav: bool = false
+
+	func is_flashlight_active_for_navigation() -> bool:
+		return flashlight_active_for_nav
+
+
+class PhaseShadowZoneStub:
+	extends Node2D
+
+	func contains_point(_point: Vector2) -> bool:
+		return true
 
 func _ready() -> void:
 	print("=" .repeat(60))
@@ -523,6 +555,9 @@ func _run_tests() -> void:
 	_test("Enemy suspicion test scene exists", func():
 		return _scene_exists(ENEMY_SUSPICION_TEST_SCENE)
 	)
+	_test("Suspicion config in stealth canon test scene exists", func():
+		return _scene_exists(SUSPICION_CONFIG_IN_STEALTH_CANON_TEST_SCENE)
+	)
 	_test("Flashlight cone test scene exists", func():
 		return _scene_exists(FLASHLIGHT_CONE_TEST_SCENE)
 	)
@@ -597,6 +632,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Enemy behavior integration suite", BEHAVIOR_INTEGRATION_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy runtime budget scheduler suite", RUNTIME_BUDGET_SCHEDULER_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy suspicion suite", ENEMY_SUSPICION_TEST_SCENE)
+	await _run_embedded_scene_suite("Suspicion config in stealth canon suite", SUSPICION_CONFIG_IN_STEALTH_CANON_TEST_SCENE)
 	await _run_embedded_scene_suite("Flashlight cone suite", FLASHLIGHT_CONE_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert flashlight detection suite", ALERT_FLASHLIGHT_DETECTION_TEST_SCENE)
 	await _run_embedded_scene_suite("Stealth room smoke suite", STEALTH_ROOM_SMOKE_TEST_SCENE)
@@ -817,8 +853,155 @@ func _run_tests() -> void:
 	_test("Flashlight active in combat test scene exists", func():
 		return _scene_exists(FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE)
 	)
+	_test("Flashlight single source parity test scene exists", func():
+		return _scene_exists(FLASHLIGHT_SINGLE_SOURCE_PARITY_TEST_SCENE)
+	)
 	_test("Flashlight bonus in combat test scene exists", func():
 		return _scene_exists(FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE)
+	)
+
+	print("\n--- SECTION 18c: Bugfix phase unit tests ---")
+
+	_test("Phase 1: on_heard_shot sets investigate anchor", func():
+		var enemy = ENEMY_SCRIPT.new()
+		enemy._awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+		enemy._awareness.reset()
+		var shot_pos := Vector2(300.0, 200.0)
+		enemy.on_heard_shot(0, shot_pos)
+		var ok: bool = enemy._investigate_anchor == shot_pos and bool(enemy._investigate_anchor_valid)
+		enemy.free()
+		return ok
+	)
+
+	_test("Phase 2: noise->ALERT resets confirm progress", func():
+		var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+		awareness.reset()
+		awareness._confirm_progress = 0.5
+		awareness._state = ENEMY_AWARENESS_SYSTEM_SCRIPT.State.SUSPICIOUS
+		awareness.register_noise()
+		return awareness.get_state_name() == "ALERT" and is_equal_approx(awareness._confirm_progress, 0.0)
+	)
+
+	_test("Phase 2: COMBAT->ALERT keeps confirm progress", func():
+		var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+		awareness.reset()
+		awareness._state = ENEMY_AWARENESS_SYSTEM_SCRIPT.State.COMBAT
+		awareness._confirm_progress = 0.8
+		var transitions: Array[Dictionary] = []
+		awareness._transition_to(ENEMY_AWARENESS_SYSTEM_SCRIPT.State.ALERT, "timer", transitions)
+		return awareness.get_state_name() == "ALERT" and is_equal_approx(awareness._confirm_progress, 0.8)
+	)
+
+	_test("Phase 3: stuck patrol advances to next waypoint", func():
+		var owner := CharacterBody2D.new()
+		owner.global_position = Vector2(100.0, 0.0)
+		var patrol = ENEMY_PATROL_SYSTEM_SCRIPT.new(owner)
+		patrol.configure(null, -1)
+		var route: Array[Vector2] = [Vector2(500.0, 0.0), Vector2(1000.0, 0.0)]
+		patrol._route = route
+		patrol._route_index = 0
+		patrol._state = ENEMY_PATROL_SYSTEM_SCRIPT.PatrolState.MOVE
+		patrol._route_rebuild_timer = 999.0
+		patrol._stuck_check_timer = 0.01
+		patrol._stuck_check_last_pos = Vector2(100.0, 0.0)
+		patrol.update(0.05, Vector2.RIGHT)
+		var ok: bool = patrol._route_index == 1 and patrol._state == ENEMY_PATROL_SYSTEM_SCRIPT.PatrolState.PAUSE
+		owner.free()
+		return ok
+	)
+
+	_test("Phase 4: near shot sets flashlight delay in [0.5, 1.2]", func():
+		var enemy = ENEMY_SCRIPT.new()
+		enemy.global_position = Vector2.ZERO
+		enemy.on_heard_shot(0, Vector2(200.0, 0.0))
+		var delay := float(enemy._flashlight_activation_delay_timer)
+		enemy.free()
+		return delay >= 0.5 and delay <= 1.2
+	)
+
+	_test("Phase 4: far shot sets flashlight delay in [1.5, 3.0]", func():
+		var enemy = ENEMY_SCRIPT.new()
+		enemy.global_position = Vector2.ZERO
+		enemy.on_heard_shot(0, Vector2(600.0, 0.0))
+		var delay := float(enemy._flashlight_activation_delay_timer)
+		enemy.free()
+		return delay >= 1.5 and delay <= 3.0
+	)
+
+	_test("Phase 4: alert flashlight policy blocked while delay > 0", func():
+		var enemy = ENEMY_SCRIPT.new()
+		enemy._flashlight_activation_delay_timer = 1.0
+		var blocked: bool = enemy._flashlight_policy_active_in_alert() == false
+		enemy._flashlight_activation_delay_timer = 0.0
+		var active: bool = enemy._flashlight_policy_active_in_alert() == true
+		enemy.free()
+		return blocked and active
+	)
+
+	_test("Phase 5: shadow escape guard ignores CALM/SUSPICIOUS", func():
+		var owner := PhaseShadowOwner.new()
+		owner.global_position = Vector2.ZERO
+		var sprite := Sprite2D.new()
+		var pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(owner, sprite, 2.0)
+		var nav := PhaseShadowNavStub.new()
+		pursuit.nav_system = nav
+
+		owner.set_meta("awareness_state", "CALM")
+		var calm_ok := pursuit._is_owner_in_shadow_without_flashlight() == false
+		owner.set_meta("awareness_state", "SUSPICIOUS")
+		var suspicious_ok := pursuit._is_owner_in_shadow_without_flashlight() == false
+		owner.set_meta("awareness_state", "ALERT")
+		var alert_ok := pursuit._is_owner_in_shadow_without_flashlight() == true
+
+		nav.free()
+		sprite.free()
+		owner.free()
+		return calm_ok and suspicious_ok and alert_ok
+	)
+
+	_test("Phase 6: active shadow check returns look_dir and flag", func():
+		var owner := CharacterBody2D.new()
+		owner.global_position = Vector2.ZERO
+		var patrol = ENEMY_PATROL_SYSTEM_SCRIPT.new(owner)
+		patrol.configure(null, -1)
+		patrol._state = ENEMY_PATROL_SYSTEM_SCRIPT.PatrolState.PAUSE
+		patrol._shadow_check_active = true
+		patrol._shadow_check_dir = Vector2.RIGHT
+		patrol._shadow_check_phase = 0.0
+		patrol._shadow_check_timer = 1.0
+		var decision := patrol.update(0.1, Vector2.RIGHT)
+		var ok: bool = bool(decision.get("waiting", false)) \
+			and bool(decision.get("shadow_check", false)) \
+			and (decision.get("look_dir", Vector2.ZERO) as Vector2).length_squared() > 0.0001
+		owner.free()
+		return ok
+	)
+
+	_test("Phase 6: calm flashlight override affects navigation flashlight", func():
+		var enemy = ENEMY_SCRIPT.new()
+		enemy._awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+		enemy._awareness.reset()
+		enemy.set_shadow_check_flashlight(true)
+		var override_on := enemy.is_flashlight_active_for_navigation()
+		enemy.set_shadow_check_flashlight(false)
+		var override_off := not enemy.is_flashlight_active_for_navigation()
+		enemy.free()
+		return override_on and override_off
+	)
+
+	_test("Phase 6: navigation returns nearest shadow direction", func():
+		var nav = NAVIGATION_SERVICE_SCRIPT.new()
+		add_child(nav)
+		var zone := PhaseShadowZoneStub.new()
+		zone.global_position = Vector2(64.0, 0.0)
+		zone.add_to_group("shadow_zones")
+		add_child(zone)
+		var nearest := nav.get_nearest_shadow_zone_direction(Vector2.ZERO, 96.0) as Dictionary
+		var found: bool = bool(nearest.get("found", false))
+		var direction := nearest.get("direction", Vector2.ZERO) as Vector2
+		zone.queue_free()
+		nav.queue_free()
+		return found and direction.dot(Vector2.RIGHT) > 0.9
 	)
 
 	await _run_embedded_scene_suite("Stealth room combat fire suite", STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE)
@@ -887,6 +1070,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Detour side flip on stall suite", DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE)
 	await _run_embedded_scene_suite("Honest repath without teleport suite", HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE)
 	await _run_embedded_scene_suite("Flashlight active in combat suite", FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE)
+	await _run_embedded_scene_suite("Flashlight single source parity suite", FLASHLIGHT_SINGLE_SOURCE_PARITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Flashlight bonus in combat suite", FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE)
 
 	print("\n--- SECTION 19: Level decomposition controller suites ---")

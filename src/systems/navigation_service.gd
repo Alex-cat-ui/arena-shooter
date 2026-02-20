@@ -259,6 +259,26 @@ func is_point_in_shadow(point: Vector2) -> bool:
 	return bool(_shadow_policy.is_point_in_shadow(point))
 
 
+func get_nearest_shadow_zone_direction(pos: Vector2, range_px: float) -> Dictionary:
+	var tree := get_tree()
+	if tree == null:
+		return {"found": false}
+	var best_dist := range_px
+	var best_dir := Vector2.ZERO
+	for zone_variant in tree.get_nodes_in_group("shadow_zones"):
+		var zone := zone_variant as Node2D
+		if zone == null or not zone.has_method("contains_point"):
+			continue
+		var zone_center := zone.global_position
+		var dist := pos.distance_to(zone_center)
+		if dist < best_dist:
+			best_dist = dist
+			best_dir = (zone_center - pos).normalized()
+	if best_dir == Vector2.ZERO:
+		return {"found": false}
+	return {"found": true, "direction": best_dir}
+
+
 func is_adjacent(a: int, b: int) -> bool:
 	_ensure_runtime_components()
 	return bool(_runtime_queries.is_adjacent(a, b))

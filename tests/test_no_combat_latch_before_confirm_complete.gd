@@ -88,7 +88,7 @@ func _test_room_stays_below_combat_before_confirm_complete() -> void:
 	)
 
 	var reached_combat := false
-	for _i in range(24):
+	for _i in range(40):
 		_sync_enemy_facing(enemy, player.global_position)
 		enemy.runtime_budget_tick(0.1)
 		await get_tree().process_frame

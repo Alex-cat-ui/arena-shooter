@@ -53,8 +53,8 @@ func _test_alert_to_combat_transition_loop_no_freeze() -> void:
 		var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
 		awareness.reset()
 		var reached_combat := false
-		for _i in range(80):
-			var has_los := _i >= 30
+		for _i in range(100):
+			var has_los := true
 			var transitions := awareness.process_confirm(0.1, has_los, false, false, CONFIRM_CONFIG)
 			for tr_variant in transitions:
 				var tr := tr_variant as Dictionary

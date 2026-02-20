@@ -186,6 +186,8 @@ func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Dictionary:
 	var request_fire := false
 	var intent_type := int(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
+	if owner and owner.has_method("set_shadow_check_flashlight"):
+		owner.call("set_shadow_check_flashlight", false)
 	var has_target := intent.has("target")
 	var target := intent.get("target", owner.global_position) as Vector2
 	var movement_intent := false
@@ -367,6 +369,9 @@ func _execute_retreat_from(delta: float, danger_origin: Vector2) -> void:
 func _update_idle_roam(delta: float) -> void:
 	if _patrol:
 		var patrol_decision := _patrol.update(delta, facing_dir) as Dictionary
+		var shadow_check := bool(patrol_decision.get("shadow_check", false))
+		if owner and owner.has_method("set_shadow_check_flashlight"):
+			owner.call("set_shadow_check_flashlight", shadow_check)
 		if bool(patrol_decision.get("waiting", true)):
 			_stop_motion(delta)
 			var look_dir := patrol_decision.get("look_dir", Vector2.ZERO) as Vector2
@@ -789,6 +794,11 @@ func _sample_shadow_escape_candidates() -> Array[Vector2]:
 
 
 func _is_owner_in_shadow_without_flashlight() -> bool:
+	# Shadow escape is only valid in ALERT/COMBAT.
+	if owner:
+		var state_name := String(owner.get_meta("awareness_state", "CALM"))
+		if state_name != "ALERT" and state_name != "COMBAT":
+			return false
 	if nav_system == null or not nav_system.has_method("is_point_in_shadow"):
 		return false
 	if not bool(nav_system.call("is_point_in_shadow", owner.global_position)):
