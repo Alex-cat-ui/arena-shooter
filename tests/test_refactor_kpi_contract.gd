@@ -101,6 +101,20 @@ func _test_refactor_kpi_contracts() -> void:
 			and coord_text.find("_is_valid_teammate_call_source") >= 0
 	)
 
+	var perception_text := _read_text("res://src/systems/enemy_perception_system.gd")
+	_t.run_test(
+		"KPI: perception has no RuntimeState shadow fallback",
+		perception_text.find("RuntimeState") < 0
+			or perception_text.find("player_visibility_mul") < 0
+	)
+
+	var shadow_policy_text := _read_text("res://src/systems/navigation_shadow_policy.gd")
+	_t.run_test(
+		"KPI: shadow policy has no meta or snapshot flashlight fallback",
+		shadow_policy_text.find("flashlight_active") < 0
+			or shadow_policy_text.find("get_meta") < 0
+	)
+
 
 func _read_text(path: String) -> String:
 	if not FileAccess.file_exists(path):

@@ -146,8 +146,6 @@ func _compute_visibility_snapshot(origin: Vector2, max_distance: float) -> Dicti
 	if nav_service and nav_service.has_method("is_point_in_shadow"):
 		var in_shadow_variant: Variant = nav_service.call("is_point_in_shadow", _player_node.global_position)
 		shadow_mul = 0.0 if bool(in_shadow_variant) else 1.0
-	elif RuntimeState:
-		shadow_mul = clampf(float(RuntimeState.player_visibility_mul), 0.0, 1.0)
 
 	out["distance_to_player"] = distance_to_player
 	out["distance_factor"] = clampf(distance_factor, 0.0, 1.0)

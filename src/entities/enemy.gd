@@ -487,8 +487,6 @@ func runtime_budget_tick(delta: float) -> void:
 	if _perception:
 		if _perception.has_method("get_player_visibility_snapshot"):
 			visibility_snapshot = _perception.get_player_visibility_snapshot(global_position, sight_max_distance_px) as Dictionary
-		elif _perception.has_method("get_player_visibility_factor"):
-			visibility_snapshot["visibility_factor"] = float(_perception.get_player_visibility_factor(global_position, sight_max_distance_px))
 	var visibility_factor := float(visibility_snapshot.get("visibility_factor", 0.0))
 	var distance_factor := float(visibility_snapshot.get("distance_factor", 0.0))
 	var shadow_mul := float(visibility_snapshot.get("shadow_mul", 1.0))
@@ -508,27 +506,15 @@ func runtime_budget_tick(delta: float) -> void:
 	var flashlight_bonus_raw := 1.0
 	if _flashlight_cone:
 		flashlight_bonus_raw = _flashlight_cone.get_flashlight_visibility_bonus()
-		if _flashlight_cone.has_method("evaluate_hit"):
-			var flashlight_eval := _flashlight_cone.evaluate_hit(global_position, flashlight_facing_used, player_pos, raw_player_visible, flashlight_active) as Dictionary
-			flashlight_in_cone = bool(flashlight_eval.get("in_cone", false))
-			flashlight_hit = bool(flashlight_eval.get("hit", false))
-			var eval_reason := String(flashlight_eval.get("inactive_reason", ""))
-			if eval_reason != "":
-				if eval_reason == "los_blocked" and not flashlight_in_cone:
-					flashlight_inactive_reason = "cone_miss"
-				else:
-					flashlight_inactive_reason = eval_reason
-		else:
-			flashlight_in_cone = _flashlight_cone.is_point_in_cone(global_position, flashlight_facing_used, player_pos)
-			flashlight_hit = _flashlight_cone.is_player_hit(global_position, flashlight_facing_used, player_pos, raw_player_visible, flashlight_active)
-			if not flashlight_active:
-				flashlight_inactive_reason = "state_blocked"
-			elif not flashlight_in_cone:
+		var flashlight_eval := _flashlight_cone.evaluate_hit(global_position, flashlight_facing_used, player_pos, raw_player_visible, flashlight_active) as Dictionary
+		flashlight_in_cone = bool(flashlight_eval.get("in_cone", false))
+		flashlight_hit = bool(flashlight_eval.get("hit", false))
+		var eval_reason := String(flashlight_eval.get("inactive_reason", ""))
+		if eval_reason != "":
+			if eval_reason == "los_blocked" and not flashlight_in_cone:
 				flashlight_inactive_reason = "cone_miss"
-			elif not raw_player_visible:
-				flashlight_inactive_reason = "los_blocked"
 			else:
-				flashlight_inactive_reason = ""
+				flashlight_inactive_reason = eval_reason
 	var force_flashlight_hit := _flashlight_hit_override
 	if force_flashlight_hit and raw_player_visible:
 		flashlight_hit = true
@@ -1351,7 +1337,6 @@ func _confirm_config_with_defaults() -> Dictionary:
 	config["confirm_grace_window"] = float(config.get("confirm_grace_window", 0.50))
 	config["suspicious_enter"] = float(config.get("suspicious_enter", 0.25))
 	config["alert_enter"] = float(config.get("alert_enter", 0.55))
-	config["alert_fallback"] = float(config.get("alert_fallback", 0.25))
 	config["minimum_hold_alert_sec"] = float(config.get("minimum_hold_alert_sec", 2.5))
 	return config
 

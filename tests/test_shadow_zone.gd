@@ -192,21 +192,40 @@ func _test_calm_shadow_blocks_spotted_and_los() -> void:
 	if RuntimeState:
 		RuntimeState.is_frozen = false
 		RuntimeState.player_hp = 100
-		RuntimeState.player_visibility_mul = 0.0
+		RuntimeState.player_visibility_mul = 1.0
 
 	var world := Node2D.new()
 	add_child(world)
 
+	var nav := NAVIGATION_SERVICE_SCRIPT.new()
+	world.add_child(nav)
+
+	var zone := SHADOW_ZONE_SCRIPT.new()
+	zone.position = Vector2(220.0, 0.0)
+	var zone_shape := CollisionShape2D.new()
+	var zone_rect := RectangleShape2D.new()
+	zone_rect.size = Vector2(180.0, 140.0)
+	zone_shape.shape = zone_rect
+	zone.add_child(zone_shape)
+	world.add_child(zone)
+
 	var player := CharacterBody2D.new()
 	player.add_to_group("player")
 	player.global_position = Vector2(220.0, 0.0)
+	var player_shape := CollisionShape2D.new()
+	var player_circle := CircleShape2D.new()
+	player_circle.radius = 16.0
+	player_shape.shape = player_circle
+	player.add_child(player_shape)
 	world.add_child(player)
 
 	var enemy := ENEMY_SCENE.instantiate() as Enemy
 	enemy.global_position = Vector2.ZERO
 	world.add_child(enemy)
 	await get_tree().process_frame
+	await get_tree().physics_frame
 	enemy.initialize(9191, "zombie")
+	enemy.set_room_navigation(nav, -1)
 
 	_spotted_count = 0
 	_spotted_enemy_id_filter = 9191
@@ -214,7 +233,6 @@ func _test_calm_shadow_blocks_spotted_and_los() -> void:
 		if not EventBus.enemy_player_spotted.is_connected(_on_enemy_player_spotted_for_test):
 			EventBus.enemy_player_spotted.connect(_on_enemy_player_spotted_for_test)
 
-	# Keep runtime in pre-ALERT window: shadow-only silhouette should not open confirm contact yet.
 	for _i in range(10):
 		enemy.runtime_budget_tick(0.25)
 		await get_tree().process_frame
