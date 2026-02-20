@@ -35,6 +35,11 @@ const SHADOW_ESCAPE_RING_MIN_RADIUS_PX := 48.0
 const SHADOW_ESCAPE_RING_STEP_RADIUS_PX := 40.0
 const SHADOW_ESCAPE_RING_COUNT := 4
 const SHADOW_ESCAPE_SAMPLES_PER_RING := 12
+const SHADOW_BOUNDARY_SEARCH_RADIUS_PX := 96.0
+const SHADOW_SCAN_DURATION_MIN_SEC := 2.0
+const SHADOW_SCAN_DURATION_MAX_SEC := 3.0
+const SHADOW_SCAN_SWEEP_RAD := 0.87
+const SHADOW_SCAN_SWEEP_SPEED := 2.4
 
 var owner: CharacterBody2D = null
 var sprite: Sprite2D = null
@@ -84,6 +89,12 @@ var _last_stall_path_progress: float = 0.0
 var _shadow_escape_active: bool = false
 var _shadow_escape_target: Vector2 = Vector2.ZERO
 var _shadow_escape_target_valid: bool = false
+var _shadow_scan_active: bool = false
+var _shadow_scan_phase: float = 0.0
+var _shadow_scan_timer: float = 0.0
+var _shadow_scan_target: Vector2 = Vector2.ZERO
+var _shadow_scan_boundary_point: Vector2 = Vector2.ZERO
+var _shadow_scan_boundary_valid: bool = false
 
 
 func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -> void:
@@ -148,6 +159,12 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_shadow_escape_active = false
 	_shadow_escape_target = Vector2.ZERO
 	_shadow_escape_target_valid = false
+	_shadow_scan_active = false
+	_shadow_scan_phase = 0.0
+	_shadow_scan_timer = 0.0
+	_shadow_scan_target = Vector2.ZERO
+	_shadow_scan_boundary_point = Vector2.ZERO
+	_shadow_scan_boundary_valid = false
 	_reset_stall_monitor()
 	if _patrol:
 		_patrol.configure(nav_system, home_room_id)
@@ -172,6 +189,7 @@ func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 	if not _is_same_or_adjacent_room(own_room, shot_room_id):
 		return
 
+	clear_shadow_scan_state()
 	_set_last_seen(shot_pos)
 	_plan_path_to(_last_seen_pos)
 	if _patrol:
@@ -197,6 +215,8 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 	var intent_type := int(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
 	if owner and owner.has_method("set_shadow_check_flashlight"):
 		owner.call("set_shadow_check_flashlight", false)
+	if owner and owner.has_method("set_shadow_scan_active"):
+		owner.call("set_shadow_scan_active", false)
 	var has_target := intent.has("target")
 	var target := intent.get("target", owner.global_position) as Vector2
 	var movement_intent := false
@@ -217,6 +237,8 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 		_search_phase = 0.0
 		_in_hold_listen = false
 		_hold_listen_timer = 0.0
+	if intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN and (_shadow_scan_active or _shadow_scan_boundary_valid):
+		clear_shadow_scan_state()
 	_last_path_failed = false
 	_last_path_failed_reason = ""
 	_last_policy_blocked_segment = -1
@@ -237,6 +259,8 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 				_execute_move_to_target(delta, target, 1.0, -1.0, has_target)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH:
 			_execute_search(delta, target)
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN:
+			movement_intent = _execute_shadow_boundary_scan(delta, target, has_target)
 		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT:
 			movement_intent = true
 			_execute_move_to_target(delta, target, 0.95, -1.0, has_target)
@@ -365,6 +389,73 @@ func _execute_search(delta: float, center: Vector2) -> void:
 			_pursuit_cfg_float("hold_listen_max_sec", HOLD_LISTEN_MAX_SEC)
 		)
 		_search_phase = 0.0
+
+
+func clear_shadow_scan_state() -> void:
+	_shadow_scan_active = false
+	_shadow_scan_phase = 0.0
+	_shadow_scan_timer = 0.0
+	_shadow_scan_target = Vector2.ZERO
+	_shadow_scan_boundary_point = Vector2.ZERO
+	_shadow_scan_boundary_valid = false
+	if owner and owner.has_method("set_shadow_check_flashlight"):
+		owner.call("set_shadow_check_flashlight", false)
+	if owner and owner.has_method("set_shadow_scan_active"):
+		owner.call("set_shadow_scan_active", false)
+
+
+func _execute_shadow_boundary_scan(delta: float, target: Vector2, has_target: bool) -> bool:
+	if not has_target:
+		clear_shadow_scan_state()
+		_stop_motion(delta)
+		return false
+	if _shadow_scan_target.distance_to(target) > 0.5:
+		_shadow_scan_target = target
+		_shadow_scan_boundary_valid = false
+	if _shadow_scan_active:
+		_run_shadow_scan_sweep(delta, target)
+		return false
+	if not _shadow_scan_boundary_valid:
+		_shadow_scan_boundary_point = _resolve_shadow_scan_boundary_point(target)
+		_shadow_scan_boundary_valid = _shadow_scan_boundary_point != Vector2.ZERO
+	if not _shadow_scan_boundary_valid:
+		_stop_motion(delta)
+		_set_target_facing((target - owner.global_position).normalized())
+		return false
+	var arrive_px := _pursuit_cfg_float("last_seen_reached_px", LAST_SEEN_REACHED_PX)
+	if owner.global_position.distance_to(_shadow_scan_boundary_point) > arrive_px:
+		_execute_move_to_target(delta, _shadow_scan_boundary_point, 1.0, -1.0, true)
+		return true
+	_shadow_scan_active = true
+	_shadow_scan_phase = 0.0
+	_shadow_scan_timer = _rng.randf_range(SHADOW_SCAN_DURATION_MIN_SEC, SHADOW_SCAN_DURATION_MAX_SEC)
+	_run_shadow_scan_sweep(delta, target)
+	return false
+
+
+func _resolve_shadow_scan_boundary_point(target: Vector2) -> Vector2:
+	if nav_system and nav_system.has_method("get_nearest_non_shadow_point"):
+		var boundary := nav_system.call("get_nearest_non_shadow_point", target, SHADOW_BOUNDARY_SEARCH_RADIUS_PX) as Vector2
+		if boundary != Vector2.ZERO:
+			return boundary
+	return Vector2.ZERO
+
+
+func _run_shadow_scan_sweep(delta: float, target: Vector2) -> void:
+	_stop_motion(delta)
+	if owner and owner.has_method("set_shadow_check_flashlight"):
+		owner.call("set_shadow_check_flashlight", true)
+	if owner and owner.has_method("set_shadow_scan_active"):
+		owner.call("set_shadow_scan_active", true)
+	_shadow_scan_timer = maxf(0.0, _shadow_scan_timer - maxf(delta, 0.0))
+	_shadow_scan_phase += maxf(delta, 0.0) * SHADOW_SCAN_SWEEP_SPEED
+	var base_dir := (target - owner.global_position).normalized()
+	if base_dir.length_squared() <= 0.0001:
+		base_dir = facing_dir if facing_dir.length_squared() > 0.0001 else Vector2.RIGHT
+	var angle := sin(_shadow_scan_phase) * SHADOW_SCAN_SWEEP_RAD
+	_set_target_facing(base_dir.rotated(angle))
+	if _shadow_scan_timer <= 0.0:
+		clear_shadow_scan_state()
 
 
 func _execute_retreat_from(delta: float, danger_origin: Vector2) -> void:
@@ -972,6 +1063,10 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"shadow_escape_active": _shadow_escape_active,
 		"shadow_escape_target": _shadow_escape_target,
 		"shadow_escape_target_valid": _shadow_escape_target_valid,
+		"shadow_scan_active": _shadow_scan_active,
+		"shadow_scan_target": _shadow_scan_target,
+		"shadow_scan_boundary_point": _shadow_scan_boundary_point,
+		"shadow_scan_boundary_valid": _shadow_scan_boundary_valid,
 	}
 
 

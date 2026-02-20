@@ -138,8 +138,8 @@ func _test_phase_4_flashlight_delay() -> void:
 	enemy.on_heard_shot(0, Vector2(600.0, 0.0))
 	var far_delay := float(enemy._flashlight_activation_delay_timer)
 	_run_test(
-		"Phase 4: far shot delay in [1.5, 3.0]",
-		far_delay >= 1.5 and far_delay <= 3.0
+		"Phase 4: far shot delay in [1.0, 1.8]",
+		far_delay >= 1.0 and far_delay <= 1.8
 	)
 
 	enemy._flashlight_activation_delay_timer = 1.0

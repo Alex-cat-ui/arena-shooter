@@ -143,11 +143,14 @@ var _last_seen_pos: Vector2 = Vector2.ZERO
 var _last_seen_age: float = INF
 var _investigate_anchor: Vector2 = Vector2.ZERO
 var _investigate_anchor_valid: bool = false
+var _investigate_target_in_shadow: bool = false
 var _last_seen_grace_timer: float = 0.0
 var _current_alert_level: int = ENEMY_ALERT_LEVELS_SCRIPT.CALM
 var _flashlight_hit_override: bool = false
 var _flashlight_activation_delay_timer: float = 0.0
 var _shadow_check_flashlight_override: bool = false
+var _shadow_linger_flashlight: bool = false
+var _shadow_scan_active: bool = false
 var _debug_last_has_los: bool = false
 var _debug_last_visibility_factor: float = 0.0
 var _debug_last_distance_factor: float = 0.0
@@ -312,9 +315,12 @@ func initialize(id: int, type: String) -> void:
 	_last_seen_age = INF
 	_investigate_anchor = Vector2.ZERO
 	_investigate_anchor_valid = false
+	_investigate_target_in_shadow = false
 	_last_seen_grace_timer = 0.0
 	_flashlight_activation_delay_timer = 0.0
 	_shadow_check_flashlight_override = false
+	_shadow_linger_flashlight = false
+	_shadow_scan_active = false
 	_player_visible_prev = false
 	_confirmed_visual_prev = false
 	_test_los_look_grace_timer = 0.0
@@ -408,6 +414,8 @@ func _physics_process(delta: float) -> void:
 		_friendly_block_reposition_cooldown_left = maxf(0.0, _friendly_block_reposition_cooldown_left - delta)
 	if _flashlight_activation_delay_timer > 0.0:
 		_flashlight_activation_delay_timer = maxf(0.0, _flashlight_activation_delay_timer - delta)
+	if _shadow_linger_flashlight and not _is_current_position_in_shadow():
+		_shadow_linger_flashlight = false
 
 	# Handle stagger (blocks normal movement)
 	if stagger_timer > 0:
@@ -766,13 +774,22 @@ func set_zone_director(director: Node) -> void:
 func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
 	if _awareness:
 		_apply_awareness_transitions(_awareness.register_noise(), "heard_shot")
+		var tile_size: int = GameConfig.tile_size if GameConfig else 32
+		var walk_speed := speed_tiles * float(tile_size)
+		var walk_time := global_position.distance_to(shot_pos) / maxf(walk_speed, 0.001)
+		var dynamic_hold := walk_time + randf_range(3.0, 10.0)
+		if _awareness.has_method("override_alert_hold_timer"):
+			_awareness.override_alert_hold_timer(dynamic_hold)
 	_investigate_anchor = shot_pos
 	_investigate_anchor_valid = true
+	_investigate_target_in_shadow = false
+	if nav_system and nav_system.has_method("is_point_in_shadow"):
+		_investigate_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shot_pos))
 	var dist_to_shot := global_position.distance_to(shot_pos)
 	if dist_to_shot < FLASHLIGHT_NEAR_THRESHOLD_PX:
 		_flashlight_activation_delay_timer = randf_range(0.5, 1.2)
 	else:
-		_flashlight_activation_delay_timer = randf_range(1.5, 3.0)
+		_flashlight_activation_delay_timer = randf_range(1.0, 1.8)
 	if _pursuit:
 		_pursuit.on_heard_shot(shot_room_id, shot_pos)
 
@@ -804,6 +821,9 @@ func debug_force_awareness_state(target_state: String) -> void:
 			_last_seen_age = INF
 			_flashlight_activation_delay_timer = 0.0
 			_shadow_check_flashlight_override = false
+			_shadow_scan_active = false
+			_shadow_linger_flashlight = false
+			_investigate_target_in_shadow = false
 			_set_awareness_meta_from_system()
 			_apply_alert_level(ENEMY_ALERT_LEVELS_SCRIPT.CALM)
 		AWARENESS_ALERT:
@@ -812,6 +832,9 @@ func debug_force_awareness_state(target_state: String) -> void:
 			_apply_awareness_transitions(alert_transitions, "debug_force_alert")
 			_flashlight_activation_delay_timer = 0.0
 			_shadow_check_flashlight_override = false
+			_shadow_scan_active = false
+			_shadow_linger_flashlight = false
+			_investigate_target_in_shadow = false
 			_set_awareness_meta_from_system()
 			_apply_alert_level(ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
 		AWARENESS_COMBAT:
@@ -902,12 +925,21 @@ func _apply_awareness_transitions(transitions: Array[Dictionary], source: String
 		if transition.has("to_state"):
 			set_meta("awareness_state", to_state)
 			_sync_combat_latch_with_awareness_state(to_state)
+			if from_state == AWARENESS_ALERT and to_state != AWARENESS_ALERT:
+				_investigate_target_in_shadow = false
+				_shadow_linger_flashlight = _is_current_position_in_shadow()
+			elif to_state == AWARENESS_ALERT:
+				_shadow_linger_flashlight = false
 			if to_state == AWARENESS_SUSPICIOUS:
 				if _last_seen_pos != Vector2.ZERO:
 					_investigate_anchor = _last_seen_pos
 					_investigate_anchor_valid = true
-			elif from_state == AWARENESS_SUSPICIOUS:
+			elif from_state == AWARENESS_SUSPICIOUS and to_state != AWARENESS_SUSPICIOUS:
 				_investigate_anchor_valid = false
+				set_shadow_check_flashlight(false)
+				set_shadow_scan_active(false)
+				if _pursuit and _pursuit.has_method("clear_shadow_scan_state"):
+					_pursuit.clear_shadow_scan_state()
 			if to_state == AWARENESS_COMBAT:
 				_reset_first_shot_delay_state()
 				_raise_room_alert_for_combat_same_tick()
@@ -968,6 +1000,19 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 	var base_role := int(assignment.get("role", SQUAD_ROLE_PRESSURE))
 	var raw_role := _resolve_runtime_combat_role(base_role)
 	var effective_role := _effective_squad_role_for_context(raw_role)
+	var effective_alert_level := _resolve_effective_alert_level_for_utility()
+	var shadow_scan_target := Vector2.ZERO
+	var has_shadow_scan_target := false
+	var shadow_scan_target_in_shadow := false
+	if effective_alert_level == ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS:
+		if has_last_seen:
+			shadow_scan_target = _last_seen_pos
+			has_shadow_scan_target = true
+		elif _investigate_anchor_valid:
+			shadow_scan_target = _investigate_anchor
+			has_shadow_scan_target = true
+		if has_shadow_scan_target and nav_system and nav_system.has_method("is_point_in_shadow"):
+			shadow_scan_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shadow_scan_target))
 	var home_pos := global_position
 	if nav_system and nav_system.has_method("get_room_center") and home_room_id >= 0:
 		var nav_home := nav_system.get_room_center(home_room_id) as Vector2
@@ -976,7 +1021,7 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 	return {
 		"dist": dist_to_known_target,
 		"los": player_visible,
-		"alert_level": _resolve_effective_alert_level_for_utility(),
+		"alert_level": effective_alert_level,
 		"combat_lock": combat_lock_for_context,
 		"last_seen_age": _last_seen_age if has_last_seen else INF,
 		"last_seen_pos": _last_seen_pos if has_last_seen else Vector2.ZERO,
@@ -996,6 +1041,9 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 		"target_is_last_seen": target_is_last_seen,
 		"has_known_target": has_known_target,
 		"home_position": home_pos,
+		"shadow_scan_target": shadow_scan_target,
+		"has_shadow_scan_target": has_shadow_scan_target,
+		"shadow_scan_target_in_shadow": shadow_scan_target_in_shadow,
 	}
 
 
@@ -1121,11 +1169,19 @@ func set_shadow_check_flashlight(active: bool) -> void:
 	_shadow_check_flashlight_override = active
 
 
+func set_shadow_scan_active(active: bool) -> void:
+	_shadow_scan_active = active
+
+
 func _compute_flashlight_active(awareness_state: int) -> bool:
 	var state_is_calm := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	var state_is_suspicious := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS
 	var state_is_alert := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
 	var state_is_combat := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT or _combat_latched
 	return (state_is_alert and _flashlight_policy_active_in_alert()) \
+		or (state_is_alert and _investigate_target_in_shadow) \
+		or (state_is_suspicious and _shadow_scan_active and _flashlight_policy_active_in_alert()) \
+		or _shadow_linger_flashlight \
 		or (state_is_combat and _flashlight_policy_active_in_combat()) \
 		or (_is_zone_lockdown() and _flashlight_policy_active_in_lockdown()) \
 		or (state_is_calm and _flashlight_policy_active_in_calm())
@@ -1365,6 +1421,12 @@ func _flashlight_policy_bonus_in_alert() -> bool:
 
 func _flashlight_policy_bonus_in_combat() -> bool:
 	return _flashlight_policy_flag("flashlight_bonus_in_combat", true)
+
+
+func _is_current_position_in_shadow() -> bool:
+	if nav_system and nav_system.has_method("is_point_in_shadow"):
+		return bool(nav_system.call("is_point_in_shadow", global_position))
+	return false
 
 
 func _is_zone_lockdown() -> bool:

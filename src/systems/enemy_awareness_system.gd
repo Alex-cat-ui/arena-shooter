@@ -112,6 +112,10 @@ func get_last_suspicion_debug() -> Dictionary:
 	}
 
 
+func override_alert_hold_timer(sec: float) -> void:
+	_alert_hold_timer = maxf(_alert_hold_timer, maxf(sec, 0.0))
+
+
 func process_confirm(
 	delta: float,
 	has_visual_los: bool,

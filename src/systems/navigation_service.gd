@@ -269,6 +269,34 @@ func is_point_in_shadow(point: Vector2) -> bool:
 	return bool(_shadow_policy.is_point_in_shadow(point))
 
 
+func get_nearest_non_shadow_point(from_pos: Vector2, search_radius: float) -> Vector2:
+	var max_radius := maxf(search_radius, 0.0)
+	if max_radius <= 0.0:
+		return Vector2.ZERO
+	if not is_point_in_shadow(from_pos):
+		return from_pos
+	var sample_count := 12
+	var ring_radii := [32.0, 64.0, 96.0]
+	var best_point := Vector2.ZERO
+	var best_dist := INF
+	for radius_variant in ring_radii:
+		var radius := float(radius_variant)
+		if radius > max_radius + 0.001:
+			continue
+		for i in range(sample_count):
+			var angle := TAU * (float(i) / float(sample_count))
+			var candidate := from_pos + Vector2.RIGHT.rotated(angle) * radius
+			if is_point_in_shadow(candidate):
+				continue
+			var dist := from_pos.distance_to(candidate)
+			if dist < best_dist:
+				best_dist = dist
+				best_point = candidate
+	if not is_finite(best_dist):
+		return Vector2.ZERO
+	return best_point
+
+
 func get_nearest_shadow_zone_direction(pos: Vector2, range_px: float) -> Dictionary:
 	var tree := get_tree()
 	if tree == null:

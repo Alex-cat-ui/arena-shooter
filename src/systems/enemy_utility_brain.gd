@@ -15,6 +15,7 @@ enum IntentType {
 	PUSH,
 	RETREAT,
 	RETURN_HOME,
+	SHADOW_BOUNDARY_SCAN,
 }
 
 const DECISION_INTERVAL_SEC := 0.25
@@ -77,6 +78,9 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var investigate_anchor := ctx.get("investigate_anchor", Vector2.ZERO) as Vector2
 	var has_investigate_anchor := bool(ctx.get("has_investigate_anchor", false))
 	var dist_to_investigate_anchor := float(ctx.get("dist_to_investigate_anchor", INF))
+	var shadow_scan_target := ctx.get("shadow_scan_target", Vector2.ZERO) as Vector2
+	var has_shadow_scan_target := bool(ctx.get("has_shadow_scan_target", false))
+	var shadow_scan_target_in_shadow := bool(ctx.get("shadow_scan_target_in_shadow", false))
 
 	var retreat_hp_ratio := _utility_cfg_float("retreat_hp_ratio", RETREAT_HP_RATIO)
 	var hold_range_min := _utility_cfg_float("hold_range_min_px", HOLD_RANGE_MIN_PX)
@@ -98,6 +102,11 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 		}
 
 	if alert_level <= ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS and not has_los:
+		if alert_level == ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS and has_shadow_scan_target and shadow_scan_target_in_shadow:
+			return {
+				"type": IntentType.SHADOW_BOUNDARY_SCAN,
+				"target": shadow_scan_target,
+			}
 		var inv_target := investigate_anchor if has_investigate_anchor else last_seen_pos
 		var inv_dist := dist_to_investigate_anchor if has_investigate_anchor else dist_to_last_seen
 		var inv_valid := (has_investigate_anchor or has_last_seen) and last_seen_age <= investigate_max_age
@@ -123,6 +132,11 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 			return {
 				"type": IntentType.SEARCH,
 				"target": search_target,
+			}
+		if has_investigate_anchor and dist_to_investigate_anchor > investigate_arrive_px:
+			return {
+				"type": IntentType.INVESTIGATE,
+				"target": investigate_anchor,
 			}
 		return {
 			"type": IntentType.RETURN_HOME,

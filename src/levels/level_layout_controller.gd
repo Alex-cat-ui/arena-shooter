@@ -2,6 +2,7 @@ extends RefCounted
 class_name LevelLayoutController
 
 const PROCEDURAL_LAYOUT_V2_SCRIPT = preload("res://src/systems/procedural_layout_v2.gd")
+const LEVEL_ZONE_PAYLOAD_BUILDER_SCRIPT = preload("res://src/levels/level_zone_payload_builder.gd")
 const V2_FLOOR_FILL_COLOR = Color(0.58, 0.58, 0.58, 1.0)
 const PLAYER_NORTH_SPAWN_OFFSET = 100.0
 
@@ -84,7 +85,7 @@ func regenerate_layout(ctx, new_seed: int = 0) -> void:
 	if ctx.navigation_service and ctx.navigation_service.has_method("bind_tactical_systems"):
 		ctx.navigation_service.bind_tactical_systems(ctx.enemy_alert_system, ctx.enemy_squad_system)
 	if ctx.zone_director and ctx.zone_director.has_method("initialize"):
-		var zone_payload := _build_zone_payload(ctx.navigation_service)
+		var zone_payload := LEVEL_ZONE_PAYLOAD_BUILDER_SCRIPT.build_zone_payload(ctx.navigation_service)
 		ctx.zone_director.initialize(zone_payload[0], zone_payload[1], ctx.enemy_alert_system)
 	if ctx.navigation_service and ctx.navigation_service.has_method("set_zone_director"):
 		ctx.navigation_service.set_zone_director(ctx.zone_director)
@@ -100,32 +101,6 @@ func regenerate_layout(ctx, new_seed: int = 0) -> void:
 	ensure_player_runtime_ready(ctx)
 	if runtime_guard:
 		runtime_guard.enforce_on_layout_reset(ctx)
-
-
-func _build_zone_payload(navigation_service: Node) -> Array:
-	var zone_config: Array[Dictionary] = []
-	var zone_edges: Array[Array] = []
-	if not navigation_service or not navigation_service.has_method("build_zone_config_from_layout"):
-		return [zone_config, zone_edges]
-
-	var raw_payload = navigation_service.call("build_zone_config_from_layout")
-	if not (raw_payload is Array):
-		return [zone_config, zone_edges]
-	var payload := raw_payload as Array
-	if payload.size() < 2:
-		return [zone_config, zone_edges]
-
-	for zone_variant in (payload[0] as Array):
-		var zone := zone_variant as Dictionary
-		if zone.is_empty():
-			continue
-		zone_config.append(zone.duplicate(true))
-	for edge_variant in (payload[1] as Array):
-		var edge := edge_variant as Array
-		if edge.size() < 2:
-			continue
-		zone_edges.append([int(edge[0]), int(edge[1])])
-	return [zone_config, zone_edges]
 
 
 func generate_layout(ctx, arena_rect: Rect2, seed_value: int, mission_index: int):

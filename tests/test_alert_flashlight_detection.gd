@@ -3,6 +3,7 @@ extends Node
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const ENEMY_SCENE := preload("res://scenes/entities/enemy.tscn")
 const STEALTH_TEST_CONFIG_SCRIPT := preload("res://src/levels/stealth_test_config.gd")
+const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -26,6 +27,7 @@ func run_suite() -> Dictionary:
 	await _test_flashlight_boosts_shadow_detection_in_alert()
 	await _test_flashlight_does_not_work_without_los()
 	await _test_flashlight_inactive_reason_state_blocked()
+	await _test_flashlight_active_during_suspicious_shadow_scan()
 
 	_t.summary("ALERT FLASHLIGHT DETECTION RESULTS")
 	return {
@@ -104,6 +106,19 @@ func _test_flashlight_inactive_reason_state_blocked() -> void:
 	var snapshot := calm_state.get("snapshot", {}) as Dictionary
 	_t.run_test("CALM blocks flashlight activity", not bool(snapshot.get("flashlight_active", true)))
 	_t.run_test("state-blocked reason is exposed", String(snapshot.get("flashlight_inactive_reason", "")) == "state_blocked")
+
+
+func _test_flashlight_active_during_suspicious_shadow_scan() -> void:
+	var enemy := ENEMY_SCENE.instantiate() as Enemy
+	add_child(enemy)
+	await get_tree().process_frame
+	enemy.initialize(8802, "zombie")
+	enemy.set("_flashlight_activation_delay_timer", 0.0)
+	enemy.set_shadow_scan_active(true)
+	var active := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
+	_t.run_test("SUSPICIOUS shadow scan keeps flashlight active", active)
+	enemy.queue_free()
+	await get_tree().process_frame
 
 
 func _run_detection_case(

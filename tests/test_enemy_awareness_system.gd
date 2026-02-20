@@ -12,6 +12,7 @@ const CANON_CONFIG := {
 	"confirm_grace_window": 0.50,
 	"suspicious_enter": 0.25,
 	"alert_enter": 0.55,
+	"minimum_hold_alert_sec": 2.5,
 }
 
 
@@ -34,6 +35,8 @@ func run_suite() -> Dictionary:
 	_test_room_alert_propagation_does_not_refresh_combat_timer()
 	_test_reinforcement_refreshes_combat_timer()
 	_test_deterministic_repeated_runs()
+	_test_override_alert_hold_timer_extends_value()
+	_test_override_alert_hold_timer_keeps_max()
 
 	_t.summary("ENEMY AWARENESS RESULTS")
 	return {
@@ -140,6 +143,29 @@ func _test_deterministic_repeated_runs() -> void:
 	var trace_a := _scenario_trace()
 	var trace_b := _scenario_trace()
 	_t.run_test("deterministic confirm trace across repeated runs", trace_a == trace_b)
+
+
+func _test_override_alert_hold_timer_extends_value() -> void:
+	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+	awareness.reset()
+	awareness.register_noise()
+	awareness.override_alert_hold_timer(6.0)
+	_t.run_test(
+		"override_alert_hold_timer raises ALERT hold timer",
+		awareness.get_state_name() == "ALERT" and float(awareness._alert_hold_timer) >= 5.999
+	)
+
+
+func _test_override_alert_hold_timer_keeps_max() -> void:
+	var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+	awareness.reset()
+	awareness.register_noise()
+	awareness.override_alert_hold_timer(5.0)
+	awareness.override_alert_hold_timer(1.0)
+	_t.run_test(
+		"override_alert_hold_timer is max-only",
+		awareness.get_state_name() == "ALERT" and float(awareness._alert_hold_timer) >= 4.999
+	)
 
 
 func _scenario_trace() -> PackedStringArray:

@@ -111,6 +111,11 @@ const HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE := "res://tests/test_honest_repa
 const FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_active_in_combat_when_latched.tscn"
 const FLASHLIGHT_SINGLE_SOURCE_PARITY_TEST_SCENE := "res://tests/test_flashlight_single_source_parity.tscn"
 const FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_bonus_applies_in_combat.tscn"
+const ALERT_HOLD_DYNAMIC_TEST_SCENE := "res://tests/test_alert_hold_dynamic.tscn"
+const PATROL_ROUTE_VARIETY_TEST_SCENE := "res://tests/test_patrol_route_variety.tscn"
+const ALERT_INVESTIGATE_ANCHOR_TEST_SCENE := "res://tests/test_alert_investigate_anchor.tscn"
+const SUSPICIOUS_SHADOW_SCAN_TEST_SCENE := "res://tests/test_suspicious_shadow_scan.tscn"
+const SHADOW_ROUTE_FILTER_TEST_SCENE := "res://tests/test_shadow_route_filter.tscn"
 const LEVEL_RUNTIME_GUARD_TEST_SCENE := "res://tests/test_level_runtime_guard.tscn"
 const LEVEL_INPUT_CONTROLLER_TEST_SCENE := "res://tests/test_level_input_controller.tscn"
 const LEVEL_HUD_CONTROLLER_TEST_SCENE := "res://tests/test_level_hud_controller.tscn"
@@ -780,6 +785,21 @@ func _run_tests() -> void:
 	_test("Stall definition reproducible thresholds test scene exists", func():
 		return _scene_exists(STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
 	)
+	_test("Alert hold dynamic test scene exists", func():
+		return _scene_exists(ALERT_HOLD_DYNAMIC_TEST_SCENE)
+	)
+	_test("Patrol route variety test scene exists", func():
+		return _scene_exists(PATROL_ROUTE_VARIETY_TEST_SCENE)
+	)
+	_test("Alert investigate anchor test scene exists", func():
+		return _scene_exists(ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
+	)
+	_test("Suspicious shadow scan test scene exists", func():
+		return _scene_exists(SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
+	)
+	_test("Shadow route filter test scene exists", func():
+		return _scene_exists(SHADOW_ROUTE_FILTER_TEST_SCENE)
+	)
 	_test("Pursuit intent-only runtime test scene exists", func():
 		return _scene_exists(PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
 	)
@@ -927,13 +947,13 @@ func _run_tests() -> void:
 		return delay >= 0.5 and delay <= 1.2
 	)
 
-	_test("Phase 4: far shot sets flashlight delay in [1.5, 3.0]", func():
+	_test("Phase 4: far shot sets flashlight delay in [1.0, 1.8]", func():
 		var enemy = ENEMY_SCRIPT.new()
 		enemy.global_position = Vector2.ZERO
 		enemy.on_heard_shot(0, Vector2(600.0, 0.0))
 		var delay := float(enemy._flashlight_activation_delay_timer)
 		enemy.free()
-		return delay >= 1.5 and delay <= 3.0
+		return delay >= 1.0 and delay <= 1.8
 	)
 
 	_test("Phase 4: alert flashlight policy blocked while delay > 0", func():
@@ -1053,6 +1073,11 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Shadow stall escapes to light suite", SHADOW_STALL_ESCAPES_TO_LIGHT_TEST_SCENE)
 	await _run_embedded_scene_suite("Door enemy oblique open then cross no wall stall suite", DOOR_ENEMY_OBLIQUE_OPEN_THEN_CROSS_NO_WALL_STALL_TEST_SCENE)
 	await _run_embedded_scene_suite("Stall definition reproducible thresholds suite", STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert hold dynamic suite", ALERT_HOLD_DYNAMIC_TEST_SCENE)
+	await _run_embedded_scene_suite("Patrol route variety suite", PATROL_ROUTE_VARIETY_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert investigate anchor suite", ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
+	await _run_embedded_scene_suite("Suspicious shadow scan suite", SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow route filter suite", SHADOW_ROUTE_FILTER_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit intent-only runtime suite", PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit stall/fallback invariants suite", PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit origin target not sentinel suite", PURSUIT_ORIGIN_TARGET_NOT_SENTINEL_TEST_SCENE)

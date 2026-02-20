@@ -68,6 +68,18 @@ func _test_flashlight_active_in_combat_when_latched() -> void:
 	_t.run_test("combat setup: enemy is latched", bool(snapshot.get("latched", false)))
 	_t.run_test("combat setup: room latch count is non-zero", int(snapshot.get("room_latch_count", 0)) > 0)
 	_t.run_test("combat setup: flashlight is active", bool(snapshot.get("flashlight_active", false)))
+	enemy.set("_shadow_linger_flashlight", true)
+	enemy.runtime_budget_tick(0.2)
+	snapshot = enemy.get_debug_detection_snapshot() as Dictionary
+	_t.run_test("combat + shadow linger keeps flashlight active", bool(snapshot.get("flashlight_active", false)))
+	_t.run_test("combat + shadow linger does not drop latch", bool(snapshot.get("latched", false)))
+	enemy.set("_shadow_linger_flashlight", false)
+	enemy.runtime_budget_tick(0.2)
+	snapshot = enemy.get_debug_detection_snapshot() as Dictionary
+	_t.run_test(
+		"combat flashlight still active after linger reset (combat latch unaffected)",
+		bool(snapshot.get("flashlight_active", false))
+	)
 
 	player.global_position = enemy.global_position + Vector2(120.0, 260.0)
 	enemy.runtime_budget_tick(0.25)

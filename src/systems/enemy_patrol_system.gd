@@ -194,6 +194,7 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 
 func _rebuild_route() -> void:
 	_route.clear()
+	_rng.seed ^= Time.get_ticks_msec()
 	_route_index = 0
 	if not owner:
 		return
@@ -274,6 +275,25 @@ func _rebuild_route() -> void:
 					var pen := _patrol_cfg_float("cross_room_patrol_penetration", 0.25)
 					candidates.append(door_pos)
 					candidates.append(door_pos.lerp(adj_center, pen))
+
+		if nav_system.has_method("is_point_in_shadow"):
+			var safe: Array[Vector2] = []
+			for pt in candidates:
+				if not bool(nav_system.call("is_point_in_shadow", pt)):
+					safe.append(pt)
+			if not safe.is_empty():
+				candidates = safe
+
+		if nav_system.has_method("random_point_in_room"):
+			var min_pts_after_filter := _patrol_cfg_int("route_points_min", ROUTE_POINTS_MIN)
+			var refill_attempts := 0
+			while candidates.size() < min_pts_after_filter and refill_attempts < 32:
+				var margin := _rng.randf_range(18.0, 34.0)
+				var refill_point := nav_system.random_point_in_room(home_room_id, margin)
+				refill_attempts += 1
+				if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", refill_point)):
+					continue
+				candidates.append(refill_point)
 	else:
 		candidates.append(fallback)
 
