@@ -95,6 +95,8 @@ const TACTIC_FLANK_BUDGET_GUARD_TEST_SCENE := "res://tests/test_tactic_flank_req
 const MULTI_ENEMY_PRESSURE_NO_PATROL_REGRESSION_TEST_SCENE := "res://tests/test_multi_enemy_pressure_no_patrol_regression.tscn"
 const SHADOW_SEARCH_STAGE_TRANSITION_TEST_SCENE := "res://tests/test_shadow_search_stage_transition_contract.tscn"
 const SHADOW_SEARCH_PROGRESSIVE_COVERAGE_TEST_SCENE := "res://tests/test_shadow_search_choreography_progressive_coverage.tscn"
+const FLASHLIGHT_SCANNER_ROLE_ASSIGNMENT_TEST_SCENE := "res://tests/test_flashlight_single_scanner_role_assignment.tscn"
+const TEAM_CONTAIN_FLASHLIGHT_PRESSURE_TEST_SCENE := "res://tests/test_team_contain_with_flashlight_pressure.tscn"
 const FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE := "res://tests/test_friendly_block_prevents_fire_and_triggers_reposition.tscn"
 const SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE := "res://tests/test_shadow_flashlight_rule_blocks_or_allows_fire.tscn"
 const SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE := "res://tests/test_shadow_single_source_of_truth_nav_and_detection.tscn"
@@ -1206,6 +1208,23 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite(
 		"Shadow search progressive coverage suite",
 		SHADOW_SEARCH_PROGRESSIVE_COVERAGE_TEST_SCENE
+	)
+
+	print("\n--- SECTION 18f: Flashlight team role policy unit tests ---")
+
+	_test("Flashlight scanner role assignment test scene exists", func():
+		return _scene_exists(FLASHLIGHT_SCANNER_ROLE_ASSIGNMENT_TEST_SCENE)
+	)
+	_test("Team contain flashlight pressure test scene exists", func():
+		return _scene_exists(TEAM_CONTAIN_FLASHLIGHT_PRESSURE_TEST_SCENE)
+	)
+	await _run_embedded_scene_suite(
+		"Flashlight scanner role assignment suite",
+		FLASHLIGHT_SCANNER_ROLE_ASSIGNMENT_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Team contain flashlight pressure suite",
+		TEAM_CONTAIN_FLASHLIGHT_PRESSURE_TEST_SCENE
 	)
 
 	print("\n--- SECTION 19: Level decomposition controller suites ---")

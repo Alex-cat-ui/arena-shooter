@@ -252,6 +252,7 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_number_key(result, squad, "flank_max_path_px", "ai_balance.squad", 1.0, 10000.0)
 		_validate_number_key(result, squad, "flank_max_time_sec", "ai_balance.squad", 0.1, 60.0)
 		_validate_number_key(result, squad, "flank_walk_speed_assumed_px_per_sec", "ai_balance.squad", 1.0, 10000.0)
+		_validate_number_key(result, squad, "flashlight_scanner_cap", "ai_balance.squad", 0.0, 32.0)
 		if not is_nan(pressure_radius) and not is_nan(hold_radius) and pressure_radius > hold_radius:
 			result.add_error("ai_balance.squad.pressure_radius_px must be <= hold_radius_px")
 		if not is_nan(hold_radius) and not is_nan(flank_radius) and hold_radius > flank_radius:

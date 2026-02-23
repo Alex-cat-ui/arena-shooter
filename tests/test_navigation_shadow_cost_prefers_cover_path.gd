@@ -41,36 +41,44 @@ func run_suite() -> Dictionary:
 
 
 func _test_score_path_all_in_shadow() -> void:
-	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(FakeShadowService.new())
+	var service := FakeShadowService.new()
+	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(service)
 	var score := float(queries._score_path_cost(
 		[Vector2(-100.0, 0.0)],
 		Vector2.ZERO,
 		{"shadow_weight": 80.0, "shadow_sample_step_px": 100.0}
 	))
 	_t.run_test("all-shadow segment keeps pure length score", is_equal_approx(score, 100.0))
+	service.free()
 
 
 func _test_score_path_all_lit() -> void:
-	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(FakeShadowService.new())
+	var service := FakeShadowService.new()
+	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(service)
 	var score := float(queries._score_path_cost(
 		[Vector2(100.0, 0.0)],
 		Vector2.ZERO,
 		{"shadow_weight": 80.0, "shadow_sample_step_px": 100.0}
 	))
 	_t.run_test("all-lit segment adds one shadow penalty sample", is_equal_approx(score, 180.0))
+	service.free()
 
 
 func _test_score_path_zero_shadow_weight() -> void:
-	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(FakeShadowService.new())
+	var service := FakeShadowService.new()
+	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(service)
 	var score := float(queries._score_path_cost(
 		[Vector2(100.0, 0.0)],
 		Vector2.ZERO,
 		{"shadow_weight": 0.0}
 	))
 	_t.run_test("zero shadow weight returns pure path length", is_equal_approx(score, 100.0))
+	service.free()
 
 
 func _test_score_path_empty_returns_inf() -> void:
-	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(FakeShadowService.new())
+	var service := FakeShadowService.new()
+	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(service)
 	var score := float(queries._score_path_cost([], Vector2.ZERO, {"shadow_weight": 80.0}))
 	_t.run_test("empty path returns INF", score == INF)
+	service.free()

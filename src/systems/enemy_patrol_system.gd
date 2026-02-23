@@ -285,42 +285,48 @@ func _rebuild_route() -> void:
 			if not safe.is_empty():
 				candidates = safe
 
-		if nav_system.has_method("random_point_in_room"):
-			var min_pts_after_filter := _patrol_cfg_int("route_points_min", ROUTE_POINTS_MIN)
-			var refill_attempts := 0
-			while candidates.size() < min_pts_after_filter and refill_attempts < 32:
-				var margin := _rng.randf_range(18.0, 34.0)
-				var refill_point: Vector2 = nav_system.random_point_in_room(home_room_id, margin) as Vector2
-				refill_attempts += 1
-				if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", refill_point)):
-					continue
-				candidates.append(refill_point)
-
-		# --- reachability filter (Phase 6) ---
-		if nav_system.has_method("build_policy_valid_path"):
-			var reach_pass: Array[Vector2] = []
-			for pt in candidates:
-				var r := nav_system.call("build_policy_valid_path", owner.global_position, pt, null) as Dictionary
-				if String(r.get("status", "")) == "ok":
-					reach_pass.append(pt)
-			if not reach_pass.is_empty():
-				candidates = reach_pass
-
-		# --- reachability refill (Phase 6) ---
-		if nav_system.has_method("random_point_in_room"):
-			var min_pts_reach := _patrol_cfg_int("route_points_min", ROUTE_POINTS_MIN)
-			var reach_refill_attempts := 0
-			while candidates.size() < min_pts_reach and reach_refill_attempts < PATROL_REACHABILITY_REFILL_ATTEMPTS:
-				var margin := _rng.randf_range(18.0, 34.0)
-				var rp: Vector2 = nav_system.random_point_in_room(home_room_id, margin) as Vector2
-				reach_refill_attempts += 1
-				if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", rp)):
-					continue
-				if nav_system.has_method("build_policy_valid_path"):
-					var rr := nav_system.call("build_policy_valid_path", owner.global_position, rp, null) as Dictionary
-					if String(rr.get("status", "")) != "ok":
+			if nav_system.has_method("random_point_in_room"):
+				var min_pts_after_filter := _patrol_cfg_int("route_points_min", ROUTE_POINTS_MIN)
+				var refill_attempts := 0
+				while candidates.size() < min_pts_after_filter and refill_attempts < 32:
+					var margin := _rng.randf_range(18.0, 34.0)
+					var refill_point: Vector2 = nav_system.random_point_in_room(home_room_id, margin) as Vector2
+					refill_attempts += 1
+					if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", refill_point)):
 						continue
-				candidates.append(rp)
+					candidates.append(refill_point)
+
+			# --- reachability filter (Phase 6) ---
+			if nav_system.has_method("build_policy_valid_path"):
+				var reach_pass: Array[Vector2] = []
+				for pt in candidates:
+					var r_variant: Variant = nav_system.call("build_policy_valid_path", owner.global_position, pt, null)
+					if not (r_variant is Dictionary):
+						continue
+					var r := r_variant as Dictionary
+					if String(r.get("status", "")) == "ok":
+						reach_pass.append(pt)
+				if not reach_pass.is_empty():
+					candidates = reach_pass
+
+			# --- reachability refill (Phase 6) ---
+			if nav_system.has_method("random_point_in_room"):
+				var min_pts_reach := _patrol_cfg_int("route_points_min", ROUTE_POINTS_MIN)
+				var reach_refill_attempts := 0
+				while candidates.size() < min_pts_reach and reach_refill_attempts < PATROL_REACHABILITY_REFILL_ATTEMPTS:
+					var margin := _rng.randf_range(18.0, 34.0)
+					var rp: Vector2 = nav_system.random_point_in_room(home_room_id, margin) as Vector2
+					reach_refill_attempts += 1
+					if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", rp)):
+						continue
+					if nav_system.has_method("build_policy_valid_path"):
+						var rr_variant: Variant = nav_system.call("build_policy_valid_path", owner.global_position, rp, null)
+						if not (rr_variant is Dictionary):
+							continue
+						var rr := rr_variant as Dictionary
+						if String(rr.get("status", "")) != "ok":
+							continue
+					candidates.append(rp)
 	else:
 		candidates.append(fallback)
 

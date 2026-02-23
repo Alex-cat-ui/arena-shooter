@@ -2,6 +2,15 @@
 
 ## 2026-02-23
 
+### Phase 12: Flashlight Team Role Policy
+- **Added**: squad-level flashlight scanner slot policy in `EnemySquadSystem` (`_scanner_slots`, `_rebuild_scanner_slots()`, `get_scanner_allowed()`) with deterministic priority `PRESSURE > HOLD`, ascending `enemy_id`, and `FLANK` hard exclusion
+- **Changed**: `EnemySquadSystem._recompute_assignments()` now rebuilds/pushes scanner permissions after assignment recompute via `set_flashlight_scanner_allowed(...)`
+- **Added**: `Enemy` scanner gate flag `_flashlight_scanner_allowed` + public setter `set_flashlight_scanner_allowed(bool)`
+- **Changed**: `Enemy._compute_flashlight_active(...)` now wraps existing policy expression into `raw_active` and applies squad gate (`raw_active and _flashlight_scanner_allowed`)
+- **Added**: `ai_balance.squad.flashlight_scanner_cap = 2` in `game_config.gd` + validator range check in `config_validator.gd`
+- **Added**: new unit suites `tests/test_flashlight_single_scanner_role_assignment.gd/.tscn` and `tests/test_team_contain_with_flashlight_pressure.gd/.tscn` + `tests/test_runner_node.gd` SECTION `18f` registration
+- **Result**: Phase 12 smoke suites pass (`15/15`, `7/7`); full `test_runner` pass (`365/365`)
+
 ### Phase 11: Shadow Search Choreography
 - **Changed**: `EnemyPursuitSystem` shadow boundary scan execution now uses staged choreography (`ShadowSearchStage`: `IDLE -> BOUNDARY_LOCK -> SWEEP -> PROBE`) with progressive coverage tracking instead of legacy binary active-flag flow
 - **Added**: public debug accessors `get_shadow_search_stage()` / `get_shadow_search_coverage()` and probe generation helper `_build_shadow_probe_points(...)`

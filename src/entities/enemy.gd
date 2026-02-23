@@ -150,6 +150,7 @@ var _flashlight_hit_override: bool = false
 var _flashlight_activation_delay_timer: float = 0.0
 var _shadow_check_flashlight_override: bool = false
 var _shadow_linger_flashlight: bool = false
+var _flashlight_scanner_allowed: bool = true
 var _shadow_scan_active: bool = false
 var _shadow_scan_completed: bool = false
 var _shadow_scan_completed_reason: String = "none"
@@ -322,6 +323,7 @@ func initialize(id: int, type: String) -> void:
 	_flashlight_activation_delay_timer = 0.0
 	_shadow_check_flashlight_override = false
 	_shadow_linger_flashlight = false
+	_flashlight_scanner_allowed = true
 	_shadow_scan_active = false
 	_shadow_scan_completed = false
 	_shadow_scan_completed_reason = "none"
@@ -1223,18 +1225,23 @@ func set_shadow_scan_active(active: bool) -> void:
 	_shadow_scan_active = active
 
 
+func set_flashlight_scanner_allowed(allowed: bool) -> void:
+	_flashlight_scanner_allowed = allowed
+
+
 func _compute_flashlight_active(awareness_state: int) -> bool:
 	var state_is_calm := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.CALM
 	var state_is_suspicious := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS
 	var state_is_alert := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
 	var state_is_combat := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT or _combat_latched
-	return (state_is_alert and _flashlight_policy_active_in_alert()) \
+	var raw_active: bool = (state_is_alert and _flashlight_policy_active_in_alert()) \
 		or (state_is_alert and _investigate_target_in_shadow) \
 		or (state_is_suspicious and _shadow_scan_active and _flashlight_policy_active_in_alert()) \
 		or _shadow_linger_flashlight \
 		or (state_is_combat and _flashlight_policy_active_in_combat()) \
 		or (_is_zone_lockdown() and _flashlight_policy_active_in_lockdown()) \
 		or (state_is_calm and _flashlight_policy_active_in_calm())
+	return raw_active and _flashlight_scanner_allowed
 
 
 func is_flashlight_active_for_navigation() -> bool:

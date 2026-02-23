@@ -28,6 +28,7 @@ var entities_container: Node = null
 
 var _members: Dictionary = {}           # enemy_id -> {"enemy_ref": WeakRef, "role": int, "assignment": Dictionary}
 var _rebuild_timer: float = 0.0
+var _scanner_slots: Dictionary = {}
 var _clock_sec: float = 0.0
 var runtime_budget_scheduler_enabled: bool = false
 
@@ -141,6 +142,57 @@ func _recompute_assignments() -> void:
 			"reserved_until": _clock_sec + _squad_cfg_float("slot_reservation_ttl_sec", SLOT_RESERVATION_TTL_SEC),
 		}
 		_members[enemy_id] = member
+	_rebuild_scanner_slots()
+
+
+func _rebuild_scanner_slots() -> void:
+	var cap: int = _squad_cfg_int("flashlight_scanner_cap", 2)
+	_scanner_slots.clear()
+
+	var pressure_ids: Array[int] = []
+	var hold_ids: Array[int] = []
+	for id_variant in _members.keys():
+		var enemy_id := int(id_variant)
+		var member := _members[id_variant] as Dictionary
+		var role := int(member.get("role", Role.PRESSURE))
+		if role == Role.PRESSURE:
+			pressure_ids.append(enemy_id)
+		elif role == Role.HOLD:
+			hold_ids.append(enemy_id)
+
+	pressure_ids.sort()
+	hold_ids.sort()
+
+	var slots_remaining: int = cap
+	for enemy_id in pressure_ids:
+		_scanner_slots[enemy_id] = slots_remaining > 0
+		if slots_remaining > 0:
+			slots_remaining -= 1
+
+	for enemy_id in hold_ids:
+		_scanner_slots[enemy_id] = slots_remaining > 0
+		if slots_remaining > 0:
+			slots_remaining -= 1
+
+	for id_variant in _members.keys():
+		var enemy_id := int(id_variant)
+		var member := _members[id_variant] as Dictionary
+		var role := int(member.get("role", Role.PRESSURE))
+		if role == Role.FLANK:
+			_scanner_slots[enemy_id] = false
+
+	for id_variant in _members.keys():
+		var enemy_id := int(id_variant)
+		var member := _members[id_variant] as Dictionary
+		var enemy := _member_enemy(member)
+		if enemy == null:
+			continue
+		if enemy.has_method("set_flashlight_scanner_allowed"):
+			enemy.call("set_flashlight_scanner_allowed", bool(_scanner_slots.get(enemy_id, false)))
+
+
+func get_scanner_allowed(enemy_id: int) -> bool:
+	return bool(_scanner_slots.get(enemy_id, false))
 
 
 func _pick_slot_for_enemy(enemy: Node2D, preferred_role: int, slots_by_role: Dictionary, used_slot_keys: Dictionary) -> Dictionary:

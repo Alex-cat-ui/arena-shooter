@@ -191,6 +191,7 @@ const DEFAULT_AI_BALANCE := {
 		"flank_max_path_px": 900.0,
 		"flank_max_time_sec": 3.5,
 		"flank_walk_speed_assumed_px_per_sec": 150.0,
+		"flashlight_scanner_cap": 2,
 	},
 	"runtime_budget": {
 		"frame_budget_ms": 1.2,
