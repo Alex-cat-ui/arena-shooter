@@ -21,19 +21,16 @@ const ENEMY_ACCEL_TIME_SEC := 1.0 / 3.0
 const ENEMY_DECEL_TIME_SEC := 1.0 / 3.0
 const COMBAT_REPATH_INTERVAL_NO_LOS_SEC := 0.2
 const PATH_POLICY_SAMPLE_STEP_PX := 12.0
-const FALLBACK_RING_MIN_RADIUS_PX := 48.0
-const FALLBACK_RING_STEP_RADIUS_PX := 48.0
-const FALLBACK_RING_COUNT := 4
-const FALLBACK_RING_SAMPLES_PER_RING := 8
 const STALL_WINDOW_SEC := 0.6
 const STALL_CHECK_INTERVAL_SEC := 0.1
 const STALL_SPEED_THRESHOLD_PX_PER_SEC := 8.0
 const STALL_PATH_PROGRESS_THRESHOLD_PX := 12.0
 const STALL_HARD_CONSECUTIVE_WINDOWS := 2
-const SHADOW_ESCAPE_RING_MIN_RADIUS_PX := 48.0
-const SHADOW_ESCAPE_RING_STEP_RADIUS_PX := 40.0
-const SHADOW_ESCAPE_RING_COUNT := 4
-const SHADOW_ESCAPE_SAMPLES_PER_RING := 12
+const PLAN_TARGET_SWITCH_EPS_PX := 8.0
+const SHADOW_UNREACHABLE_SEARCH_TICKS := 1
+const SHADOW_UNREACHABLE_FSM_STATE_NONE := "none"
+const SHADOW_UNREACHABLE_FSM_STATE_BOUNDARY_SCAN := "shadow_boundary_scan"
+const SHADOW_UNREACHABLE_FSM_STATE_SEARCH := "search"
 const SHADOW_BOUNDARY_SEARCH_RADIUS_PX := 96.0
 const SHADOW_SCAN_DURATION_MIN_SEC := 2.0
 const SHADOW_SCAN_DURATION_MAX_SEC := 3.0
@@ -74,8 +71,6 @@ var _last_path_failed: bool = false
 var _last_path_failed_reason: String = ""
 var _last_policy_blocked_segment: int = -1
 var _path_policy_blocked: bool = false
-var _policy_fallback_used: bool = false
-var _policy_fallback_target: Vector2 = Vector2.ZERO
 var _last_path_plan_status: String = ""
 var _last_path_plan_reason: String = ""
 var _last_path_plan_blocked_point: Vector2 = Vector2.ZERO
@@ -91,15 +86,24 @@ var _stall_consecutive_windows: int = 0
 var _hard_stall: bool = false
 var _last_stall_speed_avg: float = 0.0
 var _last_stall_path_progress: float = 0.0
-var _shadow_escape_active: bool = false
-var _shadow_escape_target: Vector2 = Vector2.ZERO
-var _shadow_escape_target_valid: bool = false
+var _plan_id: int = 0
+var _plan_intent_type: int = -1
+var _intent_target: Vector2 = Vector2.ZERO
+var _intent_target_valid: bool = false
+var _plan_target: Vector2 = Vector2.ZERO
+var _plan_target_valid: bool = false
+var _shadow_unreachable_fsm_state: String = SHADOW_UNREACHABLE_FSM_STATE_NONE
+var _shadow_unreachable_forced_search_ticks_left: int = 0
 var _shadow_scan_active: bool = false
 var _shadow_scan_phase: float = 0.0
 var _shadow_scan_timer: float = 0.0
 var _shadow_scan_target: Vector2 = Vector2.ZERO
 var _shadow_scan_boundary_point: Vector2 = Vector2.ZERO
 var _shadow_scan_boundary_valid: bool = false
+var _last_slide_collision_kind: String = "none"
+var _last_slide_collision_forced_repath: bool = false
+var _last_slide_collision_reason: String = "none"
+var _last_slide_collision_index: int = -1
 
 
 func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -> void:
@@ -154,8 +158,6 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_path_failed_reason = ""
 	_last_policy_blocked_segment = -1
 	_path_policy_blocked = false
-	_policy_fallback_used = false
-	_policy_fallback_target = Vector2.ZERO
 	_last_path_plan_status = ""
 	_last_path_plan_reason = ""
 	_last_path_plan_blocked_point = Vector2.ZERO
@@ -164,15 +166,24 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_valid_path_node_valid = false
 	_active_move_target = Vector2.ZERO
 	_active_move_target_valid = false
-	_shadow_escape_active = false
-	_shadow_escape_target = Vector2.ZERO
-	_shadow_escape_target_valid = false
+	_plan_id = 0
+	_plan_intent_type = -1
+	_intent_target = Vector2.ZERO
+	_intent_target_valid = false
+	_plan_target = Vector2.ZERO
+	_plan_target_valid = false
+	_shadow_unreachable_fsm_state = SHADOW_UNREACHABLE_FSM_STATE_NONE
+	_shadow_unreachable_forced_search_ticks_left = 0
 	_shadow_scan_active = false
 	_shadow_scan_phase = 0.0
 	_shadow_scan_timer = 0.0
 	_shadow_scan_target = Vector2.ZERO
 	_shadow_scan_boundary_point = Vector2.ZERO
 	_shadow_scan_boundary_valid = false
+	_last_slide_collision_kind = "none"
+	_last_slide_collision_forced_repath = false
+	_last_slide_collision_reason = "none"
+	_last_slide_collision_index = -1
 	_reset_stall_monitor()
 	if _patrol:
 		_patrol.configure(nav_system, home_room_id)
@@ -219,16 +230,14 @@ func _is_same_or_adjacent_room(room_a: int, room_b: int) -> bool:
 
 
 func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Dictionary:
+	var normalized_delta := _normalize_nonnegative_delta(delta)
 	var request_fire := false
-	var intent_type := int(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
-	if owner and owner.has_method("set_shadow_check_flashlight"):
-		owner.call("set_shadow_check_flashlight", false)
-	if owner and owner.has_method("set_shadow_scan_active"):
-		owner.call("set_shadow_scan_active", false)
-	var has_target := intent.has("target")
-	var target := intent.get("target", owner.global_position) as Vector2
+	var intent_type := _normalize_execute_intent_type(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
+	var target_parse := _extract_optional_finite_target(intent)
+	var has_target := bool(target_parse.get("valid", false))
+	var target := target_parse.get("target", Vector2.ZERO) as Vector2
 	var movement_intent := false
-	var player_pos := context.get("player_pos", target) as Vector2
+	var player_pos := _context_vec2_or_default(context, "player_pos", target if has_target else owner.global_position)
 	var has_los := bool(context.get("los", false))
 	var dist := float(context.get("dist", INF))
 	var alert_level := int(context.get("alert_level", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
@@ -239,76 +248,304 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 			or alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
 		)
 	)
-	# Reset search sub-state when intent type changes.
+	var known_target_pos := _context_vec2_or_zero(context, "known_target_pos")
+	var last_seen_anchor := _context_vec2_or_zero(context, "last_seen_pos")
+	var investigate_anchor := _context_vec2_or_zero(context, "investigate_anchor")
+	var home_pos := _context_vec2_or_zero(context, "home_position")
+	var active_target_context := (
+		known_target_pos != Vector2.ZERO
+		or last_seen_anchor != Vector2.ZERO
+		or investigate_anchor != Vector2.ZERO
+	)
+	if owner and owner.has_method("set_shadow_check_flashlight"):
+		owner.call("set_shadow_check_flashlight", false)
+	if owner and owner.has_method("set_shadow_scan_active"):
+		owner.call("set_shadow_scan_active", false)
+
+	if alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.ALERT and active_target_context and (
+		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME
+	):
+		intent_type = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+		var guard_target := _pick_guard_target_from_context(known_target_pos, last_seen_anchor, investigate_anchor, home_pos)
+		has_target = _is_finite_vector2(guard_target)
+		target = guard_target if has_target else Vector2.ZERO
+
+	# Reset search sub-state when effective intent type changes.
 	if intent_type != _last_intent_type:
 		_last_intent_type = intent_type
 		_search_phase = 0.0
 		_in_hold_listen = false
 		_hold_listen_timer = 0.0
-	if intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN and (_shadow_scan_active or _shadow_scan_boundary_valid):
-		clear_shadow_scan_state()
+
 	_last_path_failed = false
 	_last_path_failed_reason = ""
 	_last_policy_blocked_segment = -1
+	_last_slide_collision_kind = "none"
+	_last_slide_collision_forced_repath = false
+	_last_slide_collision_reason = "none"
+	_last_slide_collision_index = -1
+	_intent_target = target if has_target else Vector2.ZERO
+	_intent_target_valid = has_target
 
-	match intent_type:
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL:
-			_update_idle_roam(delta)
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE:
-			movement_intent = true
-			if has_target:
-				_set_last_seen(target)
-			var investigate_arrive_px := _pursuit_cfg_float("last_seen_reached_px", LAST_SEEN_REACHED_PX)
-			if not has_target:
-				_execute_search(delta, context.get("last_seen_pos", owner.global_position) as Vector2)
-			elif owner.global_position.distance_to(target) <= investigate_arrive_px:
-				_execute_search(delta, target)
-			else:
-				_execute_move_to_target(delta, target, 1.0, -1.0, has_target)
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH:
-			_execute_search(delta, target)
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN:
-			movement_intent = _execute_shadow_boundary_scan(delta, target, has_target)
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT:
-			movement_intent = true
-			_execute_move_to_target(delta, target, 0.95, -1.0, has_target)
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE:
-			_stop_motion(delta)
-			face_towards(player_pos if has_los else target)
-			request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH:
-			movement_intent = true
-			var push_has_target := has_target
-			var push_target := target
-			if not push_has_target:
-				push_target = player_pos
-				push_has_target = true
-			var repath_override := _combat_no_los_repath_interval_sec() if combat_no_los else -1.0
-			_execute_move_to_target(delta, push_target, 1.0, repath_override, push_has_target)
-			face_towards(push_target)
-			request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT:
-			movement_intent = true
-			_execute_retreat_from(delta, player_pos)
-		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME:
-			movement_intent = true
-			var home_has_target := has_target
-			var home_target := target
-			if not home_has_target:
-				home_target = _pick_home_return_target()
-				home_has_target = true
-			_execute_move_to_target(delta, home_target, 0.9, -1.0, home_has_target)
-		_:
-			_update_idle_roam(delta)
+	var force_missing_move_target := _intent_uses_move_target(intent_type) and not has_target
+	var skip_plan_lock_update := force_missing_move_target
+	_update_plan_lock(intent_type, _intent_target, _intent_target_valid, not skip_plan_lock_update)
 
-	_update_facing(delta)
+	var keep_shadow_scan_runtime := (
+		_shadow_unreachable_fsm_state == SHADOW_UNREACHABLE_FSM_STATE_BOUNDARY_SCAN
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
+	)
+	if not keep_shadow_scan_runtime and (_shadow_scan_active or _shadow_scan_boundary_valid):
+		clear_shadow_scan_state()
+
+	var execute_target := _plan_target if _plan_target_valid else _intent_target
+	var execute_has_target := _plan_target_valid if _plan_target_valid else _intent_target_valid
+	if force_missing_move_target:
+		execute_target = Vector2.ZERO
+		execute_has_target = false
+
+	if _shadow_unreachable_fsm_state == SHADOW_UNREACHABLE_FSM_STATE_BOUNDARY_SCAN:
+		movement_intent = _execute_shadow_boundary_scan(normalized_delta, execute_target, execute_has_target)
+		if not _shadow_scan_active and not movement_intent:
+			_shadow_unreachable_fsm_state = SHADOW_UNREACHABLE_FSM_STATE_SEARCH
+			_shadow_unreachable_forced_search_ticks_left = max(
+				_shadow_unreachable_forced_search_ticks_left,
+				SHADOW_UNREACHABLE_SEARCH_TICKS
+			)
+	elif _shadow_unreachable_fsm_state == SHADOW_UNREACHABLE_FSM_STATE_SEARCH:
+		_execute_search(normalized_delta, execute_target)
+		if _shadow_unreachable_forced_search_ticks_left > 0:
+			_shadow_unreachable_forced_search_ticks_left -= 1
+		if _shadow_unreachable_forced_search_ticks_left <= 0:
+			_shadow_unreachable_fsm_state = SHADOW_UNREACHABLE_FSM_STATE_NONE
+	else:
+		match intent_type:
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL:
+				_update_idle_roam(normalized_delta)
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE:
+				if not execute_has_target:
+					_mark_missing_move_target(normalized_delta)
+				else:
+					movement_intent = true
+					_set_last_seen(execute_target)
+					var investigate_arrive_px := _pursuit_cfg_float("last_seen_reached_px", LAST_SEEN_REACHED_PX)
+					if owner.global_position.distance_to(execute_target) <= investigate_arrive_px:
+						_execute_search(normalized_delta, execute_target)
+					else:
+						_execute_move_to_target(normalized_delta, execute_target, 1.0, -1.0, true, context)
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH:
+				_execute_search(normalized_delta, execute_target)
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN:
+				movement_intent = _execute_shadow_boundary_scan(normalized_delta, execute_target, execute_has_target)
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT:
+				if not execute_has_target:
+					_mark_missing_move_target(normalized_delta)
+				else:
+					movement_intent = true
+					_execute_move_to_target(normalized_delta, execute_target, 0.95, -1.0, true, context)
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE:
+				_stop_motion(normalized_delta)
+				face_towards(player_pos if has_los else execute_target)
+				request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH:
+				var push_target := execute_target
+				var push_has_target := execute_has_target
+				if not push_has_target and _is_finite_vector2(player_pos):
+					push_target = player_pos
+					push_has_target = true
+				if not push_has_target:
+					_mark_missing_move_target(normalized_delta)
+				else:
+					movement_intent = true
+					var repath_override := _combat_no_los_repath_interval_sec() if combat_no_los else -1.0
+					_execute_move_to_target(normalized_delta, push_target, 1.0, repath_override, true, context)
+					face_towards(push_target)
+				request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT:
+				movement_intent = true
+				_execute_retreat_from(normalized_delta, player_pos)
+			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME:
+				var home_target := execute_target
+				var home_has_target := execute_has_target
+				if not home_has_target:
+					home_target = _pick_home_return_target()
+					home_has_target = _is_finite_vector2(home_target)
+				if not home_has_target:
+					_mark_missing_move_target(normalized_delta)
+				else:
+					movement_intent = true
+					_execute_move_to_target(normalized_delta, home_target, 0.9, -1.0, true, context)
+			_:
+				_update_idle_roam(normalized_delta)
+
+	_update_facing(normalized_delta)
 	return {
 		"request_fire": request_fire,
 		"path_failed": _last_path_failed,
 		"path_failed_reason": _last_path_failed_reason,
 		"policy_blocked_segment": _last_policy_blocked_segment,
 		"movement_intent": movement_intent,
+		"plan_id": _plan_id,
+		"intent_target": _intent_target if _intent_target_valid else Vector2.ZERO,
+		"plan_target": _plan_target if _plan_target_valid else Vector2.ZERO,
+		"shadow_unreachable_fsm_state": _shadow_unreachable_fsm_state,
 	}
+
+
+func _normalize_nonnegative_delta(delta: float) -> float:
+	if not is_finite(delta):
+		return 0.0
+	return maxf(delta, 0.0)
+
+
+func _normalize_execute_intent_type(raw_type: Variant) -> int:
+	var intent_type := int(raw_type)
+	var supported := [
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL,
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE,
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH,
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT,
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE,
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH,
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT,
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME,
+		ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN,
+	]
+	if supported.has(intent_type):
+		return intent_type
+	return ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+
+
+func _extract_optional_finite_target(intent: Dictionary) -> Dictionary:
+	if not intent.has("target"):
+		return {
+			"valid": false,
+			"target": Vector2.ZERO,
+		}
+	var target_variant: Variant = intent.get("target", null)
+	if target_variant is Vector2 and _is_finite_vector2(target_variant as Vector2):
+		return {
+			"valid": true,
+			"target": target_variant as Vector2,
+		}
+	return {
+		"valid": false,
+		"target": Vector2.ZERO,
+	}
+
+
+func _is_finite_vector2(value: Vector2) -> bool:
+	return is_finite(value.x) and is_finite(value.y)
+
+
+func _context_vec2_or_default(context: Dictionary, key: String, fallback: Vector2) -> Vector2:
+	var value: Variant = context.get(key, fallback)
+	if value is Vector2 and _is_finite_vector2(value as Vector2):
+		return value as Vector2
+	return fallback if _is_finite_vector2(fallback) else Vector2.ZERO
+
+
+func _context_vec2_or_zero(context: Dictionary, key: String) -> Vector2:
+	return _context_vec2_or_default(context, key, Vector2.ZERO)
+
+
+func _pick_guard_target_from_context(
+	known_target_pos: Vector2,
+	last_seen_anchor: Vector2,
+	investigate_anchor: Vector2,
+	home_pos: Vector2
+) -> Vector2:
+	if _is_finite_vector2(known_target_pos) and known_target_pos != Vector2.ZERO:
+		return known_target_pos
+	if _is_finite_vector2(last_seen_anchor) and last_seen_anchor != Vector2.ZERO:
+		return last_seen_anchor
+	if _is_finite_vector2(investigate_anchor) and investigate_anchor != Vector2.ZERO:
+		return investigate_anchor
+	if _is_finite_vector2(home_pos):
+		return home_pos
+	return Vector2.ZERO
+
+
+func _intent_uses_move_target(intent_type: int) -> bool:
+	return (
+		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME
+	)
+
+
+func _update_plan_lock(intent_type: int, target: Vector2, target_valid: bool, allow_update: bool) -> void:
+	if not allow_update:
+		return
+	var replace_plan := false
+	if _plan_id == 0:
+		replace_plan = true
+	elif intent_type != _plan_intent_type:
+		replace_plan = true
+	elif target_valid != _plan_target_valid:
+		replace_plan = true
+	elif target_valid and _plan_target_valid and _plan_target.distance_to(target) > PLAN_TARGET_SWITCH_EPS_PX:
+		replace_plan = true
+	if not replace_plan:
+		return
+	_plan_id += 1
+	_plan_intent_type = intent_type
+	_plan_target_valid = target_valid
+	_plan_target = target if target_valid else Vector2.ZERO
+
+
+func _mark_missing_move_target(delta: float) -> void:
+	_stop_motion(delta)
+	_mark_path_failed("no_target")
+	_active_move_target_valid = false
+	_reset_stall_monitor()
+
+
+func _should_start_shadow_unreachable_fsm(context: Dictionary, target_pos: Vector2, target_valid: bool) -> bool:
+	if _shadow_unreachable_fsm_state != SHADOW_UNREACHABLE_FSM_STATE_NONE:
+		return false
+	if not target_valid:
+		return false
+	if _last_path_plan_status != PATH_PLAN_STATUS_UNREACHABLE_POLICY:
+		return false
+	var alert_level := int(context.get("alert_level", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
+	if alert_level < ENEMY_ALERT_LEVELS_SCRIPT.ALERT:
+		return false
+	var known_target_pos := _context_vec2_or_zero(context, "known_target_pos")
+	var last_seen_anchor := _context_vec2_or_zero(context, "last_seen_pos")
+	var investigate_anchor := _context_vec2_or_zero(context, "investigate_anchor")
+	var active_target_context := (
+		known_target_pos != Vector2.ZERO
+		or last_seen_anchor != Vector2.ZERO
+		or investigate_anchor != Vector2.ZERO
+	)
+	if not active_target_context:
+		return false
+	if nav_system == null or not nav_system.has_method("is_point_in_shadow"):
+		return false
+	return bool(nav_system.call("is_point_in_shadow", target_pos))
+
+
+func _start_shadow_unreachable_fsm() -> void:
+	clear_shadow_scan_state()
+	_shadow_unreachable_fsm_state = SHADOW_UNREACHABLE_FSM_STATE_BOUNDARY_SCAN
+	_shadow_unreachable_forced_search_ticks_left = SHADOW_UNREACHABLE_SEARCH_TICKS
+	_last_path_failed = true
+	_last_path_failed_reason = "shadow_unreachable_policy"
+	_repath_timer = 0.0
+
+
+func _handle_replan_failure_or_shadow_fsm(delta: float, runtime_context: Dictionary, target_pos: Vector2, target_valid: bool) -> bool:
+	if _should_start_shadow_unreachable_fsm(runtime_context, target_pos, target_valid):
+		_stop_motion(delta)
+		_reset_stall_monitor()
+		_start_shadow_unreachable_fsm()
+		return true
+	_stop_motion(delta)
+	_mark_path_failed("replan_failed")
+	return false
 
 
 func _execute_move_to_target(
@@ -316,15 +553,13 @@ func _execute_move_to_target(
 	target: Vector2,
 	speed_scale: float,
 	repath_interval_override_sec: float = -1.0,
-	has_target: bool = true
+	has_target: bool = true,
+	runtime_context: Dictionary = {}
 ) -> bool:
 	if not has_target:
-		_stop_motion(delta)
-		_mark_path_failed("no_target")
-		_active_move_target_valid = false
-		_reset_stall_monitor()
+		_mark_missing_move_target(delta)
 		return false
-	var movement_target := _resolve_movement_target_with_shadow_escape(target, has_target)
+	var movement_target := target
 	if not _active_move_target_valid or _active_move_target.distance_to(movement_target) > 0.5:
 		_reset_stall_monitor()
 	_active_move_target = movement_target
@@ -336,10 +571,7 @@ func _execute_move_to_target(
 	if _repath_timer <= 0.0 or _path_policy_blocked:
 		_repath_timer = repath_interval
 		if not _attempt_replan_with_policy(movement_target):
-			if not _attempt_shadow_escape_recovery():
-				_stop_motion(delta)
-				_mark_path_failed("replan_failed")
-				return false
+			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
 	if not _has_active_path_to(movement_target):
 		_mark_path_failed("path_unavailable")
 		_stop_motion(delta)
@@ -349,22 +581,16 @@ func _execute_move_to_target(
 		_mark_path_failed("policy_blocked")
 		_repath_timer = 0.0
 		if not _attempt_replan_with_policy(movement_target):
-			_attempt_shadow_escape_recovery()
+			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
 	if _update_stall_monitor(delta, movement_target, has_target):
 		_mark_path_failed("hard_stall")
 		_repath_timer = 0.0
 		if not _attempt_replan_with_policy(movement_target):
-			_attempt_shadow_escape_recovery()
+			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
 	if owner.global_position.distance_to(movement_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
 		_stop_motion(delta)
-		_policy_fallback_used = false
-		_policy_fallback_target = Vector2.ZERO
 		_active_move_target_valid = false
 		_reset_stall_monitor()
-		if _shadow_escape_active and owner.global_position.distance_to(_shadow_escape_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
-			_shadow_escape_active = false
-			_shadow_escape_target = Vector2.ZERO
-			_shadow_escape_target_valid = false
 	return not _last_path_failed
 
 
@@ -429,8 +655,7 @@ func _execute_shadow_boundary_scan(delta: float, target: Vector2, has_target: bo
 		return false
 	var arrive_px := _pursuit_cfg_float("last_seen_reached_px", LAST_SEEN_REACHED_PX)
 	if owner.global_position.distance_to(_shadow_scan_boundary_point) > arrive_px:
-		_execute_move_to_target(delta, _shadow_scan_boundary_point, 1.0, -1.0, true)
-		return true
+		return _execute_move_to_target(delta, _shadow_scan_boundary_point, 1.0, -1.0, true)
 	_shadow_scan_active = true
 	_shadow_scan_phase = 0.0
 	_shadow_scan_timer = _rng.randf_range(SHADOW_SCAN_DURATION_MIN_SEC, SHADOW_SCAN_DURATION_MAX_SEC)
@@ -652,8 +877,7 @@ func _follow_waypoints(speed_scale: float, delta: float) -> bool:
 			moved = _move_in_direction(dir, speed_scale, delta)
 		else:
 			_stop_motion(delta)
-		if owner.get_slide_collision_count() > 0:
-			_try_open_blocking_door_and_force_repath()
+		_handle_slide_collisions_and_repath(owner.get_slide_collision_count())
 		if nav_system and nav_system.has_method("room_id_at_point"):
 			var nav_rid := int(nav_system.room_id_at_point(owner.global_position))
 			if nav_rid >= 0:
@@ -674,9 +898,7 @@ func _follow_waypoints(speed_scale: float, delta: float) -> bool:
 
 	var dir := (waypoint - owner.global_position).normalized()
 	var moved := _move_in_direction(dir, speed_scale, delta)
-	# After move_and_slide, check if blocked by door.
-	if owner.get_slide_collision_count() > 0:
-		_try_open_blocking_door_and_force_repath()
+	_handle_slide_collisions_and_repath(owner.get_slide_collision_count())
 	if nav_system and nav_system.has_method("room_id_at_point"):
 		var rid := int(nav_system.room_id_at_point(owner.global_position))
 		if rid >= 0:
@@ -789,17 +1011,68 @@ func _get_door_system() -> Node:
 	return _door_system_cache
 
 
-func _try_open_blocking_door_and_force_repath() -> void:
+func _handle_slide_collisions_and_repath(slide_count: int) -> Dictionary:
+	var none_result := {
+		"collision_kind": "none",
+		"forced_repath": false,
+		"reason": "none",
+		"collision_index": -1,
+	}
+	if slide_count <= 0:
+		return none_result
+
+	var first_door_index := -1
+	for i in range(slide_count):
+		var is_door_collision := false
+		var collision: Variant = owner.get_slide_collision(i)
+		if collision != null and collision.has_method("get_collider"):
+			var collider := collision.call("get_collider") as Node
+			if collider != null and collider.name == "DoorBody":
+				var collider_parent := collider.get_parent()
+				is_door_collision = collider_parent != null and collider_parent.has_method("command_open_enemy")
+		if not is_door_collision:
+			_repath_timer = 0.0
+			_waypoints.clear()
+			if _use_navmesh and _nav_agent != null:
+				_nav_agent.target_position = owner.global_position
+			_last_path_failed = true
+			_last_path_failed_reason = "collision_blocked"
+			_path_policy_blocked = false
+			_last_policy_blocked_segment = -1
+			_last_slide_collision_kind = "non_door"
+			_last_slide_collision_forced_repath = true
+			_last_slide_collision_reason = "collision_blocked"
+			_last_slide_collision_index = i
+			return {
+				"collision_kind": "non_door",
+				"forced_repath": true,
+				"reason": "collision_blocked",
+				"collision_index": i,
+			}
+		if first_door_index < 0:
+			first_door_index = i
+
+	if first_door_index < 0:
+		return none_result
+
+	var door_opened := false
 	var door_system := _get_door_system()
-	if door_system == null or not door_system.has_method("try_enemy_open_nearest"):
-		return
-	var opened := bool(door_system.call("try_enemy_open_nearest", owner.global_position))
-	if not opened:
-		return
-	# Door state changed this frame; force immediate replan to avoid wall-stall.
-	_repath_timer = 0.0
-	_path_policy_blocked = false
-	_last_policy_blocked_segment = -1
+	if door_system != null and door_system.has_method("try_enemy_open_nearest"):
+		door_opened = bool(door_system.call("try_enemy_open_nearest", owner.global_position))
+	if door_opened:
+		_repath_timer = 0.0
+		_path_policy_blocked = false
+		_last_policy_blocked_segment = -1
+	_last_slide_collision_kind = "door"
+	_last_slide_collision_forced_repath = door_opened
+	_last_slide_collision_reason = "door_opened" if door_opened else "none"
+	_last_slide_collision_index = first_door_index
+	return {
+		"collision_kind": "door",
+		"forced_repath": door_opened,
+		"reason": "door_opened" if door_opened else "none",
+		"collision_index": first_door_index,
+	}
 
 
 func _mark_path_failed(reason: String) -> void:
@@ -811,114 +1084,7 @@ func _mark_path_failed(reason: String) -> void:
 func _attempt_replan_with_policy(target_pos: Vector2) -> bool:
 	if AIWatchdog:
 		AIWatchdog.record_replan()
-	var planned := _plan_path_to(target_pos)
-	if planned:
-		_policy_fallback_used = false
-		_policy_fallback_target = Vector2.ZERO
-		return true
-	var fallback_pick := _resolve_nearest_reachable_fallback(target_pos)
-	if not bool(fallback_pick.get("found", false)):
-		_mark_path_failed("fallback_missing")
-		return false
-	var fallback_target := fallback_pick.get("point", Vector2.ZERO) as Vector2
-	_policy_fallback_used = true
-	_policy_fallback_target = fallback_target
-	if _plan_path_to(fallback_target, true):
-		return true
-	_mark_path_failed("fallback_failed")
-	return false
-
-
-func _resolve_nearest_reachable_fallback(target_pos: Vector2) -> Dictionary:
-	if _is_owner_in_shadow_without_flashlight():
-		var shadow_escape_pick := _resolve_shadow_escape_target()
-		if bool(shadow_escape_pick.get("found", false)):
-			return shadow_escape_pick
-	var candidates := _sample_fallback_candidates(target_pos)
-	var best_result := _select_nearest_reachable_candidate(target_pos, candidates)
-	if bool(best_result.get("found", false)):
-		return best_result
-	if _last_valid_path_node_valid:
-		return {
-			"found": true,
-			"point": _last_valid_path_node,
-		}
-	return {
-		"found": false,
-		"point": Vector2.ZERO,
-	}
-
-
-func _resolve_movement_target_with_shadow_escape(target: Vector2, has_target: bool) -> Vector2:
-	if not has_target:
-		return target
-	if not _shadow_escape_active:
-		return target
-	if not _shadow_escape_target_valid:
-		_shadow_escape_active = false
-		return target
-	if not _is_owner_in_shadow_without_flashlight():
-		_shadow_escape_active = false
-		_shadow_escape_target = Vector2.ZERO
-		_shadow_escape_target_valid = false
-		return target
-	return _shadow_escape_target
-
-
-func _attempt_shadow_escape_recovery() -> bool:
-	if not _is_owner_in_shadow_without_flashlight():
-		return false
-	var escape_pick := _resolve_shadow_escape_target()
-	if not bool(escape_pick.get("found", false)):
-		return false
-	var escape_target := escape_pick.get("point", Vector2.ZERO) as Vector2
-	_shadow_escape_active = true
-	_shadow_escape_target = escape_target
-	_shadow_escape_target_valid = true
-	_policy_fallback_used = true
-	_policy_fallback_target = escape_target
-	_active_move_target = Vector2.ZERO
-	_active_move_target_valid = false
-	_repath_timer = 0.0
-	_reset_stall_monitor()
-	if _plan_path_to(escape_target, true):
-		return true
-	_shadow_escape_active = false
-	_shadow_escape_target = Vector2.ZERO
-	_shadow_escape_target_valid = false
-	return false
-
-
-func _resolve_shadow_escape_target() -> Dictionary:
-	var candidates := _sample_shadow_escape_candidates()
-	if candidates.is_empty():
-		return {
-			"found": false,
-			"point": Vector2.ZERO,
-		}
-	var best_result := _select_nearest_reachable_candidate(owner.global_position, candidates)
-	if bool(best_result.get("found", false)):
-		return best_result
-	return {
-		"found": false,
-		"point": Vector2.ZERO,
-	}
-
-
-func _sample_shadow_escape_candidates() -> Array[Vector2]:
-	var candidates: Array[Vector2] = []
-	if nav_system == null or not nav_system.has_method("is_point_in_shadow"):
-		return candidates
-	var origin := owner.global_position
-	for ring_idx in range(SHADOW_ESCAPE_RING_COUNT):
-		var radius := SHADOW_ESCAPE_RING_MIN_RADIUS_PX + SHADOW_ESCAPE_RING_STEP_RADIUS_PX * float(ring_idx)
-		for sample_idx in range(SHADOW_ESCAPE_SAMPLES_PER_RING):
-			var angle := TAU * (float(sample_idx) / float(SHADOW_ESCAPE_SAMPLES_PER_RING))
-			var candidate := origin + Vector2.RIGHT.rotated(angle) * radius
-			if bool(nav_system.call("is_point_in_shadow", candidate)):
-				continue
-			candidates.append(candidate)
-	return candidates
+	return _plan_path_to(target_pos)
 
 
 func _is_owner_in_shadow_without_flashlight() -> bool:
@@ -934,16 +1100,6 @@ func _is_owner_in_shadow_without_flashlight() -> bool:
 	if owner and owner.has_method("is_flashlight_active_for_navigation"):
 		return not bool(owner.call("is_flashlight_active_for_navigation"))
 	return true
-
-
-func _sample_fallback_candidates(target_pos: Vector2) -> Array[Vector2]:
-	var candidates: Array[Vector2] = []
-	for ring_idx in range(FALLBACK_RING_COUNT):
-		var radius := FALLBACK_RING_MIN_RADIUS_PX + FALLBACK_RING_STEP_RADIUS_PX * float(ring_idx)
-		for sample_idx in range(FALLBACK_RING_SAMPLES_PER_RING):
-			var angle := TAU * (float(sample_idx) / float(FALLBACK_RING_SAMPLES_PER_RING))
-			candidates.append(target_pos + Vector2.RIGHT.rotated(angle) * radius)
-	return candidates
 
 
 func _select_nearest_reachable_candidate(target_pos: Vector2, candidates: Array[Vector2]) -> Dictionary:
@@ -1068,23 +1224,26 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"path_plan_blocked_point_valid": _last_path_plan_blocked_point_valid,
 		"policy_blocked": _path_policy_blocked,
 		"policy_blocked_segment": _last_policy_blocked_segment,
-		"policy_fallback_used": _policy_fallback_used,
-		"policy_fallback_target": _policy_fallback_target,
 		"last_valid_path_node": _last_valid_path_node,
 		"last_valid_path_node_valid": _last_valid_path_node_valid,
 		"active_move_target": _active_move_target,
 		"active_move_target_valid": _active_move_target_valid,
+		"plan_id": _plan_id,
+		"intent_target": _intent_target if _intent_target_valid else Vector2.ZERO,
+		"plan_target": _plan_target if _plan_target_valid else Vector2.ZERO,
+		"shadow_unreachable_fsm_state": _shadow_unreachable_fsm_state,
 		"hard_stall": _hard_stall,
 		"stall_consecutive_windows": _stall_consecutive_windows,
 		"stall_speed_avg": _last_stall_speed_avg,
 		"stall_path_progress": _last_stall_path_progress,
-		"shadow_escape_active": _shadow_escape_active,
-		"shadow_escape_target": _shadow_escape_target,
-		"shadow_escape_target_valid": _shadow_escape_target_valid,
 		"shadow_scan_active": _shadow_scan_active,
 		"shadow_scan_target": _shadow_scan_target,
 		"shadow_scan_boundary_point": _shadow_scan_boundary_point,
 		"shadow_scan_boundary_valid": _shadow_scan_boundary_valid,
+		"collision_kind": _last_slide_collision_kind,
+		"collision_forced_repath": _last_slide_collision_forced_repath,
+		"collision_reason": _last_slide_collision_reason,
+		"collision_index": _last_slide_collision_index,
 	}
 
 
@@ -1098,10 +1257,6 @@ func debug_feed_stall_window(speed_avg: float, path_progress: float) -> Dictiona
 		"hard_stall": hard_stall,
 		"consecutive_windows": _stall_consecutive_windows,
 	}
-
-
-func debug_select_nearest_reachable_fallback(target_pos: Vector2, candidates: Array[Vector2]) -> Dictionary:
-	return _select_nearest_reachable_candidate(target_pos, candidates)
 
 
 func _pursuit_cfg_float(key: String, fallback: float) -> float:

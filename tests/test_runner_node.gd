@@ -91,9 +91,10 @@ const SHADOW_POLICY_HARD_BLOCK_WITHOUT_GRANT_TEST_SCENE := "res://tests/test_sha
 const SHADOW_ENEMY_STUCK_WHEN_INSIDE_SHADOW_TEST_SCENE := "res://tests/test_shadow_enemy_stuck_when_inside_shadow.tscn"
 const SHADOW_ENEMY_UNSTUCK_AFTER_FLASHLIGHT_ACTIVATION_TEST_SCENE := "res://tests/test_shadow_enemy_unstuck_after_flashlight_activation.tscn"
 const SHADOW_STALL_ESCAPES_TO_LIGHT_TEST_SCENE := "res://tests/test_shadow_stall_escapes_to_light.tscn"
+const SHADOW_UNREACHABLE_CANON_TEST_SCENE := "res://tests/test_shadow_unreachable_transitions_to_search_not_patrol.tscn"
 const DOOR_ENEMY_OBLIQUE_OPEN_THEN_CROSS_NO_WALL_STALL_TEST_SCENE := "res://tests/test_door_enemy_oblique_open_then_cross_no_wall_stall.tscn"
 const STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE := "res://tests/test_stall_definition_reproducible_thresholds.tscn"
-const NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE := "res://tests/test_nearest_reachable_fallback_by_nav_distance.tscn"
+const PURSUIT_PLAN_LOCK_EDGE_CASE_TEST_SCENE := "res://tests/test_nearest_reachable_fallback_by_nav_distance.tscn"
 const ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE := "res://tests/test_zone_director_single_owner_transitions.tscn"
 const ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE := "res://tests/test_zone_hysteresis_hold_and_no_event_decay.tscn"
 const ZONE_STATE_MACHINE_CONTRACT_TEST_SCENE := "res://tests/test_zone_state_machine_contract.tscn"
@@ -111,6 +112,8 @@ const LAST_SEEN_GRACE_WINDOW_TEST_SCENE := "res://tests/test_last_seen_grace_win
 const COMBAT_NO_LOS_NEVER_HOLD_RANGE_TEST_SCENE := "res://tests/test_combat_no_los_never_hold_range.tscn"
 const COMBAT_INTENT_PUSH_TO_SEARCH_TEST_SCENE := "res://tests/test_combat_intent_switches_push_to_search_after_grace.tscn"
 const DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE := "res://tests/test_detour_side_flip_on_stall.tscn"
+const COLLISION_BLOCK_FORCES_IMMEDIATE_REPATH_TEST_SCENE := "res://tests/test_collision_block_forces_immediate_repath.tscn"
+const COLLISION_BLOCK_PRESERVES_INTENT_CONTEXT_TEST_SCENE := "res://tests/test_collision_block_preserves_intent_context.tscn"
 const HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE := "res://tests/test_honest_repath_without_teleport.tscn"
 const FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_active_in_combat_when_latched.tscn"
 const FLASHLIGHT_SINGLE_SOURCE_PARITY_TEST_SCENE := "res://tests/test_flashlight_single_source_parity.tscn"
@@ -783,6 +786,9 @@ func _run_tests() -> void:
 	_test("Shadow stall escapes to light test scene exists", func():
 		return _scene_exists(SHADOW_STALL_ESCAPES_TO_LIGHT_TEST_SCENE)
 	)
+	_test("Shadow unreachable canon transition test scene exists", func():
+		return _scene_exists(SHADOW_UNREACHABLE_CANON_TEST_SCENE)
+	)
 	_test("Door enemy oblique open then cross no wall stall test scene exists", func():
 		return _scene_exists(DOOR_ENEMY_OBLIQUE_OPEN_THEN_CROSS_NO_WALL_STALL_TEST_SCENE)
 	)
@@ -837,8 +843,8 @@ func _run_tests() -> void:
 	_test("Navigation policy detour two-waypoint test scene exists", func():
 		return _scene_exists(NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE)
 	)
-	_test("Nearest reachable fallback by nav distance test scene exists", func():
-		return _scene_exists(NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE)
+	_test("Pursuit plan-lock edge-case test scene exists", func():
+		return _scene_exists(PURSUIT_PLAN_LOCK_EDGE_CASE_TEST_SCENE)
 	)
 	_test("ZoneDirector single-owner transitions test scene exists", func():
 		return _scene_exists(ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE)
@@ -890,6 +896,12 @@ func _run_tests() -> void:
 	)
 	_test("Detour side flip on stall test scene exists", func():
 		return _scene_exists(DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE)
+	)
+	_test("Collision block forces immediate repath test scene exists", func():
+		return _scene_exists(COLLISION_BLOCK_FORCES_IMMEDIATE_REPATH_TEST_SCENE)
+	)
+	_test("Collision block preserves intent context test scene exists", func():
+		return _scene_exists(COLLISION_BLOCK_PRESERVES_INTENT_CONTEXT_TEST_SCENE)
 	)
 	_test("Honest repath without teleport test scene exists", func():
 		return _scene_exists(HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE)
@@ -1087,6 +1099,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Shadow enemy stuck when inside shadow suite", SHADOW_ENEMY_STUCK_WHEN_INSIDE_SHADOW_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow enemy unstuck after flashlight activation suite", SHADOW_ENEMY_UNSTUCK_AFTER_FLASHLIGHT_ACTIVATION_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow stall escapes to light suite", SHADOW_STALL_ESCAPES_TO_LIGHT_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow unreachable canon transition suite", SHADOW_UNREACHABLE_CANON_TEST_SCENE)
 	await _run_embedded_scene_suite("Door enemy oblique open then cross no wall stall suite", DOOR_ENEMY_OBLIQUE_OPEN_THEN_CROSS_NO_WALL_STALL_TEST_SCENE)
 	await _run_embedded_scene_suite("Stall definition reproducible thresholds suite", STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert hold dynamic suite", ALERT_HOLD_DYNAMIC_TEST_SCENE)
@@ -1105,7 +1118,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Navigation path policy parity suite", NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation policy detour direct-blocked suite", NAVIGATION_POLICY_DETOUR_BLOCKED_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation policy detour two-waypoint suite", NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE)
-	await _run_embedded_scene_suite("Nearest reachable fallback by nav distance suite", NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE)
+	await _run_embedded_scene_suite("Pursuit plan-lock edge-case suite", PURSUIT_PLAN_LOCK_EDGE_CASE_TEST_SCENE)
 	await _run_embedded_scene_suite("ZoneDirector single-owner transitions suite", ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE)
 	await _run_embedded_scene_suite("Zone hysteresis hold/no-event decay suite", ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE)
 	await _run_embedded_scene_suite("Zone state machine contract suite", ZONE_STATE_MACHINE_CONTRACT_TEST_SCENE)
@@ -1123,6 +1136,8 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Combat no LOS never hold range suite", COMBAT_NO_LOS_NEVER_HOLD_RANGE_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat intent push to search suite", COMBAT_INTENT_PUSH_TO_SEARCH_TEST_SCENE)
 	await _run_embedded_scene_suite("Detour side flip on stall suite", DETOUR_SIDE_FLIP_ON_STALL_TEST_SCENE)
+	await _run_embedded_scene_suite("Collision block forces immediate repath suite", COLLISION_BLOCK_FORCES_IMMEDIATE_REPATH_TEST_SCENE)
+	await _run_embedded_scene_suite("Collision block preserves intent context suite", COLLISION_BLOCK_PRESERVES_INTENT_CONTEXT_TEST_SCENE)
 	await _run_embedded_scene_suite("Honest repath without teleport suite", HONEST_REPATH_WITHOUT_TELEPORT_TEST_SCENE)
 	await _run_embedded_scene_suite("Flashlight active in combat suite", FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE)
 	await _run_embedded_scene_suite("Flashlight single source parity suite", FLASHLIGHT_SINGLE_SOURCE_PARITY_TEST_SCENE)

@@ -2,29 +2,33 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
+const ENEMY_UTILITY_BRAIN_SCRIPT := preload("res://src/systems/enemy_utility_brain.gd")
+const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
 
 
-class FakeNavByDistance:
+class FakeNav:
 	extends Node
 
-	var nav_lengths: Dictionary = {}
 	var plan_contracts: Dictionary = {}
+
+	func room_id_at_point(_point: Vector2) -> int:
+		return 0
+
+	func can_enemy_traverse_point(_enemy: Node, _point: Vector2) -> bool:
+		return true
 
 	func build_policy_valid_path(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> Dictionary:
 		var key := _key(to_pos)
 		if plan_contracts.has(key):
 			return (plan_contracts.get(key, {}) as Dictionary).duplicate(true)
 		return {
-			"status": "unreachable_geometry",
-			"path_points": [],
-			"reason": "stub_unreachable",
+			"status": "ok",
+			"path_points": [to_pos],
+			"reason": "ok",
 		}
-
-	func nav_path_length(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> float:
-		return float(nav_lengths.get(_key(to_pos), INF))
 
 	func _key(point: Vector2) -> String:
 		return "%d:%d" % [int(round(point.x)), int(round(point.y))]
@@ -40,12 +44,12 @@ func _ready() -> void:
 func run_suite() -> Dictionary:
 	print("")
 	print("============================================================")
-	print("PURSUIT STALL/FALLBACK INVARIANTS TEST")
+	print("PURSUIT STALL + PLAN LOCK INVARIANTS TEST")
 	print("============================================================")
 
-	_test_stall_and_fallback_invariants()
+	_test_stall_and_plan_lock_invariants()
 
-	_t.summary("PURSUIT STALL/FALLBACK INVARIANTS RESULTS")
+	_t.summary("PURSUIT STALL + PLAN LOCK INVARIANTS RESULTS")
 	return {
 		"ok": _t.quit_code() == 0,
 		"run": _t.tests_run,
@@ -53,21 +57,17 @@ func run_suite() -> Dictionary:
 	}
 
 
-func _test_stall_and_fallback_invariants() -> void:
+func _test_stall_and_plan_lock_invariants() -> void:
 	var owner := CharacterBody2D.new()
 	var sprite := Sprite2D.new()
 	owner.add_child(sprite)
 	add_child(owner)
 
-	var nav := FakeNavByDistance.new()
+	var nav := FakeNav.new()
 	add_child(nav)
 	_t.run_test(
-		"fake nav omits legacy build_reachable_path_points API",
-		not nav.has_method("build_reachable_path_points")
-	)
-	_t.run_test(
-		"fake nav omits legacy build_path_points API",
-		not nav.has_method("build_path_points")
+		"fake nav omits legacy path planner APIs",
+		not nav.has_method("build_reachable_path_points") and not nav.has_method("build_path_points")
 	)
 
 	var pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(owner, sprite, 2.0)
@@ -80,43 +80,36 @@ func _test_stall_and_fallback_invariants() -> void:
 	_t.run_test("two consecutive stalled windows trigger hard_stall", bool(w1.get("stalled_window", false)) and bool(w2.get("hard_stall", false)))
 	_t.run_test("non-stalled window clears hard_stall", not bool(w3.get("hard_stall", true)) and int(w3.get("consecutive_windows", -1)) == 0)
 
-	var target := Vector2(100.0, 100.0)
-	var a := Vector2(110.0, 100.0)
-	var b := Vector2(150.0, 100.0)
-	var c := Vector2(90.0, 130.0)
-	nav.nav_lengths[nav._key(a)] = 300.0
-	nav.nav_lengths[nav._key(b)] = 120.0
-	nav.nav_lengths[nav._key(c)] = 120.0
-
-	var result1 := pursuit.debug_select_nearest_reachable_fallback(target, [a, b, c]) as Dictionary
-	var result2 := pursuit.debug_select_nearest_reachable_fallback(target, [a, b, c]) as Dictionary
-	var point1 := result1.get("point", Vector2.ZERO) as Vector2
-	var point2 := result2.get("point", Vector2.ZERO) as Vector2
-	_t.run_test("fallback selection deterministic for same inputs", point1 == point2)
-	_t.run_test("fallback selects reachable candidate", bool(result1.get("found", false)) and point1 != Vector2.ZERO)
-
-	var blocked_target := Vector2(220.0, 100.0)
-	var fallback_target := blocked_target + Vector2(48.0, 0.0)
-	nav.plan_contracts[nav._key(blocked_target)] = {
-		"status": "unreachable_geometry",
-		"path_points": [],
-		"reason": "primary_unreachable",
+	var base_target := Vector2(100.0, 40.0)
+	var near_target := base_target + Vector2(6.0, 0.0)
+	var far_target := base_target + Vector2(20.0, 0.0)
+	var ctx := {
+		"player_pos": base_target,
+		"known_target_pos": Vector2.ZERO,
+		"last_seen_pos": Vector2.ZERO,
+		"investigate_anchor": Vector2.ZERO,
+		"alert_level": ENEMY_ALERT_LEVELS_SCRIPT.CALM,
+		"los": false,
+		"dist": base_target.length(),
 	}
-	nav.plan_contracts[nav._key(fallback_target)] = {
-		"status": "ok",
-		"path_points": [fallback_target],
-		"reason": "ok",
-	}
-	nav.nav_lengths[nav._key(fallback_target)] = owner.global_position.distance_to(fallback_target)
 
-	pursuit.call("_execute_move_to_target", 0.2, blocked_target, 1.0)
+	var r1 := pursuit.execute_intent(1.0 / 60.0, {"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT, "target": base_target}, ctx) as Dictionary
+	var r2 := pursuit.execute_intent(1.0 / 60.0, {"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT, "target": near_target}, ctx) as Dictionary
+	var r3 := pursuit.execute_intent(1.0 / 60.0, {"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT, "target": far_target}, ctx) as Dictionary
+	var plan_target_1 := r1.get("plan_target", Vector2.ZERO) as Vector2
+	var plan_target_2 := r2.get("plan_target", Vector2.ZERO) as Vector2
+	var plan_target_3 := r3.get("plan_target", Vector2.ZERO) as Vector2
+	_t.run_test("plan_id initializes on first movement target", int(r1.get("plan_id", 0)) > 0)
+	_t.run_test("plan_id stays stable for <=8px target jitter", int(r2.get("plan_id", -1)) == int(r1.get("plan_id", -2)))
+	_t.run_test("plan_target stays locked for <=8px target jitter", plan_target_2.distance_to(plan_target_1) <= 0.001)
+	_t.run_test("plan_id increments by exactly one when target changes >8px", int(r3.get("plan_id", -1)) == int(r2.get("plan_id", -2)) + 1)
+	_t.run_test("plan_target updates on >8px target change", plan_target_3.distance_to(far_target) <= 0.001)
+
 	var snap := pursuit.debug_get_navigation_policy_snapshot() as Dictionary
-	var picked_target := snap.get("policy_fallback_target", Vector2.ZERO) as Vector2
-	var legacy_retry_key := "policy_" + "replan_attempts"
-	_t.run_test("contract fallback starts after first failed plan", bool(snap.get("policy_fallback_used", false)) and picked_target.distance_to(fallback_target) <= 0.001)
-	_t.run_test("planner contract reason is surfaced in snapshot", String(snap.get("path_failed_reason", "")) == "primary_unreachable")
-	_t.run_test("planner snapshot exposes last contract status", String(snap.get("path_plan_status", "")) == "ok")
-	_t.run_test("legacy retry counter key removed from snapshot", not snap.has(legacy_retry_key))
+	var legacy_k1 := "policy_" + "fallback_used"
+	var legacy_k2 := "shadow_" + "escape_active"
+	_t.run_test("snapshot exposes phase2 plan/fsm keys", snap.has("plan_id") and snap.has("intent_target") and snap.has("plan_target") and snap.has("shadow_unreachable_fsm_state"))
+	_t.run_test("snapshot omits removed legacy keys", not snap.has(legacy_k1) and not snap.has(legacy_k2))
 
 	owner.queue_free()
 	nav.queue_free()

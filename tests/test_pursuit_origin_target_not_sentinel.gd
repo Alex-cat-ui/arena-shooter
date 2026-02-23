@@ -20,6 +20,20 @@ class FakeNav:
 	func build_reachable_path_points(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> Array[Vector2]:
 		return [to_pos]
 
+	func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Dictionary:
+		var path := build_reachable_path_points(from_pos, to_pos, enemy)
+		if path.is_empty():
+			return {
+				"status": "unreachable_geometry",
+				"path_points": [],
+				"reason": "path_unreachable",
+			}
+		return {
+			"status": "ok",
+			"path_points": path,
+			"reason": "ok",
+		}
+
 	func nav_path_length(from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> float:
 		return from_pos.distance_to(to_pos)
 

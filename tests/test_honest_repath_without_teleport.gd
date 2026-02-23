@@ -67,10 +67,23 @@ func _test_honest_repath_without_teleport() -> void:
 	_press_key(controller, KEY_3)
 	await get_tree().physics_frame
 
+	var pursuit_variant: Variant = enemy.get("_pursuit")
+	var pursuit := pursuit_variant as Object
+	var collision_snapshot_keys_ok := false
+	if pursuit != null and pursuit.has_method("debug_get_navigation_policy_snapshot"):
+		var initial_snapshot := pursuit.call("debug_get_navigation_policy_snapshot") as Dictionary
+		collision_snapshot_keys_ok = (
+			initial_snapshot.has("collision_kind")
+			and initial_snapshot.has("collision_forced_repath")
+			and initial_snapshot.has("collision_reason")
+			and initial_snapshot.has("collision_index")
+		)
+
 	var initial_distance := enemy.global_position.distance_to(player.global_position)
 	var moved_total := 0.0
 	var max_step_px := 0.0
 	var prev_pos := enemy.global_position
+	var non_door_collision_snapshot_ok := true
 	for _i in range(240):
 		await get_tree().physics_frame
 		await get_tree().process_frame
@@ -79,11 +92,22 @@ func _test_honest_repath_without_teleport() -> void:
 		moved_total += step_px
 		max_step_px = maxf(max_step_px, step_px)
 		prev_pos = current_pos
+		if pursuit != null and pursuit.has_method("debug_get_navigation_policy_snapshot"):
+			var snapshot := pursuit.call("debug_get_navigation_policy_snapshot") as Dictionary
+			if String(snapshot.get("collision_kind", "")) == "non_door":
+				non_door_collision_snapshot_ok = (
+					non_door_collision_snapshot_ok
+					and bool(snapshot.get("collision_forced_repath", false))
+					and String(snapshot.get("collision_reason", "")) == "collision_blocked"
+					and int(snapshot.get("collision_index", -1)) >= 0
+				)
 	var final_distance := enemy.global_position.distance_to(player.global_position)
 
 	_t.run_test("honest repath: enemy moves", moved_total > 8.0)
 	_t.run_test("honest repath: distance to player decreases", final_distance < initial_distance)
 	_t.run_test("honest repath: no teleport/forced unstuck spikes", max_step_px <= 24.0)
+	_t.run_test("honest repath: phase3 collision snapshot keys exposed", collision_snapshot_keys_ok)
+	_t.run_test("honest repath: non-door collision snapshots stay consistent when observed", non_door_collision_snapshot_ok)
 
 	room.queue_free()
 	await get_tree().process_frame
