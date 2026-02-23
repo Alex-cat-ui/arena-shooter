@@ -20,7 +20,6 @@ const TARGET_FACING_SHARP_DELTA_RAD := 1.8
 const ENEMY_ACCEL_TIME_SEC := 1.0 / 3.0
 const ENEMY_DECEL_TIME_SEC := 1.0 / 3.0
 const COMBAT_REPATH_INTERVAL_NO_LOS_SEC := 0.2
-const PATH_POLICY_SAMPLE_STEP_PX := 12.0
 const STALL_WINDOW_SEC := 0.6
 const STALL_CHECK_INTERVAL_SEC := 0.1
 const STALL_SPEED_THRESHOLD_PX_PER_SEC := 8.0
@@ -196,6 +195,9 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 func configure_nav_agent(agent: NavigationAgent2D) -> void:
 	_nav_agent = agent
 	_use_navmesh = agent != null
+	if agent:
+		agent.radius = _pursuit_cfg_float("avoidance_radius_px", 12.8)
+		agent.max_speed = _pursuit_cfg_float("avoidance_max_speed_px_per_sec", 80.0)
 
 
 func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
@@ -1113,70 +1115,6 @@ func _attempt_replan_with_policy(target_pos: Vector2) -> bool:
 	if AIWatchdog:
 		AIWatchdog.record_replan()
 	return _plan_path_to(target_pos)
-
-
-func _is_owner_in_shadow_without_flashlight() -> bool:
-	# Shadow escape is only valid in ALERT/COMBAT.
-	if owner:
-		var state_name := String(owner.get_meta("awareness_state", "CALM"))
-		if state_name != "ALERT" and state_name != "COMBAT":
-			return false
-	if nav_system == null or not nav_system.has_method("is_point_in_shadow"):
-		return false
-	if not bool(nav_system.call("is_point_in_shadow", owner.global_position)):
-		return false
-	if owner and owner.has_method("is_flashlight_active_for_navigation"):
-		return not bool(owner.call("is_flashlight_active_for_navigation"))
-	return true
-
-
-func _select_nearest_reachable_candidate(target_pos: Vector2, candidates: Array[Vector2]) -> Dictionary:
-	var best_point := Vector2.ZERO
-	var best_nav_len := INF
-	var best_euclid := INF
-	for candidate in candidates:
-		var nav_len := _nav_path_length_to(candidate)
-		if not is_finite(nav_len):
-			continue
-		var euclid := candidate.distance_to(target_pos)
-		if nav_len < best_nav_len or (is_equal_approx(nav_len, best_nav_len) and euclid < best_euclid):
-			best_nav_len = nav_len
-			best_euclid = euclid
-			best_point = candidate
-	return {
-		"found": is_finite(best_nav_len),
-		"point": best_point,
-		"nav_path_length": best_nav_len,
-		"euclid_to_target": best_euclid,
-	}
-
-
-func _nav_path_length_to(target_pos: Vector2) -> float:
-	if nav_system and nav_system.has_method("nav_path_length"):
-		var len_variant: Variant = nav_system.call("nav_path_length", owner.global_position, target_pos, owner)
-		var len_value := float(len_variant)
-		if is_finite(len_value):
-			return len_value
-		return INF
-	var plan_contract := _request_path_plan_contract(target_pos, true)
-	var normalized_plan := _normalize_path_plan_contract(plan_contract, target_pos)
-	if String(normalized_plan.get("status", PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY)) != PATH_PLAN_STATUS_OK:
-		return INF
-	var path_points := _extract_vector2_path_points(normalized_plan.get("path_points", []))
-	if path_points.is_empty():
-		return INF
-	return _path_length(owner.global_position, path_points)
-
-
-func _path_length(from_pos: Vector2, path_points: Array[Vector2]) -> float:
-	if path_points.is_empty():
-		return INF
-	var total := 0.0
-	var prev := from_pos
-	for point in path_points:
-		total += prev.distance_to(point)
-		prev = point
-	return total
 
 
 func _reset_stall_monitor() -> void:

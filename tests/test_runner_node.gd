@@ -141,6 +141,7 @@ const MISSION_TRANSITION_GATE_TEST_SCENE := "res://tests/test_mission_transition
 const EVENT_BUS_BACKPRESSURE_TEST_SCENE := "res://tests/test_event_bus_backpressure.tscn"
 const COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE := "res://tests/test_3zone_combat_transition_stress.tscn"
 const AI_LONG_RUN_STRESS_TEST_SCENE := "res://tests/test_ai_long_run_stress.tscn"
+const ENEMY_CROWD_AVOIDANCE_REDUCES_JAMS_TEST_SCENE := "res://tests/test_enemy_crowd_avoidance_reduces_jams.tscn"
 const REFACTOR_KPI_CONTRACT_TEST_SCENE := "res://tests/test_refactor_kpi_contract.tscn"
 const ENEMY_SCRIPT := preload("res://src/entities/enemy.gd")
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
@@ -633,6 +634,9 @@ func _run_tests() -> void:
 	_test("AI long-run stress test scene exists", func():
 		return _scene_exists(AI_LONG_RUN_STRESS_TEST_SCENE)
 	)
+	_test("Enemy crowd avoidance reduces jams test scene exists", func():
+		return _scene_exists(ENEMY_CROWD_AVOIDANCE_REDUCES_JAMS_TEST_SCENE)
+	)
 
 	await _run_embedded_scene_suite("Config validator AI balance suite", CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE)
 	await _run_embedded_scene_suite("GameConfig reset consistency (non-layout) suite", GAME_CONFIG_RESET_CONSISTENCY_NON_LAYOUT_TEST_SCENE)
@@ -670,6 +674,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("EventBus backpressure suite", EVENT_BUS_BACKPRESSURE_TEST_SCENE)
 	await _run_embedded_scene_suite("3zone combat transition stress suite", COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE)
 	await _run_embedded_scene_suite("AI long-run stress suite", AI_LONG_RUN_STRESS_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy crowd avoidance reduces jams suite", ENEMY_CROWD_AVOIDANCE_REDUCES_JAMS_TEST_SCENE)
 
 	print("\n--- SECTION 18b: Stealth phases 1-7 suites ---")
 
@@ -1008,27 +1013,6 @@ func _run_tests() -> void:
 		var active: bool = enemy._flashlight_policy_active_in_alert() == true
 		enemy.free()
 		return blocked and active
-	)
-
-	_test("Phase 5: shadow escape guard ignores CALM/SUSPICIOUS", func():
-		var owner := PhaseShadowOwner.new()
-		owner.global_position = Vector2.ZERO
-		var sprite := Sprite2D.new()
-		var pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(owner, sprite, 2.0)
-		var nav := PhaseShadowNavStub.new()
-		pursuit.nav_system = nav
-
-		owner.set_meta("awareness_state", "CALM")
-		var calm_ok := pursuit._is_owner_in_shadow_without_flashlight() == false
-		owner.set_meta("awareness_state", "SUSPICIOUS")
-		var suspicious_ok := pursuit._is_owner_in_shadow_without_flashlight() == false
-		owner.set_meta("awareness_state", "ALERT")
-		var alert_ok := pursuit._is_owner_in_shadow_without_flashlight() == true
-
-		nav.free()
-		sprite.free()
-		owner.free()
-		return calm_ok and suspicious_ok and alert_ok
 	)
 
 	_test("Phase 6: active shadow check returns look_dir and flag", func():

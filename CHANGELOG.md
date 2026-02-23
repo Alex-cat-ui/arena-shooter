@@ -2,6 +2,16 @@
 
 ## 2026-02-23
 
+### 17:20 MSK - Phase 7: Crowd Avoidance + Core Legacy Cleanup
+- **Removed**: dead legacy helpers from `enemy_pursuit_system.gd` (`PATH_POLICY_SAMPLE_STEP_PX`, `_is_owner_in_shadow_without_flashlight`, `_select_nearest_reachable_candidate`, `_nav_path_length_to`, `_path_length`)
+- **Added**: avoidance param init in `EnemyPursuitSystem.configure_nav_agent` (`agent.radius`, `agent.max_speed`) with null guard
+- **Changed**: `scenes/entities/enemy.tscn` sets `NavigationAgent2D.avoidance_enabled = true`
+- **Added**: pursuit config keys `avoidance_radius_px=12.8`, `avoidance_max_speed_px_per_sec=80.0` + validator ranges
+- **Removed**: stale Phase 5 shadow-guard tests referencing deleted private API from `tests/test_phase_bugfixes.gd` and `tests/test_runner_node.gd`
+- **Added**: `tests/test_enemy_crowd_avoidance_reduces_jams.gd/.tscn` (3 tests) and runner registration
+- **Updated**: `tests/test_ai_long_run_stress.gd` Phase 7 KPI assertion; `tests/test_honest_repath_without_teleport.gd` comment documenting unchanged threshold with avoidance enabled
+- **Result**: Tier 1 smoke pass; full `test_runner` pass (`343/343`)
+
 ### 17:01 MSK - Phase 6: Patrol Reachability Filter
 - **Removed**: Hard fallback route bypassing reachability in EnemyPatrolSystem._rebuild_route
 - **Removed**: Dead config key fallback_step_px from game_config.gd and config_validator.gd

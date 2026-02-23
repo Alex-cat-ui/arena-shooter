@@ -198,6 +198,8 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_number_key(result, pursuit, "decel_time_sec", "ai_balance.pursuit", 0.01, 10.0)
 		_validate_number_key(result, pursuit, "retreat_distance_px", "ai_balance.pursuit", 0.0, 5000.0)
 		_validate_number_key(result, pursuit, "waypoint_reached_px", "ai_balance.pursuit", 1.0, 500.0)
+		_validate_number_key(result, pursuit, "avoidance_radius_px", "ai_balance.pursuit", 1.0, 64.0)
+		_validate_number_key(result, pursuit, "avoidance_max_speed_px_per_sec", "ai_balance.pursuit", 20.0, 400.0)
 		if not is_nan(attack_range_pref_min) and not is_nan(attack_range_max) and attack_range_pref_min > attack_range_max:
 			result.add_error("ai_balance.pursuit.attack_range_pref_min_px must be <= attack_range_max_px")
 		if not is_nan(search_min) and not is_nan(search_max) and search_min > search_max:

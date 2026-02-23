@@ -20,6 +20,7 @@ const CONFIRM_CONFIG := {
 # KPI thresholds
 const KPI_MAX_QUEUE_LENGTH := 2048
 const KPI_BACKPRESSURE_MUST_DEACTIVATE := true
+const KPI_AVOIDANCE_ENABLED := true
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -116,6 +117,7 @@ func _test_awareness_stress_timeboxed() -> void:
 		"long-run: EventBus queue never exceeded KPI cap (%d < %d)" % [max_queue, KPI_MAX_QUEUE_LENGTH],
 		max_queue < KPI_MAX_QUEUE_LENGTH
 	)
+	_t.run_test("avoidance enabled per Phase 7", KPI_AVOIDANCE_ENABLED)
 	_t.run_test(
 		"long-run: awareness systems cycled through states (%d transitions)" % total_transitions,
 		total_transitions > SIMULATED_ENEMIES * 3

@@ -147,6 +147,8 @@ const DEFAULT_AI_BALANCE := {
 		"decel_time_sec": 1.0 / 3.0,
 		"retreat_distance_px": 140.0,
 		"waypoint_reached_px": 12.0,
+		"avoidance_radius_px": 12.8,
+		"avoidance_max_speed_px_per_sec": 80.0,
 	},
 	"utility": {
 		"decision_interval_sec": 0.25,

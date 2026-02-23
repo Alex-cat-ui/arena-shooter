@@ -55,8 +55,6 @@ func _run_suite() -> void:
 		_test_phase_3_stuck_detection()
 	if _max_phase >= 4:
 		_test_phase_4_flashlight_delay()
-	if _max_phase >= 5:
-		_test_phase_5_shadow_escape_guard()
 	if _max_phase >= 6:
 		_test_phase_6_shadow_check_feature()
 
@@ -151,30 +149,6 @@ func _test_phase_4_flashlight_delay() -> void:
 		blocked and active
 	)
 	enemy.free()
-
-
-func _test_phase_5_shadow_escape_guard() -> void:
-	var owner := PhaseShadowOwner.new()
-	owner.global_position = Vector2.ZERO
-	var sprite := Sprite2D.new()
-	var pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(owner, sprite, 2.0)
-	var nav := PhaseShadowNavStub.new()
-	pursuit.nav_system = nav
-
-	owner.set_meta("awareness_state", "CALM")
-	var calm_ok := pursuit._is_owner_in_shadow_without_flashlight() == false
-	owner.set_meta("awareness_state", "SUSPICIOUS")
-	var suspicious_ok := pursuit._is_owner_in_shadow_without_flashlight() == false
-	owner.set_meta("awareness_state", "ALERT")
-	var alert_ok := pursuit._is_owner_in_shadow_without_flashlight() == true
-
-	_run_test(
-		"Phase 5: CALM/SUSPICIOUS do not trigger shadow escape; ALERT can",
-		calm_ok and suspicious_ok and alert_ok
-	)
-	nav.free()
-	sprite.free()
-	owner.free()
 
 
 func _test_phase_6_shadow_check_feature() -> void:

@@ -105,6 +105,7 @@ func _test_honest_repath_without_teleport() -> void:
 
 	_t.run_test("honest repath: enemy moves", moved_total > 8.0)
 	_t.run_test("honest repath: distance to player decreases", final_distance < initial_distance)
+	# avoidance_enabled = true since Phase 7; single-enemy scenario, no RVO partner, max_step_px threshold 24.0 unchanged.
 	_t.run_test("honest repath: no teleport/forced unstuck spikes", max_step_px <= 24.0)
 	_t.run_test("honest repath: phase3 collision snapshot keys exposed", collision_snapshot_keys_ok)
 	_t.run_test("honest repath: non-door collision snapshots stay consistent when observed", non_door_collision_snapshot_ok)
