@@ -177,6 +177,12 @@ const DEFAULT_AI_BALANCE := {
 			"combat_ttl_sec": 30.0,
 			"visibility_decay_sec": 6.0,
 		},
+	"fairness": {
+		"reaction_warmup_min_sec": 0.15,
+		"reaction_warmup_max_sec": 0.30,
+		"comm_delay_min_sec": 0.30,
+		"comm_delay_max_sec": 0.80,
+	},
 	"squad": {
 		"rebuild_interval_sec": 0.35,
 		"slot_reservation_ttl_sec": 1.1,
@@ -252,6 +258,10 @@ const DEFAULT_AI_FIRE_PROFILES := {
 	},
 }
 var ai_fire_profiles: Dictionary = DEFAULT_AI_FIRE_PROFILES.duplicate(true)
+
+## Blood evidence gameplay tuning (Phase 14)
+@export var blood_evidence_ttl_sec: float = 90.0
+@export var blood_evidence_detection_radius_px: float = 150.0
 
 ## ============================================================================
 ## SECTION: Stealth Canon (Phase 0)
@@ -374,6 +384,8 @@ const DEFAULT_NON_LAYOUT_SCALARS := {
 	"blood_max_decals": 500,
 	"blood_darken_rate": 0.01,
 	"blood_desaturate_rate": 0.005,
+	"blood_evidence_ttl_sec": 90.0,
+	"blood_evidence_detection_radius_px": 150.0,
 	"vignette_alpha": 0.3,
 	"floor_overlay_alpha": 0.15,
 	"atmosphere_particle_alpha_min": 0.05,

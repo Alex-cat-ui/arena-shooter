@@ -1,0 +1,7 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_comm_delay_prevents_telepathy.gd" id="1_script"]
+
+[node name="TestCommDelayPreventsTelepathy" type="Node"]
+script = ExtResource("1_script")
+

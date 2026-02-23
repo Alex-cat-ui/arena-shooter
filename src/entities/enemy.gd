@@ -139,6 +139,9 @@ var _shot_cooldown: float = 0.0
 var _player_visible_prev: bool = false
 var _confirmed_visual_prev: bool = false
 var _shot_rng := RandomNumberGenerator.new()
+var _perception_rng: RandomNumberGenerator = null
+var _reaction_warmup_timer: float = 0.0
+var _had_visual_los_last_frame: bool = false
 var _last_seen_pos: Vector2 = Vector2.ZERO
 var _last_seen_age: float = INF
 var _investigate_anchor: Vector2 = Vector2.ZERO
@@ -273,6 +276,11 @@ func _ready() -> void:
 	print("ENEMY_RUNTIME_MARKER_v20260216")
 	add_to_group("enemies")
 	_shot_rng.randomize()
+	_perception_rng = RandomNumberGenerator.new()
+	var perception_layout_seed: int = int(GameConfig.layout_seed) if GameConfig else 0
+	_perception_rng.seed = (int(entity_id) * 6364136223846793005) ^ perception_layout_seed
+	_reaction_warmup_timer = 0.0
+	_had_visual_los_last_frame = false
 	_perception = ENEMY_PERCEPTION_SYSTEM_SCRIPT.new(self)
 	_pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(self, sprite, speed_tiles)
 	var nav_agent := $NavAgent as NavigationAgent2D
@@ -329,6 +337,8 @@ func initialize(id: int, type: String) -> void:
 	_shadow_scan_completed_reason = "none"
 	_player_visible_prev = false
 	_confirmed_visual_prev = false
+	_reaction_warmup_timer = 0.0
+	_had_visual_los_last_frame = false
 	_test_los_look_grace_timer = 0.0
 	_intent_stability_lock_timer = 0.0
 	_intent_stability_last_type = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
@@ -557,10 +567,11 @@ func runtime_budget_tick(delta: float) -> void:
 	else:
 		_test_los_look_grace_timer = maxf(0.0, _test_los_look_grace_timer - maxf(delta, 0.0))
 
+	var gated_los: bool = _tick_reaction_warmup(delta, raw_player_visible)
 	if _awareness and _awareness.has_method("process_confirm"):
 		_apply_awareness_transitions(_awareness.process_confirm(
 			delta,
-			raw_player_visible,
+			gated_los,
 			in_shadow,
 			flashlight_hit,
 			_build_confirm_runtime_config(_stealth_canon_config())
@@ -760,6 +771,31 @@ func runtime_budget_tick(delta: float) -> void:
 		AIWatchdog.end_ai_tick()
 
 
+func _tick_reaction_warmup(delta: float, raw_los: bool) -> bool:
+	var awareness_state: int = int(_awareness.get_awareness_state()) if _awareness and _awareness.has_method("get_awareness_state") else 0
+	var clamped_delta := maxf(delta, 0.0)
+	if (not _had_visual_los_last_frame) and raw_los and awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.CALM:
+		var fairness_cfg := {}
+		if GameConfig and GameConfig.ai_balance.has("fairness"):
+			fairness_cfg = GameConfig.ai_balance["fairness"] as Dictionary
+		var cfg_min := float(fairness_cfg.get("reaction_warmup_min_sec", 0.15))
+		var cfg_max := float(fairness_cfg.get("reaction_warmup_max_sec", 0.30))
+		var warmup_min := minf(cfg_min, cfg_max)
+		var warmup_max := maxf(cfg_min, cfg_max)
+		if _perception_rng == null:
+			_perception_rng = RandomNumberGenerator.new()
+			var perception_layout_seed: int = int(GameConfig.layout_seed) if GameConfig else 0
+			_perception_rng.seed = (int(entity_id) * 6364136223846793005) ^ perception_layout_seed
+		_reaction_warmup_timer = _perception_rng.randf_range(warmup_min, warmup_max)
+	if _reaction_warmup_timer > 0.0:
+		_reaction_warmup_timer = maxf(0.0, _reaction_warmup_timer - clamped_delta)
+		_had_visual_los_last_frame = raw_los
+		if _reaction_warmup_timer > 0.0:
+			return false
+	_had_visual_los_last_frame = raw_los
+	return raw_los
+
+
 func set_room_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	nav_system = p_nav_system
 	home_room_id = p_home_room_id
@@ -844,6 +880,19 @@ func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: 
 		if _awareness.has_method("override_alert_hold_timer"):
 			_awareness.override_alert_hold_timer(randf_range(8.0, 15.0))
 	return true
+
+
+func apply_blood_evidence(evidence_pos: Vector2) -> bool:
+	if not _awareness:
+		return false
+	if _awareness.get_state() != EnemyAwarenessSystem.State.CALM:
+		return false
+	_investigate_anchor = evidence_pos
+	_investigate_anchor_valid = true
+	_investigate_target_in_shadow = false
+	var transitions: Array[Dictionary] = _awareness.register_blood_evidence()
+	_apply_awareness_transitions(transitions, "blood_evidence")
+	return transitions.size() > 0
 
 
 func debug_force_awareness_state(target_state: String) -> void:
@@ -968,7 +1017,7 @@ func _apply_awareness_transitions(transitions: Array[Dictionary], source: String
 			elif to_state == AWARENESS_ALERT:
 				_shadow_linger_flashlight = false
 			if to_state == AWARENESS_SUSPICIOUS:
-				if _last_seen_pos != Vector2.ZERO:
+				if source != "blood_evidence" and _last_seen_pos != Vector2.ZERO:
 					_investigate_anchor = _last_seen_pos
 					_investigate_anchor_valid = true
 			elif from_state == AWARENESS_SUSPICIOUS and to_state != AWARENESS_SUSPICIOUS:

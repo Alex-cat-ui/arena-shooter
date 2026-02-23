@@ -112,16 +112,19 @@ func _test_target_dedup_and_cooldown() -> void:
 	EventBus.emit_enemy_teammate_call(100, 10, 7001, 0.0, Vector2.ZERO)
 	EventBus.emit_enemy_teammate_call(100, 10, 7001, 0.0, Vector2.ZERO)
 	await _flush_event_bus_frames()
+	_force_deliver_pending_calls(coordinator, 1.0)
 	var accepts_after_dedup := target.teammate_accepts
 
-	coordinator.call("debug_set_time_override_sec", 1.0)
-	EventBus.emit_enemy_teammate_call(100, 10, 7002, 1.0, Vector2.ZERO)
+	coordinator.call("debug_set_time_override_sec", 1.1)
+	EventBus.emit_enemy_teammate_call(100, 10, 7002, 1.1, Vector2.ZERO)
 	await _flush_event_bus_frames()
+	_force_deliver_pending_calls(coordinator, 2.0)
 	var accepts_after_cooldown_block := target.teammate_accepts
 
-	coordinator.call("debug_set_time_override_sec", 6.2)
-	EventBus.emit_enemy_teammate_call(100, 10, 7003, 6.2, Vector2.ZERO)
+	coordinator.call("debug_set_time_override_sec", 7.2)
+	EventBus.emit_enemy_teammate_call(100, 10, 7003, 7.2, Vector2.ZERO)
 	await _flush_event_bus_frames()
+	_force_deliver_pending_calls(coordinator, 8.2)
 
 	_t.run_test("dedup-key(target,call_id): duplicate call is consumed once", accepts_after_dedup == 1)
 	_t.run_test("target cooldown 6s blocks immediate re-accept", accepts_after_cooldown_block == 1)
@@ -176,6 +179,11 @@ func _cleanup_fixture(fixture: Dictionary) -> void:
 func _flush_event_bus_frames(frames: int = 4) -> void:
 	for _i in range(frames):
 		await get_tree().process_frame
+
+
+func _force_deliver_pending_calls(coordinator: Node, time_sec: float) -> void:
+	coordinator.call("debug_set_time_override_sec", time_sec)
+	coordinator.call("_drain_pending_teammate_calls")
 
 
 func _on_teammate_call_counter(_source_enemy_id: int, _source_room_id: int, _call_id: int, _timestamp_sec: float, _shot_pos: Vector2) -> void:

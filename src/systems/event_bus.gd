@@ -76,6 +76,9 @@ signal enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, tar
 ## One-shot teammate call on SUSPICIOUS->ALERT edge.
 signal enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, timestamp_sec: float, shot_pos: Vector2)
 
+## Enemy detected blood evidence and entered investigation flow.
+signal blood_evidence_detected(enemy_id: int, evidence_pos: Vector2)
+
 ## Zone state changed
 signal zone_state_changed(zone_id: int, old_state: int, new_state: int)
 
@@ -207,6 +210,9 @@ func emit_enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, 
 
 func emit_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, timestamp_sec: float, shot_pos: Vector2 = Vector2.ZERO) -> void:
 	_queue_event("enemy_teammate_call", [source_enemy_id, source_room_id, call_id, timestamp_sec, shot_pos], Priority.HIGH)
+
+func emit_blood_evidence_detected(enemy_id: int, evidence_pos: Vector2) -> void:
+	_queue_event("blood_evidence_detected", [enemy_id, evidence_pos], Priority.HIGH)
 
 func emit_zone_state_changed(zone_id: int, old_state: int, new_state: int) -> void:
 	_queue_event("zone_state_changed", [zone_id, old_state, new_state], Priority.HIGH)
@@ -366,6 +372,8 @@ func _dispatch_event(event: Dictionary) -> void:
 			enemy_reinforcement_called.emit(event.args[0], event.args[1], event.args[2])
 		"enemy_teammate_call":
 			enemy_teammate_call.emit(event.args[0], event.args[1], event.args[2], event.args[3], event.args[4])
+		"blood_evidence_detected":
+			blood_evidence_detected.emit(event.args[0], event.args[1])
 		"zone_state_changed":
 			zone_state_changed.emit(event.args[0], event.args[1], event.args[2])
 		"hostile_escalation":

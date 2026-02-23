@@ -97,6 +97,12 @@ const SHADOW_SEARCH_STAGE_TRANSITION_TEST_SCENE := "res://tests/test_shadow_sear
 const SHADOW_SEARCH_PROGRESSIVE_COVERAGE_TEST_SCENE := "res://tests/test_shadow_search_choreography_progressive_coverage.tscn"
 const FLASHLIGHT_SCANNER_ROLE_ASSIGNMENT_TEST_SCENE := "res://tests/test_flashlight_single_scanner_role_assignment.tscn"
 const TEAM_CONTAIN_FLASHLIGHT_PRESSURE_TEST_SCENE := "res://tests/test_team_contain_with_flashlight_pressure.tscn"
+const COMM_DELAY_PREVENTS_TELEPATHY_TEST_SCENE := "res://tests/test_comm_delay_prevents_telepathy.tscn"
+const REACTION_LATENCY_WINDOW_RESPECTED_TEST_SCENE := "res://tests/test_reaction_latency_window_respected.tscn"
+const SEEDED_VARIATION_DETERMINISTIC_PER_SEED_TEST_SCENE := "res://tests/test_seeded_variation_deterministic_per_seed.tscn"
+const BLOOD_EVIDENCE_INVESTIGATE_ANCHOR_TEST_SCENE := "res://tests/test_blood_evidence_sets_investigate_anchor.tscn"
+const BLOOD_EVIDENCE_NO_INSTANT_COMBAT_TEST_SCENE := "res://tests/test_blood_evidence_no_instant_combat_without_confirm.tscn"
+const BLOOD_EVIDENCE_TTL_EXPIRES_TEST_SCENE := "res://tests/test_blood_evidence_ttl_expires.tscn"
 const FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE := "res://tests/test_friendly_block_prevents_fire_and_triggers_reposition.tscn"
 const SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE := "res://tests/test_shadow_flashlight_rule_blocks_or_allows_fire.tscn"
 const SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE := "res://tests/test_shadow_single_source_of_truth_nav_and_detection.tscn"
@@ -1225,6 +1231,54 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite(
 		"Team contain flashlight pressure suite",
 		TEAM_CONTAIN_FLASHLIGHT_PRESSURE_TEST_SCENE
+	)
+
+	print("\n--- SECTION 18g: Phase 13 fairness latency/delay/seed tests ---")
+
+	_test("Comm delay prevents telepathy test scene exists", func():
+		return _scene_exists(COMM_DELAY_PREVENTS_TELEPATHY_TEST_SCENE)
+	)
+	_test("Reaction latency window respected test scene exists", func():
+		return _scene_exists(REACTION_LATENCY_WINDOW_RESPECTED_TEST_SCENE)
+	)
+	_test("Seeded variation deterministic per seed test scene exists", func():
+		return _scene_exists(SEEDED_VARIATION_DETERMINISTIC_PER_SEED_TEST_SCENE)
+	)
+	await _run_embedded_scene_suite(
+		"Comm delay prevents telepathy suite",
+		COMM_DELAY_PREVENTS_TELEPATHY_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Reaction latency window respected suite",
+		REACTION_LATENCY_WINDOW_RESPECTED_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Seeded variation deterministic per seed suite",
+		SEEDED_VARIATION_DETERMINISTIC_PER_SEED_TEST_SCENE
+	)
+
+	print("\n--- SECTION 18h: Phase 14 blood evidence tests ---")
+
+	_test("Blood evidence investigate-anchor test scene exists", func():
+		return _scene_exists(BLOOD_EVIDENCE_INVESTIGATE_ANCHOR_TEST_SCENE)
+	)
+	_test("Blood evidence no-instant-combat test scene exists", func():
+		return _scene_exists(BLOOD_EVIDENCE_NO_INSTANT_COMBAT_TEST_SCENE)
+	)
+	_test("Blood evidence TTL expiry test scene exists", func():
+		return _scene_exists(BLOOD_EVIDENCE_TTL_EXPIRES_TEST_SCENE)
+	)
+	await _run_embedded_scene_suite(
+		"Blood evidence investigate-anchor suite",
+		BLOOD_EVIDENCE_INVESTIGATE_ANCHOR_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Blood evidence no-instant-combat suite",
+		BLOOD_EVIDENCE_NO_INSTANT_COMBAT_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Blood evidence TTL expiry suite",
+		BLOOD_EVIDENCE_TTL_EXPIRES_TEST_SCENE
 	)
 
 	print("\n--- SECTION 19: Level decomposition controller suites ---")

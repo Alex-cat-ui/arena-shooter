@@ -629,9 +629,8 @@ func _spawn_enemies() -> void:
 			continue
 
 		enemy.position = _spawn_position(spawn)
-		_entities_root.add_child(enemy)
-
 		enemy.initialize(_enemy_id_counter, String(spawn.get("type", "zombie")))
+		_entities_root.add_child(enemy)
 		enemy.set_runtime_budget_scheduler_enabled(false)
 		enemy.configure_stealth_test_flashlight(_flashlight_angle_deg(), _flashlight_distance_px(), _flashlight_bonus())
 		enemy.set_flashlight_hit_for_detection(false)

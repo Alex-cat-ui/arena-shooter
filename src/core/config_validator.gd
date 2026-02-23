@@ -6,7 +6,7 @@ extends RefCounted
 
 const REQUIRED_ENEMY_TYPES := ["zombie", "fast", "tank", "swarm"]
 const REQUIRED_PROJECTILE_TYPES := ["bullet", "pellet", "plasma", "rocket", "piercing_bullet"]
-const REQUIRED_AI_BALANCE_SECTIONS := ["enemy_vision", "pursuit", "utility", "alert", "squad", "patrol", "spawner"]
+const REQUIRED_AI_BALANCE_SECTIONS := ["enemy_vision", "pursuit", "utility", "alert", "fairness", "squad", "patrol", "spawner"]
 const REQUIRED_ROOM_SIZE_KEYS := ["LARGE", "MEDIUM", "SMALL"]
 
 ## Validation result structure
@@ -60,6 +60,13 @@ static func validate() -> ValidationResult:
 	# Physics validation
 	if GameConfig.player_speed_tiles < 0.1:
 		result.add_error("player_speed_tiles must be at least 0.1")
+
+	var blood_evidence_cfg := {
+		"blood_evidence_ttl_sec": GameConfig.blood_evidence_ttl_sec,
+		"blood_evidence_detection_radius_px": GameConfig.blood_evidence_detection_radius_px,
+	}
+	_validate_number_key(result, blood_evidence_cfg, "blood_evidence_ttl_sec", "game_config", 1.0, 100000.0)
+	_validate_number_key(result, blood_evidence_cfg, "blood_evidence_detection_radius_px", "game_config", 1.0, 100000.0)
 
 	_validate_enemy_stats(result)
 	_validate_projectile_ttl(result)
@@ -236,6 +243,13 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_number_key(result, alert, "alert_ttl_sec", "ai_balance.alert", 0.01, 120.0)
 		_validate_number_key(result, alert, "combat_ttl_sec", "ai_balance.alert", 0.01, 120.0)
 		_validate_number_key(result, alert, "visibility_decay_sec", "ai_balance.alert", 0.0, 120.0)
+
+	var fairness := _ai_section(result, ai_balance, "fairness")
+	if not fairness.is_empty():
+		_validate_number_key(result, fairness, "reaction_warmup_min_sec", "ai_balance.fairness", 0.0, 30.0)
+		_validate_number_key(result, fairness, "reaction_warmup_max_sec", "ai_balance.fairness", 0.0, 30.0)
+		_validate_number_key(result, fairness, "comm_delay_min_sec", "ai_balance.fairness", 0.0, 30.0)
+		_validate_number_key(result, fairness, "comm_delay_max_sec", "ai_balance.fairness", 0.0, 30.0)
 
 	var squad := _ai_section(result, ai_balance, "squad")
 	if not squad.is_empty():

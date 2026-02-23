@@ -71,6 +71,7 @@ func run_suite() -> Dictionary:
 
 func _test_room_graph_gate_blocks_telepathy() -> void:
 	var fixture := _create_fixture()
+	var coordinator := fixture.get("coordinator") as Node
 	var source := fixture.get("source") as FakeEnemy
 	var same_room := fixture.get("same_room") as FakeEnemy
 	var adjacent_room := fixture.get("adjacent_room") as FakeEnemy
@@ -78,6 +79,8 @@ func _test_room_graph_gate_blocks_telepathy() -> void:
 
 	EventBus.emit_enemy_teammate_call(source.entity_id, 10, 8801, 0.0, Vector2.ZERO)
 	await _flush_event_bus_frames()
+	coordinator.call("debug_set_time_override_sec", 1.0)
+	coordinator.call("_drain_pending_teammate_calls")
 
 	_t.run_test("same-room teammate call accepted", same_room.teammate_accepts == 1)
 	_t.run_test("adjacent-room teammate call accepted", adjacent_room.teammate_accepts == 1)

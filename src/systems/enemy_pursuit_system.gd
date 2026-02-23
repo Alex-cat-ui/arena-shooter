@@ -120,8 +120,18 @@ func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -
 	owner = p_owner
 	sprite = p_sprite
 	speed_tiles = p_speed_tiles
-	_rng.randomize()
+	_rng.seed = _compute_pursuit_seed()
 	_patrol = ENEMY_PATROL_SYSTEM_SCRIPT.new(owner)
+
+
+func _compute_pursuit_seed() -> int:
+	if owner == null or not ("entity_id" in owner):
+		return 2654435761
+	var eid: int = int(owner.entity_id)
+	var lseed: int = int(GameConfig.layout_seed) if GameConfig else 0
+	if eid == 0:
+		return lseed
+	return (eid * 2654435761) ^ lseed
 
 
 func set_speed_tiles(p_speed_tiles: float) -> void:

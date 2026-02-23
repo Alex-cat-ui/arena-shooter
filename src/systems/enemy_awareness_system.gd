@@ -242,6 +242,14 @@ func register_teammate_call() -> Array[Dictionary]:
 	return _promote_to_alert("teammate_call", true)
 
 
+func register_blood_evidence() -> Array[Dictionary]:
+	var transitions: Array[Dictionary] = []
+	if _state != State.CALM:
+		return transitions
+	_transition_to(State.SUSPICIOUS, "blood_evidence", transitions)
+	return transitions
+
+
 func _promote_to_alert(reason: String, refresh_combat_timer: bool) -> Array[Dictionary]:
 	var transitions: Array[Dictionary] = []
 	if _state == State.COMBAT:

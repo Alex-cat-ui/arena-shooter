@@ -2,6 +2,29 @@
 
 ## 2026-02-23
 
+### 23:33 MSK - Phase 14: Blood Evidence System (SUSPICIOUS-only investigation, TTL expiry)
+- **Added**: `BloodEvidenceSystem` (`src/systems/blood_evidence_system.gd`) — subscribes to `EventBus.blood_spawned`, stores TTL-limited blood evidence entries, notifies nearby CALM enemies, deduplicates per-entry by `entity_id`
+- **Added**: `EnemyAwarenessSystem.register_blood_evidence()` (CALM -> SUSPICIOUS only, reason `blood_evidence`; never ALERT/COMBAT)
+- **Added**: `Enemy.apply_blood_evidence(evidence_pos)` — writes investigate anchor and routes transitions through awareness system
+- **Changed**: `Enemy._apply_awareness_transitions(...)` preserves blood evidence investigate anchor (does not overwrite it with `_last_seen_pos` on SUSPICIOUS transition when source is `blood_evidence`)
+- **Added**: `EventBus.blood_evidence_detected(enemy_id, evidence_pos)` signal + emitter + dispatch case (HIGH priority, not in `SECONDARY_EVENTS`)
+- **Added**: `GameConfig` blood evidence tuning scalars (`blood_evidence_ttl_sec`, `blood_evidence_detection_radius_px`) + validator checks in `ConfigValidator`
+- **Added**: `LevelContext.blood_evidence_system` and bootstrap wiring in `LevelBootstrapController`
+- **Added tests**: `tests/test_blood_evidence_sets_investigate_anchor.gd/.tscn`, `tests/test_blood_evidence_no_instant_combat_without_confirm.gd/.tscn`, `tests/test_blood_evidence_ttl_expires.gd/.tscn` + runner registration in `tests/test_runner_node.gd`
+- **Verification**: full Tier 2 regression `test_runner.tscn` passed (`377/377`)
+
+### Phase 13: Fairness Latency + Comm Delay + Deterministic Pursuit Seed
+- **Removed**: non-deterministic `EnemyPursuitSystem._rng.randomize()` in `_init()`; replaced with `_compute_pursuit_seed()` seeded by `entity_id` and `GameConfig.layout_seed`
+- **Added**: `Enemy._perception_rng`, `_reaction_warmup_timer`, `_had_visual_los_last_frame`, and `_tick_reaction_warmup(...)`; `process_confirm(...)` now receives gated LOS during CALM reaction warmup
+- **Added**: `EnemyAggroCoordinator` pending teammate-call queue (`_pending_teammate_calls`) with seeded `_comm_rng`, delayed enqueue in `_on_enemy_teammate_call(...)`, and `_drain_pending_teammate_calls()` from `_process(...)`
+- **Added**: `ai_balance.fairness` defaults (`reaction_warmup_*`, `comm_delay_*`) in `game_config.gd` and validator checks in `config_validator.gd`
+- **Added**: new unit suites `tests/test_comm_delay_prevents_telepathy.gd/.tscn`, `tests/test_reaction_latency_window_respected.gd/.tscn`, `tests/test_seeded_variation_deterministic_per_seed.gd/.tscn` + `tests/test_runner_node.gd` SECTION `18g` registration
+- **Note**: reaction warmup release is implemented with same-tick resume when timer reaches zero (avoids extra +1 frame latency in stealth gameplay)
+
+### Post-Phase 13 gameplay patch (user-requested): Stealth 3-zone enemy init order
+- **Changed**: `src/levels/stealth_3zone_test_controller.gd` now calls `enemy.initialize(...)` before `add_child(enemy)` so `entity_id` is available during `Enemy._ready()` / `EnemyPursuitSystem._init()` seeding
+- **Gameplay impact**: improves per-enemy deterministic variation in the `stealth_3zone` scene and reduces clone-like synchronized behavior under fairness seeding
+
 ### Phase 12: Flashlight Team Role Policy
 - **Added**: squad-level flashlight scanner slot policy in `EnemySquadSystem` (`_scanner_slots`, `_rebuild_scanner_slots()`, `get_scanner_allowed()`) with deterministic priority `PRESSURE > HOLD`, ascending `enemy_id`, and `FLANK` hard exclusion
 - **Changed**: `EnemySquadSystem._recompute_assignments()` now rebuilds/pushes scanner permissions after assignment recompute via `set_flashlight_scanner_allowed(...)`

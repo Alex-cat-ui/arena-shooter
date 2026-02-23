@@ -5,6 +5,7 @@ const ENEMY_SCENE = preload("res://scenes/entities/enemy.tscn")
 const ROOM_ENEMY_SPAWNER_SCRIPT = preload("res://src/systems/room_enemy_spawner.gd")
 const NAVIGATION_SERVICE_SCRIPT = preload("res://src/systems/navigation_service.gd")
 const ENEMY_AGGRO_COORDINATOR_SCRIPT = preload("res://src/systems/enemy_aggro_coordinator.gd")
+const BLOOD_EVIDENCE_SYSTEM_SCRIPT = preload("res://src/systems/blood_evidence_system.gd")
 const ENEMY_ALERT_SYSTEM_SCRIPT = preload("res://src/systems/enemy_alert_system.gd")
 const ENEMY_SQUAD_SYSTEM_SCRIPT = preload("res://src/systems/enemy_squad_system.gd")
 const LAYOUT_DOOR_SYSTEM_SCRIPT = preload("res://src/systems/layout_door_system.gd")
@@ -140,6 +141,12 @@ func init_systems(
 		ctx.enemy_aggro_coordinator.initialize(ctx.entities_container, ctx.navigation_service, ctx.player)
 	if ctx.enemy_aggro_coordinator and ctx.enemy_aggro_coordinator.has_method("set_zone_director"):
 		ctx.enemy_aggro_coordinator.set_zone_director(ctx.zone_director)
+
+	ctx.blood_evidence_system = BLOOD_EVIDENCE_SYSTEM_SCRIPT.new()
+	ctx.blood_evidence_system.name = "BloodEvidenceSystem"
+	ctx.level.add_child(ctx.blood_evidence_system)
+	if ctx.blood_evidence_system and ctx.blood_evidence_system.has_method("initialize"):
+		ctx.blood_evidence_system.initialize(ctx.entities_container)
 
 	ctx.runtime_budget_controller = LEVEL_RUNTIME_BUDGET_CONTROLLER_SCRIPT.new()
 	if ctx.runtime_budget_controller and ctx.runtime_budget_controller.has_method("bind"):

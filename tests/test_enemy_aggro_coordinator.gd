@@ -156,9 +156,12 @@ func _test_teammate_call_acceptance_reported_to_zone_director() -> void:
 	var source := fixture["source"] as FakeEnemy
 	var same_room_calm := fixture["same_room_calm"] as FakeEnemy
 	var director := fixture["director"] as FakeZoneDirector
+	var coordinator := fixture["coordinator"] as Node
 
 	EventBus.emit_enemy_state_changed(source.entity_id, "SUSPICIOUS", "ALERT", 10, "vision")
 	await _flush_event_bus_frames(5)
+	coordinator.call("debug_set_time_override_sec", 999999.0)
+	coordinator.call("_drain_pending_teammate_calls")
 
 	_t.run_test("teammate call accepted by calm target", same_room_calm.teammate_calls == 1)
 	_t.run_test("accepted teammate call reported to ZoneDirector", director.accepted_teammate_calls.size() >= 1)
@@ -170,12 +173,15 @@ func _test_teammate_call_forwards_source_anchor() -> void:
 	var fixture := _create_fixture(ZONE_ELEVATED)
 	var source := fixture["source"] as FakeEnemy
 	var same_room_calm := fixture["same_room_calm"] as FakeEnemy
+	var coordinator := fixture["coordinator"] as Node
 	var anchor := Vector2(320.0, 144.0)
 
 	source._investigate_anchor = anchor
 	source._investigate_anchor_valid = true
 	EventBus.emit_enemy_state_changed(source.entity_id, "SUSPICIOUS", "ALERT", 10, "vision")
 	await _flush_event_bus_frames(5)
+	coordinator.call("debug_set_time_override_sec", 999999.0)
+	coordinator.call("_drain_pending_teammate_calls")
 
 	_t.run_test(
 		"teammate call forwards source investigate anchor as shot_pos",

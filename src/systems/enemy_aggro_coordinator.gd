@@ -20,10 +20,14 @@ var _source_last_call_sec: Dictionary = {} # source_enemy_id -> last emitted sec
 var _target_last_accept_sec: Dictionary = {} # target_enemy_id -> last accepted sec
 var _target_call_dedup: Dictionary = {} # "target_id|call_id" -> true
 var _debug_time_override_sec: float = -1.0
+var _pending_teammate_calls: Array[Dictionary] = []
+var _comm_rng: RandomNumberGenerator = RandomNumberGenerator.new()
 
 
 func initialize(p_entities_container: Node = null, p_navigation_service: Node = null, p_player_node: Node = null) -> void:
 	bind_context(p_entities_container, p_navigation_service, p_player_node)
+	var layout_seed: int = int(GameConfig.layout_seed) if GameConfig else 0
+	_comm_rng.seed = layout_seed
 	_connect_event_bus_signals()
 
 
@@ -64,6 +68,11 @@ func _on_enemy_state_changed(enemy_id: int, from_state: String, to_state: String
 func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, _timestamp_sec: float, shot_pos: Vector2) -> void:
 	if source_enemy_id <= 0 or source_room_id < 0 or call_id <= 0:
 		return
+	var fairness_cfg := _fairness_cfg()
+	var comm_delay_min_sec := float(fairness_cfg.get("comm_delay_min_sec", 0.30))
+	var comm_delay_max_sec := float(fairness_cfg.get("comm_delay_max_sec", 0.80))
+	var comm_delay_low := minf(comm_delay_min_sec, comm_delay_max_sec)
+	var comm_delay_high := maxf(comm_delay_min_sec, comm_delay_max_sec)
 	for enemy_variant in _get_all_enemies():
 		var enemy := enemy_variant as Node
 		if enemy == null:
@@ -82,13 +91,17 @@ func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id:
 			continue
 		if not enemy.has_method("apply_teammate_call"):
 			continue
-		var accepted_variant: Variant = enemy.call("apply_teammate_call", source_enemy_id, source_room_id, call_id, shot_pos)
-		var accepted := bool(accepted_variant)
-		if accepted:
-			_target_last_accept_sec[target_enemy_id] = _now_sec()
-			var director := _resolve_zone_director()
-			if director and director.has_method("record_accepted_teammate_call"):
-				director.record_accepted_teammate_call(source_room_id, target_room_id)
+		var fire_at_sec := _now_sec() + _comm_rng.randf_range(comm_delay_low, comm_delay_high)
+		_pending_teammate_calls.append({
+			"enemy_ref": weakref(enemy),
+			"source_enemy_id": source_enemy_id,
+			"source_room_id": source_room_id,
+			"target_enemy_id": target_enemy_id,
+			"target_room_id": target_room_id,
+			"call_id": call_id,
+			"shot_pos": shot_pos,
+			"fire_at_sec": fire_at_sec,
+		})
 
 
 func _is_valid_escalation_source(reason: String) -> bool:
@@ -202,6 +215,56 @@ func debug_set_time_override_sec(time_sec: float) -> void:
 
 func debug_clear_time_override_sec() -> void:
 	_debug_time_override_sec = -1.0
+
+
+func _fairness_cfg() -> Dictionary:
+	if GameConfig and GameConfig.ai_balance.has("fairness"):
+		return GameConfig.ai_balance["fairness"] as Dictionary
+	return {}
+
+
+func _process(_delta: float) -> void:
+	_drain_pending_teammate_calls()
+
+
+func _drain_pending_teammate_calls() -> void:
+	if _pending_teammate_calls.is_empty():
+		return
+	var now := _now_sec()
+	var to_fire: Array[Dictionary] = []
+	var remaining: Array[Dictionary] = []
+	for entry in _pending_teammate_calls:
+		if float(entry.get("fire_at_sec", INF)) <= now:
+			to_fire.append(entry)
+		else:
+			remaining.append(entry)
+	_pending_teammate_calls = remaining
+
+	for entry in to_fire:
+		var enemy_ref := entry.get("enemy_ref", null) as WeakRef
+		if enemy_ref == null:
+			continue
+		var enemy := enemy_ref.get_ref() as Node
+		if enemy == null or not enemy.is_in_group("enemies"):
+			continue
+		if not enemy.has_method("apply_teammate_call"):
+			continue
+		var accepted_variant: Variant = enemy.call(
+			"apply_teammate_call",
+			int(entry.get("source_enemy_id", -1)),
+			int(entry.get("source_room_id", -1)),
+			int(entry.get("call_id", -1)),
+			entry.get("shot_pos", Vector2.ZERO) as Vector2
+		)
+		if not bool(accepted_variant):
+			continue
+		var target_enemy_id := int(entry.get("target_enemy_id", -1))
+		if target_enemy_id > 0:
+			_target_last_accept_sec[target_enemy_id] = _now_sec()
+		var director := _resolve_zone_director()
+		var target_room_id := int(entry.get("target_room_id", -1))
+		if director and director.has_method("record_accepted_teammate_call"):
+			director.record_accepted_teammate_call(int(entry.get("source_room_id", -1)), target_room_id)
 
 
 func _call_reinforcements(source_enemy_id: int, source_room_id: int, reason: String, source_awareness_state: String = ALERT_STATE) -> void:
