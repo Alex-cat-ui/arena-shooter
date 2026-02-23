@@ -2,6 +2,45 @@
 
 ## 2026-02-23
 
+### Phase 11: Shadow Search Choreography
+- **Changed**: `EnemyPursuitSystem` shadow boundary scan execution now uses staged choreography (`ShadowSearchStage`: `IDLE -> BOUNDARY_LOCK -> SWEEP -> PROBE`) with progressive coverage tracking instead of legacy binary active-flag flow
+- **Added**: public debug accessors `get_shadow_search_stage()` / `get_shadow_search_coverage()` and probe generation helper `_build_shadow_probe_points(...)`
+- **Changed**: `_run_shadow_scan_sweep(...)` now signals sweep completion without clearing full shadow-scan state, enabling multi-step probe continuation
+- **Added**: pursuit config keys `shadow_search_probe_count`, `shadow_search_probe_ring_radius_px`, `shadow_search_coverage_threshold`, `shadow_search_total_budget_sec` + validator checks
+- **Added**: new unit suites `tests/test_shadow_search_stage_transition_contract.gd/.tscn` and `tests/test_shadow_search_choreography_progressive_coverage.gd/.tscn` + `tests/test_runner_node.gd` SECTION 18e registration
+- **Test-only compatibility**: updated `tests/test_alert_combat_shadow_boundary_scan_intent.gd` timeout fixture to Phase 11 stage/timer semantics (no production logic change)
+- **Result**: Phase 11 smoke suites pass; full `test_runner` pass (`361/361`)
+
+### Phase 10: Basic Team Tactics
+- **Added**: HOLD exit-slot generation in `EnemySquadSystem` via `_build_contain_slots_from_exits(...)` using room adjacency + door centers with deterministic ring fallback
+- **Added**: `slot_path_length` propagation in squad assignments (`_pick_slot_for_enemy`, `_recompute_assignments`, `_default_assignment`) plus `_slot_nav_path_length(...)` helper (single nav-length call per winning slot)
+- **Added**: `ai_balance.squad` flank budget keys (`flank_max_path_px=900.0`, `flank_max_time_sec=3.5`, `flank_walk_speed_assumed_px_per_sec=150.0`) and validator rules
+- **Changed**: `Enemy._assignment_supports_flank_role(...)` now enforces path length + ETA budget using squad config values
+- **Added**: `Enemy._squad_cfg_float(...)` helper for reading `GameConfig.ai_balance[\"squad\"]`
+- **Added**: new tactic suites `tests/test_tactic_contain_assigns_exit_slots.gd/.tscn`, `tests/test_tactic_flank_requires_path_and_time_budget.gd/.tscn`, `tests/test_multi_enemy_pressure_no_patrol_regression.gd/.tscn` + `tests/test_runner_node.gd` registration
+- **Updated**: `tests/test_enemy_squad_system.gd` with `slot_path_length` assignment coverage
+- **Note**: kept current `_resolve_contextual_combat_role(...)` runtime behavior unchanged in Phase 10; flank fallback regression fixture is covered through the existing no-contact path to avoid cross-phase gameplay behavior changes
+
+### Phase 9: Shadow-Aware Navigation Cost
+- **Added**: `NavigationRuntimeQueries._score_path_cost(...)` + `NAV_COST_SHADOW_SAMPLE_STEP_PX=16.0`; detour candidate selection in `build_policy_valid_path(...)` now uses score (`path_length + shadow_weight * lit_samples`) instead of pure euclidean length
+- **Changed**: `build_policy_valid_path(...)` signature extended with optional `cost_profile: Dictionary = {}` in both `navigation_runtime_queries.gd` and `navigation_service.gd`
+- **Added**: `EnemyPursuitSystem._build_nav_cost_profile(context)` + `_cost_profile` runtime field; path-plan request now passes `_cost_profile` into navigation contract
+- **Changed**: `enemy.gd` writes `context["pursuit_mode"] = int(_utility_brain.get_pursuit_mode())` immediately after utility-brain update
+- **Added**: `ai_balance.nav_cost` defaults (`shadow_weight_cautious=80.0`, `shadow_weight_aggressive=0.0`, `shadow_sample_step_px=16.0`, `safe_route_max_len_factor=1.35`) + optional validator block (`nav_cost` not required)
+- **Added**: `tests/test_navigation_shadow_cost_prefers_cover_path.gd/.tscn` and `tests/test_navigation_shadow_cost_push_mode_allows_shortcut.gd/.tscn` + `tests/test_runner_node.gd` registration
+- **Test-only compatibility**: updated multiple legacy `FakeNav.build_policy_valid_path(...)` stubs in `tests/` to accept the new optional 4th `cost_profile` argument (no production logic change)
+- **Result**: new Phase 9 smoke suites pass; full `test_runner` pass (`351/351`)
+
+### 17:10 UTC - Phase 8: Pursuit Modes (Gameplay Layer)
+- **Added**: `EnemyUtilityBrain.PursuitMode` enum (`PATROL`, `LOST_CONTACT_SEARCH`, `DIRECT_PRESSURE`, `CONTAIN`, `SHADOW_AWARE_SWEEP`)
+- **Added**: mode state tracking in `enemy_utility_brain.gd` (`_current_mode`, `_mode_hold_timer`) + public accessor `get_pursuit_mode()` + deterministic `_derive_mode_from_intent()`
+- **Changed**: `EnemyUtilityBrain.update()` now derives/holds pursuit mode separately from intent (`mode_min_hold_sec`, anti-jitter guard)
+- **Added**: `ai_balance.utility.mode_min_hold_sec = 0.8` in `game_config.gd` + validator range check (`0.1..5.0`)
+- **Added**: `tests/test_pursuit_mode_selection_by_context.gd/.tscn` and `tests/test_mode_transition_guard_no_jitter.gd/.tscn`
+- **Updated**: `tests/test_enemy_utility_brain.gd` with mode assertions; `tests/test_runner_node.gd` registration (scene constants, existence checks, embedded suite runs)
+- **Note**: preserved current stealth behavior where `SUSPICIOUS` does not choose `SHADOW_BOUNDARY_SCAN`; Phase 8 shadow-aware mode mapping is verified via `ALERT` context to avoid changing established gameplay logic
+- **Result**: Phase 8 smoke suites pass; full `test_runner` pass (`347/347`)
+
 ### 17:20 MSK - Phase 7: Crowd Avoidance + Core Legacy Cleanup
 - **Removed**: dead legacy helpers from `enemy_pursuit_system.gd` (`PATH_POLICY_SAMPLE_STEP_PX`, `_is_owner_in_shadow_without_flashlight`, `_select_nearest_reachable_candidate`, `_nav_path_length_to`, `_path_length`)
 - **Added**: avoidance param init in `EnemyPursuitSystem.configure_nav_agent` (`agent.radius`, `agent.max_speed`) with null guard

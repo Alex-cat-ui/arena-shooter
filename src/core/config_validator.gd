@@ -198,6 +198,10 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_number_key(result, pursuit, "decel_time_sec", "ai_balance.pursuit", 0.01, 10.0)
 		_validate_number_key(result, pursuit, "retreat_distance_px", "ai_balance.pursuit", 0.0, 5000.0)
 		_validate_number_key(result, pursuit, "waypoint_reached_px", "ai_balance.pursuit", 1.0, 500.0)
+		_validate_number_key(result, pursuit, "shadow_search_probe_count", "ai_balance.pursuit", 0.0, 20.0)
+		_validate_number_key(result, pursuit, "shadow_search_probe_ring_radius_px", "ai_balance.pursuit", 1.0, 2000.0)
+		_validate_number_key(result, pursuit, "shadow_search_coverage_threshold", "ai_balance.pursuit", 0.0, 1.0)
+		_validate_number_key(result, pursuit, "shadow_search_total_budget_sec", "ai_balance.pursuit", 0.1, 120.0)
 		_validate_number_key(result, pursuit, "avoidance_radius_px", "ai_balance.pursuit", 1.0, 64.0)
 		_validate_number_key(result, pursuit, "avoidance_max_speed_px_per_sec", "ai_balance.pursuit", 20.0, 400.0)
 		if not is_nan(attack_range_pref_min) and not is_nan(attack_range_max) and attack_range_pref_min > attack_range_max:
@@ -215,8 +219,16 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_number_key(result, utility, "investigate_max_last_seen_age", "ai_balance.utility", 0.0, 60.0)
 		_validate_number_key(result, utility, "slot_reposition_threshold_px", "ai_balance.utility", 0.0, 1000.0)
 		_validate_number_key(result, utility, "intent_target_delta_px", "ai_balance.utility", 0.0, 500.0)
+		_validate_number_key(result, utility, "mode_min_hold_sec", "ai_balance.utility", 0.1, 5.0)
 		if not is_nan(hold_min) and not is_nan(hold_max) and hold_min > hold_max:
 			result.add_error("ai_balance.utility.hold_range_min_px must be <= hold_range_max_px")
+
+	var nav_cost := _ai_section(result, ai_balance, "nav_cost")
+	if not nav_cost.is_empty():
+		_validate_number_key(result, nav_cost, "shadow_weight_cautious", "ai_balance.nav_cost", 0.0, 1000000.0)
+		_validate_number_key(result, nav_cost, "shadow_weight_aggressive", "ai_balance.nav_cost", 0.0, 1000000.0)
+		_validate_number_key(result, nav_cost, "shadow_sample_step_px", "ai_balance.nav_cost", 1.0, 1000.0)
+		_validate_number_key(result, nav_cost, "safe_route_max_len_factor", "ai_balance.nav_cost", 1.0, 10.0)
 
 	var alert := _ai_section(result, ai_balance, "alert")
 	if not alert.is_empty():
@@ -237,6 +249,9 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_int_key(result, squad, "flank_slot_count", "ai_balance.squad", 1, 64)
 		_validate_number_key(result, squad, "invalid_path_score_penalty", "ai_balance.squad", 0.0, 10000000.0)
 		_validate_number_key(result, squad, "slot_path_tail_tolerance_px", "ai_balance.squad", 0.0, 1000.0)
+		_validate_number_key(result, squad, "flank_max_path_px", "ai_balance.squad", 1.0, 10000.0)
+		_validate_number_key(result, squad, "flank_max_time_sec", "ai_balance.squad", 0.1, 60.0)
+		_validate_number_key(result, squad, "flank_walk_speed_assumed_px_per_sec", "ai_balance.squad", 1.0, 10000.0)
 		if not is_nan(pressure_radius) and not is_nan(hold_radius) and pressure_radius > hold_radius:
 			result.add_error("ai_balance.squad.pressure_radius_px must be <= hold_radius_px")
 		if not is_nan(hold_radius) and not is_nan(flank_radius) and hold_radius > flank_radius:

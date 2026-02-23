@@ -20,7 +20,7 @@ class FakeNav:
 	func can_enemy_traverse_point(_enemy: Node, _point: Vector2) -> bool:
 		return true
 
-	func build_policy_valid_path(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> Dictionary:
+	func build_policy_valid_path(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		var key := _key(to_pos)
 		if plan_contracts.has(key):
 			return (plan_contracts.get(key, {}) as Dictionary).duplicate(true)

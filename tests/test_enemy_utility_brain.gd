@@ -45,6 +45,10 @@ func _test_core_decisions() -> void:
 	})
 	var push_intent := brain.update(0.3, push_ctx) as Dictionary
 	_t.run_test("Far combat LOS chooses PUSH", int(push_intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH)
+	_t.run_test(
+		"PUSH intent yields DIRECT_PRESSURE mode",
+		brain.get_pursuit_mode() == ENEMY_UTILITY_BRAIN_SCRIPT.PursuitMode.DIRECT_PRESSURE
+	)
 
 	brain.reset()
 	var retreat_ctx := _ctx({
@@ -56,6 +60,10 @@ func _test_core_decisions() -> void:
 	})
 	var retreat_intent := brain.update(0.3, retreat_ctx) as Dictionary
 	_t.run_test("Low HP close LOS chooses RETREAT", int(retreat_intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT)
+	_t.run_test(
+		"RETREAT intent yields DIRECT_PRESSURE mode",
+		brain.get_pursuit_mode() == ENEMY_UTILITY_BRAIN_SCRIPT.PursuitMode.DIRECT_PRESSURE
+	)
 
 	brain.reset()
 	var investigate_ctx := _ctx({
@@ -67,6 +75,10 @@ func _test_core_decisions() -> void:
 	})
 	var investigate_intent := brain.update(0.3, investigate_ctx) as Dictionary
 	_t.run_test("Recent no-LOS alert chooses INVESTIGATE", int(investigate_intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE)
+	_t.run_test(
+		"INVESTIGATE intent yields LOST_CONTACT_SEARCH mode",
+		brain.get_pursuit_mode() == ENEMY_UTILITY_BRAIN_SCRIPT.PursuitMode.LOST_CONTACT_SEARCH
+	)
 
 	brain.reset()
 	var patrol_ctx := _ctx({
@@ -77,6 +89,10 @@ func _test_core_decisions() -> void:
 	})
 	var patrol_intent := brain.update(0.3, patrol_ctx) as Dictionary
 	_t.run_test("Old no-LOS suspicious chooses PATROL", int(patrol_intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL)
+	_t.run_test(
+		"PATROL intent yields PATROL mode",
+		brain.get_pursuit_mode() == ENEMY_UTILITY_BRAIN_SCRIPT.PursuitMode.PATROL
+	)
 
 	brain.reset()
 	var slot_ctx := _ctx({
@@ -91,6 +107,10 @@ func _test_core_decisions() -> void:
 	})
 	var slot_intent := brain.update(0.3, slot_ctx) as Dictionary
 	_t.run_test("Flank role with slot chooses MOVE_TO_SLOT", int(slot_intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT)
+	_t.run_test(
+		"MOVE_TO_SLOT intent yields CONTAIN mode",
+		brain.get_pursuit_mode() == ENEMY_UTILITY_BRAIN_SCRIPT.PursuitMode.CONTAIN
+	)
 
 
 func _test_antichatter_hold() -> void:

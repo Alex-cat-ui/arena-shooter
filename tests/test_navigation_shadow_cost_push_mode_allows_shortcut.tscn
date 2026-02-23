@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/test_navigation_shadow_cost_push_mode_allows_shortcut.gd" id="1"]
+
+[node name="TestNavigationShadowCostPushModeAllowsShortcut" type="Node"]
+script = ExtResource("1")

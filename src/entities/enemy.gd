@@ -626,6 +626,8 @@ func runtime_budget_tick(delta: float) -> void:
 	_debug_last_target_is_last_seen = bool(context.get("target_is_last_seen", false))
 	var pos_before_intent := global_position
 	var intent: Dictionary = _utility_brain.update(delta, context) if _utility_brain else {}
+	if _utility_brain:
+		context["pursuit_mode"] = int(_utility_brain.get_pursuit_mode())
 	var consumed_shadow_scan_handoff := false
 	if _utility_brain and _utility_brain.has_method("consume_shadow_scan_handoff_selected"):
 		consumed_shadow_scan_handoff = bool(_utility_brain.call("consume_shadow_scan_handoff_selected"))
@@ -1536,6 +1538,13 @@ func _utility_cfg_float(key: String, fallback: float) -> float:
 	return fallback
 
 
+func _squad_cfg_float(key: String, fallback: float) -> float:
+	if GameConfig and GameConfig.ai_balance.has("squad"):
+		var section := GameConfig.ai_balance["squad"] as Dictionary
+		return float(section.get(key, fallback))
+	return fallback
+
+
 func _register_to_squad_system() -> void:
 	if not squad_system:
 		return
@@ -2273,7 +2282,15 @@ func _assignment_supports_flank_role(assignment: Dictionary) -> bool:
 		return false
 	if not bool(assignment.get("has_slot", false)):
 		return false
-	return bool(assignment.get("path_ok", false))
+	if not bool(assignment.get("path_ok", false)):
+		return false
+	var path_length := float(assignment.get("slot_path_length", INF))
+	if path_length > _squad_cfg_float("flank_max_path_px", 900.0):
+		return false
+	var assumed_speed := _squad_cfg_float("flank_walk_speed_assumed_px_per_sec", 150.0)
+	if path_length / maxf(assumed_speed, 0.001) > _squad_cfg_float("flank_max_time_sec", 3.5):
+		return false
+	return true
 
 
 func _resolve_contextual_combat_role(

@@ -18,6 +18,14 @@ enum IntentType {
 	SHADOW_BOUNDARY_SCAN,
 }
 
+enum PursuitMode {
+	PATROL,
+	LOST_CONTACT_SEARCH,
+	DIRECT_PRESSURE,
+	CONTAIN,
+	SHADOW_AWARE_SWEEP,
+}
+
 const DECISION_INTERVAL_SEC := 0.25
 const MIN_ACTION_HOLD_SEC := 0.6
 const HOLD_RANGE_MIN_PX := 390.0
@@ -26,10 +34,13 @@ const RETREAT_HP_RATIO := 0.25
 const INVESTIGATE_MAX_LAST_SEEN_AGE := 3.5
 const INVESTIGATE_ARRIVE_PX := 24.0
 const SEARCH_MAX_LAST_SEEN_AGE := 8.0
+const MODE_MIN_HOLD_SEC := 0.8
 
 var _decision_timer: float = 0.0
 var _action_hold_timer: float = 0.0
 var _current_intent: Dictionary = {"type": IntentType.PATROL}
+var _current_mode: PursuitMode = PursuitMode.PATROL
+var _mode_hold_timer: float = 0.0
 var _shadow_scan_handoff_selected: bool = false
 
 
@@ -37,11 +48,17 @@ func reset() -> void:
 	_decision_timer = 0.0
 	_action_hold_timer = 0.0
 	_current_intent = {"type": IntentType.PATROL}
+	_current_mode = PursuitMode.PATROL
+	_mode_hold_timer = 0.0
 	_shadow_scan_handoff_selected = false
 
 
 func get_current_intent() -> Dictionary:
 	return _current_intent.duplicate(true)
+
+
+func get_pursuit_mode() -> PursuitMode:
+	return _current_mode
 
 
 func consume_shadow_scan_handoff_selected() -> bool:
@@ -54,6 +71,7 @@ func update(delta: float, context: Dictionary) -> Dictionary:
 	_shadow_scan_handoff_selected = false
 	_decision_timer = maxf(0.0, _decision_timer - maxf(delta, 0.0))
 	_action_hold_timer = maxf(0.0, _action_hold_timer - maxf(delta, 0.0))
+	_mode_hold_timer = maxf(0.0, _mode_hold_timer - maxf(delta, 0.0))
 	if _decision_timer > 0.0 and _action_hold_timer > 0.0:
 		return get_current_intent()
 
@@ -64,6 +82,10 @@ func update(delta: float, context: Dictionary) -> Dictionary:
 		_action_hold_timer = _utility_cfg_float("min_action_hold_sec", MIN_ACTION_HOLD_SEC)
 
 	_decision_timer = _utility_cfg_float("decision_interval_sec", DECISION_INTERVAL_SEC)
+	var candidate_mode := _derive_mode_from_intent(_current_intent)
+	if candidate_mode != _current_mode and _mode_hold_timer <= 0.0:
+		_current_mode = candidate_mode
+		_mode_hold_timer = _utility_cfg_float("mode_min_hold_sec", MODE_MIN_HOLD_SEC)
 	return get_current_intent()
 
 
@@ -216,6 +238,21 @@ func _combat_no_los_grace_intent(known_target_pos: Vector2, _last_seen_pos: Vect
 		"type": IntentType.PUSH,
 		"target": target,
 	}
+
+
+func _derive_mode_from_intent(intent: Dictionary) -> PursuitMode:
+	var intent_type := int(intent.get("type", IntentType.PATROL))
+	match intent_type:
+		IntentType.PUSH, IntentType.RETREAT:
+			return PursuitMode.DIRECT_PRESSURE
+		IntentType.HOLD_RANGE, IntentType.MOVE_TO_SLOT:
+			return PursuitMode.CONTAIN
+		IntentType.SHADOW_BOUNDARY_SCAN:
+			return PursuitMode.SHADOW_AWARE_SWEEP
+		IntentType.INVESTIGATE, IntentType.SEARCH, IntentType.RETURN_HOME:
+			return PursuitMode.LOST_CONTACT_SEARCH
+		_:
+			return PursuitMode.PATROL
 
 
 func _intent_changed(a: Dictionary, b: Dictionary) -> bool:

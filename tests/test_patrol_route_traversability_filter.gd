@@ -49,7 +49,7 @@ class ReachNavStub:
 	func is_point_in_shadow(_point: Vector2) -> bool:
 		return false
 
-	func build_policy_valid_path(_from: Vector2, to: Vector2, _enemy: Node = null) -> Dictionary:
+	func build_policy_valid_path(_from: Vector2, to: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		var status := "ok"
 		match mode:
 			"center_only":

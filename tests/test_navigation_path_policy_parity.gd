@@ -80,7 +80,8 @@ func _test_path_policy_parity() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 	nav.layout = FakeLayout.new()
-	nav._nav_regions = [NavigationRegion2D.new()]
+	var stub_region := NavigationRegion2D.new()
+	nav._nav_regions = [stub_region]
 	nav._room_graph = {
 		0: [1],
 		1: [0],
@@ -114,5 +115,7 @@ func _test_path_policy_parity() -> void:
 			and not lit_path.is_empty()
 	)
 
+	nav._nav_regions.clear()
+	stub_region.free()
 	world.queue_free()
 	await get_tree().process_frame

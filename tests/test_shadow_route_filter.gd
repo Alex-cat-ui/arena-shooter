@@ -31,7 +31,7 @@ class ShadowRouteNavStub:
 	func is_point_in_shadow(point: Vector2) -> bool:
 		return point.x < 180.0
 
-	func build_policy_valid_path(_from: Vector2, _to: Vector2, _enemy: Node = null) -> Dictionary:
+	func build_policy_valid_path(_from: Vector2, _to: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		return {"status": "ok", "path_points": [Vector2.ZERO], "reason": "ok"}
 
 

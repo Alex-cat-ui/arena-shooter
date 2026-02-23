@@ -10330,6 +10330,7 @@ Verification report format: section 21.
 - `Enemy._assignment_supports_flank_role(...)` currently checks only `role`, `has_slot`, and `path_ok`; no `slot_role`, `path_status`, or ETA field is read.
 - `Enemy._build_utility_context(...)` publishes `role`, `path_ok`, and `has_slot` only; it does not publish a flank contract gate flag or slot path status/ETA to utility.
 - `EnemyUtilityBrain._choose_intent(...)` has two `MOVE_TO_SLOT` gates in the LOS branch and the final FLANK gate does not read ETA or a flank contract flag.
+- `Enemy._resolve_contextual_combat_role(...)` currently preserves `candidate_role` in the valid-contact mid-range/default path when `flank_available == false`; there is no explicit aggressive fallback `FLANK -> PRESSURE` under valid contact.
 - `NavigationService.build_policy_valid_path(...)` and `NavigationRuntimeQueries.build_policy_valid_path(...)` already expose the path policy contract (`status`, `reason`, `path_points`, optional `blocked_point`) with `status` enums `ok|unreachable_policy|unreachable_geometry`.
 - `NavigationService.get_room_rect(...)` exists and returns the largest room rect; `NavigationService.layout` is a public field; `NavigationService` has no public `get_navigation_obstacles(...)` method.
 - `src/levels/stealth_3zone_test_controller.gd` exposes a test layout `_navigation_obstacles()` method; `src/systems/procedural_layout_v2.gd` in the current tree does not expose `_navigation_obstacles()`, so obstacle-cover extraction logic requires an exact optional branch and a wall-cover baseline path.
@@ -10365,6 +10366,7 @@ Expected current output: `> 0 matches` (legacy slot validation path and config k
 
 Current measurable gap in tactical behavior:
 - `EnemySquadSystem._pick_slot_for_enemy(...)` has no policy path status/reason output and no cover scoring terms, and `EnemyUtilityBrain._choose_intent(...)` has no flank ETA/path-status gate in the LOS `MOVE_TO_SLOT` path.
+- `Enemy._resolve_contextual_combat_role(...)` does not provide an aggressive valid-contact fallback to `PRESSURE` when a FLANK candidate is selected but the Phase 18 flank slot contract is false.
 
 ---
 
@@ -10385,13 +10387,15 @@ Current measurable gap in tactical behavior:
 13. **`src/entities/enemy.gd` — upgrade** `_assignment_supports_flank_role(assignment)` from Phase 10 V1 to Phase 18 V2: require `slot_role == SQUAD_ROLE_FLANK` (fallback to `role` when `slot_role` missing), require `path_status == "ok"` (in addition to `path_ok`), and use `slot_path_eta_sec` when present before the existing distance/time budget checks.
 14. **`src/entities/enemy.gd` — modify** `_build_utility_context(...)` to publish `slot_role`, `slot_path_status`, `slot_path_eta_sec`, and `flank_slot_contract_ok := _assignment_supports_flank_role(assignment)` in the returned utility context.
 15. **`src/systems/enemy_utility_brain.gd` — modify** `_choose_intent(ctx)` LOS branch to read `flank_slot_contract_ok` and gate both `MOVE_TO_SLOT` branches: generic slot reposition and the FLANK-specific `MOVE_TO_SLOT` branch require `role != FLANK or flank_slot_contract_ok == true`.
-16. **New** `tests/test_combat_cover_selection_prefers_valid_cover.gd` + `tests/test_combat_cover_selection_prefers_valid_cover.tscn` — policy-valid cover selection and cover metadata contract tests for `EnemySquadSystem`.
-17. **New** `tests/test_combat_flank_requires_eta_and_path_ok.gd` + `tests/test_combat_flank_requires_eta_and_path_ok.tscn` — `slot_role`/`path_status`/ETA flank gate tests across `Enemy` and `EnemyUtilityBrain`.
-18. **New** `tests/test_combat_role_distribution_not_all_pressure.gd` + `tests/test_combat_role_distribution_not_all_pressure.tscn` — multi-enemy tactical slot-role distribution and cover-source presence regression.
-19. **`tests/test_enemy_squad_system.gd` — update** FakeNav to expose `build_policy_valid_path(...)` contract instead of `build_path_points(...)`; update `_test_path_fallback()` to assert `path_status` and `path_reason`; add `_test_assignment_includes_tactical_contract_fields()`.
-20. **`tests/test_combat_role_lock_and_reassign_triggers.gd` — update** `_test_role_lock_and_triggered_reassign()` manual flank assignment dict to include Phase 18 contract keys and add a `path_status != "ok"` / bad ETA sub-case that proves FLANK is rejected in runtime role selection.
-21. **`tests/test_runner_node.gd` — modify** top-level const block and `_run_tests()` to add 3 scene constants, 3 `_scene_exists(...)` assertions, and 3 `_run_embedded_scene_suite(...)` calls for the new Phase 18 suites.
-22. **`CHANGELOG.md` — prepend** one Phase 18 entry under the current date header after implementation and verification.
+16. **`src/entities/enemy.gd` — modify** `_resolve_contextual_combat_role(...)` to implement `AggressiveValidContactFlankFallbackContractV1`: when `has_valid_contact == true`, `candidate_role == SQUAD_ROLE_FLANK`, and `flank_slot_contract_ok == false` (i.e. `_assignment_supports_flank_role(assignment) == false`), return `SQUAD_ROLE_PRESSURE` instead of preserving the invalid FLANK candidate in the valid-contact mid-range/default path.
+17. **Phase 18 design checkpoint (blocking for item 16):** before implementing the gameplay-impacting aggressive fallback in `_resolve_contextual_combat_role(...)`, perform detailed behavior-impact study + recommended options/tradeoffs, then return for explicit user approval; do not implement item 16 before that approval.
+18. **New** `tests/test_combat_cover_selection_prefers_valid_cover.gd` + `tests/test_combat_cover_selection_prefers_valid_cover.tscn` — policy-valid cover selection and cover metadata contract tests for `EnemySquadSystem`.
+19. **New** `tests/test_combat_flank_requires_eta_and_path_ok.gd` + `tests/test_combat_flank_requires_eta_and_path_ok.tscn` — `slot_role`/`path_status`/ETA flank gate tests across `Enemy` and `EnemyUtilityBrain`.
+20. **New** `tests/test_combat_role_distribution_not_all_pressure.gd` + `tests/test_combat_role_distribution_not_all_pressure.tscn` — multi-enemy tactical slot-role distribution and cover-source presence regression.
+21. **`tests/test_enemy_squad_system.gd` — update** FakeNav to expose `build_policy_valid_path(...)` contract instead of `build_path_points(...)`; update `_test_path_fallback()` to assert `path_status` and `path_reason`; add `_test_assignment_includes_tactical_contract_fields()`.
+22. **`tests/test_combat_role_lock_and_reassign_triggers.gd` — update** `_test_role_lock_and_triggered_reassign()` manual flank assignment dict to include Phase 18 contract keys, add a `path_status != "ok"` / bad ETA sub-case that proves FLANK is rejected in runtime role selection, and add a valid-contact mid-range invalid-FLANK sub-case that asserts `_resolve_contextual_combat_role(...) == SQUAD_ROLE_PRESSURE`.
+23. **`tests/test_runner_node.gd` — modify** top-level const block and `_run_tests()` to add 3 scene constants, 3 `_scene_exists(...)` assertions, and 3 `_run_embedded_scene_suite(...)` calls for the new Phase 18 suites.
+24. **`CHANGELOG.md` — prepend** one Phase 18 entry under the current date header after implementation and verification.
 
 ---
 
@@ -10402,8 +10406,9 @@ Current measurable gap in tactical behavior:
 3. `EnemySquadSystem` validates slot paths only through `navigation_service.build_policy_valid_path(...)` and publishes `path_status`, `path_reason`, `slot_path_length`, and `slot_path_eta_sec` in assignment dictionaries (verified by gates G5–G7 in section 13 and section 12 tests).
 4. `EnemySquadSystem` publishes `slot_role`, `cover_source`, and `cover_los_break_quality` in assignment dictionaries, and HOLD-role selection prefers policy-valid cover slots with higher LOS-break quality over exposed slots under equal or near-equal distance conditions (verified by `tests/test_combat_cover_selection_prefers_valid_cover.gd` and updated `tests/test_enemy_squad_system.gd`).
 5. FLANK tactical slot selection is rejected deterministically when `path_status != "ok"` or ETA/path budget fails; fallback order is `HOLD` then `PRESSURE`, and invalid FLANK `MOVE_TO_SLOT` is blocked in utility when `flank_slot_contract_ok == false` (verified by `tests/test_combat_flank_requires_eta_and_path_ok.gd`, updated `tests/test_combat_role_lock_and_reassign_triggers.gd`, and gates G8–G10 in section 13).
-6. `EnemyUtilityBrain._choose_intent(...)` retains Phase 15 no-LOS doctrine outputs and only tightens the LOS slot-move gates for FLANK contract enforcement (verified by gates G9, G10, PMB-1..PMB-5, and smoke `tests/test_combat_no_los_never_hold_range.gd`).
-7. PMB-1 through PMB-5 remain at expected outputs (verified by PMB gates in section 13 and `pmb_contract_check` in section 21).
+6. `Enemy._resolve_contextual_combat_role(...)` applies an aggressive valid-contact fallback (`candidate_role == SQUAD_ROLE_FLANK` and `flank_slot_contract_ok == false` => `SQUAD_ROLE_PRESSURE`) while preserving the Phase 15 no-contact branch ownership and outputs (verified by updated `tests/test_combat_role_lock_and_reassign_triggers.gd` and runtime scenario P18-H).
+7. `EnemyUtilityBrain._choose_intent(...)` retains Phase 15 no-LOS doctrine outputs and only tightens the LOS slot-move gates for FLANK contract enforcement (verified by gates G9, G10, PMB-1..PMB-5, and smoke `tests/test_combat_no_los_never_hold_range.gd`).
+8. PMB-1 through PMB-5 remain at expected outputs (verified by PMB gates in section 13 and `pmb_contract_check` in section 21).
 
 ---
 
@@ -10451,6 +10456,8 @@ Allowed file-change boundary (exact paths): same as the in-scope list above.
 Phase 18 introduces one new primary decision: tactical slot selection with cover scoring plus policy-valid path/ETA gating and deterministic FLANK fallback ordering. That decision occurs in `EnemySquadSystem._pick_slot_for_enemy(...)` only. `Enemy` and `EnemyUtilityBrain` consume the resulting assignment contract and the derived `flank_slot_contract_ok` flag; they do not score cover candidates.
 
 **Secondary inherited guard owner (Phase 10 contract extension, no cover scoring duplication):** `Enemy._assignment_supports_flank_role(assignment: Dictionary) -> bool` in `src/entities/enemy.gd` remains the sole runtime flank-role validity predicate used by combat-role reassignment and by the new utility-context flag generation.
+
+**Behavior-policy owner for the aggressive fallback (Phase 18 gameplay layer extension):** `Enemy._resolve_contextual_combat_role(candidate_role, has_valid_contact, target_distance, assignment) -> int` in `src/entities/enemy.gd` is the sole runtime point allowed to convert an invalid FLANK candidate into `SQUAD_ROLE_PRESSURE` when valid contact is active. Neither `EnemySquadSystem` nor `EnemyUtilityBrain` may duplicate this valid-contact fallback decision.
 
 **Verifiable uniqueness gates:** section 13, gates G6, G8, and G9.
 
@@ -10597,6 +10604,27 @@ Local file-scope constants in `src/systems/enemy_squad_system.gd`:
 **Reason enums:** `N/A`
 
 **Constants/thresholds used:** none added in this contract; consumer retains Phase 15 `slot_reposition_threshold_px` usage.
+
+**Contract 5 name:** `AggressiveValidContactFlankFallbackContractV1`
+
+**Owner:** `Enemy._resolve_contextual_combat_role(candidate_role: int, has_valid_contact: bool, target_distance: float, assignment: Dictionary) -> int`
+
+**Inputs (types, nullability, finite checks):**
+- `candidate_role: int` — runtime candidate from `_reassign_combat_role(...)`.
+- `has_valid_contact: bool`
+- `target_distance: float` — may be non-finite; existing Phase 15 distance guards remain authoritative.
+- `assignment: Dictionary` — non-null; FLANK validity is derived only through `Enemy._assignment_supports_flank_role(assignment)`.
+
+**Outputs (exact):**
+- `int` — combat role enum (`SQUAD_ROLE_PRESSURE | SQUAD_ROLE_HOLD | SQUAD_ROLE_FLANK`) with the additional Phase 18 valid-contact fallback rule from section 7.6.
+
+**Status enums:** `N/A — enum int return`
+
+**Reason enums:** `N/A`
+
+**Behavioral rule (new Phase 18 extension):**
+- When `has_valid_contact == true`, `candidate_role == SQUAD_ROLE_FLANK`, and `Enemy._assignment_supports_flank_role(assignment) == false`, `_resolve_contextual_combat_role(...)` must return `SQUAD_ROLE_PRESSURE` (aggressive fallback) instead of preserving the invalid FLANK candidate in the valid-contact mid-range/default path.
+- The no-contact branch (`has_valid_contact == false`) remains owned by the pre-existing Phase 15/10 contextual logic and is not changed by this contract.
 
 ---
 
@@ -10809,6 +10837,26 @@ This rule forbids returning an invalid FLANK tactical slot and creates determini
 5. In the LOS final FLANK branch, `MOVE_TO_SLOT` executes only when `role == FLANK`, `has_slot == true`, `slot_pos != Vector2.ZERO`, and `flank_slot_contract_ok == true`.
 6. When Step 4 or Step 5 fails because `flank_slot_contract_ok == false`, branch order falls through to existing `PUSH` / `RETREAT` / `HOLD_RANGE` logic from Phase 15 with no new branch inserted ahead of those outputs.
 
+### 7.6 `Enemy._resolve_contextual_combat_role(...)` aggressive valid-contact FLANK fallback (Phase 18 extension)
+
+Step 1: `flank_available := _assignment_supports_flank_role(assignment)` (single predicate owner from section 5 / Contract 3).
+
+Step 2: Preserve the existing no-contact branch exactly:
+- if `has_valid_contact == false`: return `SQUAD_ROLE_FLANK if flank_available else SQUAD_ROLE_PRESSURE`
+
+Step 3: Preserve the existing finite-distance guards exactly:
+- if `target_distance > hold_range_max`: return `SQUAD_ROLE_PRESSURE`
+- if `target_distance < hold_range_min and flank_available == false`: return `SQUAD_ROLE_HOLD`
+
+Step 4 (new Phase 18 aggressive fallback): when `has_valid_contact == true`, `candidate_role == SQUAD_ROLE_FLANK`, and `flank_available == false`, return `SQUAD_ROLE_PRESSURE`.
+
+Step 5: Preserve the existing FLANK-in-hold-range positive case:
+- when `flank_available == true` and `target_distance` is finite and `hold_range_min <= target_distance <= hold_range_max`, return `SQUAD_ROLE_FLANK`.
+
+Step 6: Return `candidate_role`.
+
+Design-process note (authoritative for Phase 18 execution): implementing Step 4 is gameplay-impacting and requires the section 14 user-approval checkpoint before code changes are made for this subchange.
+
 ---
 
 ## 8. Edge-case matrix (case → exact output).
@@ -10865,6 +10913,15 @@ This rule forbids returning an invalid FLANK tactical slot and creates determini
   - `slot_path_length = INF`
   - `slot_path_eta_sec = INF`
 
+**Case I: valid contact + mid-range + invalid FLANK candidate (aggressive fallback)**
+- Input to `Enemy._resolve_contextual_combat_role(...)`:
+  - `candidate_role = SQUAD_ROLE_FLANK`
+  - `has_valid_contact = true`
+  - `target_distance = 500.0` (inside default hold range `390..610`)
+  - `assignment` such that `Enemy._assignment_supports_flank_role(assignment) == false` (e.g. `path_status = "unreachable_policy"` or ETA above budget)
+- Expected output: `SQUAD_ROLE_PRESSURE`.
+- Fail condition: function preserves `SQUAD_ROLE_FLANK` in this valid-contact mid-range invalid-FLANK case.
+
 ---
 
 ## 9. Legacy removal plan (delete-first, exact ids).
@@ -10918,10 +10975,12 @@ Expected: `0 matches`.
 5. `tests/test_combat_flank_requires_eta_and_path_ok.gd` test functions from section 12 exit `0`.
 6. `tests/test_combat_role_distribution_not_all_pressure.gd` test functions from section 12 exit `0`.
 7. Updated `tests/test_enemy_squad_system.gd` and `tests/test_combat_role_lock_and_reassign_triggers.gd` suites exit `0`.
-8. Tier 1 smoke suite commands from section 14 all exit `0`.
-9. Tier 2 full regression (`xvfb-run -a godot-4 --headless --path . res://tests/test_runner.tscn`) exits `0`.
-10. `tests/test_runner_node.gd` contains the 3 new Phase 18 scene constants, 3 `_scene_exists(...)` assertions, and 3 `_run_embedded_scene_suite(...)` calls.
-11. `CHANGELOG.md` contains one prepended Phase 18 entry under the current date header.
+8. Updated `tests/test_combat_role_lock_and_reassign_triggers.gd` asserts the valid-contact mid-range invalid-FLANK case returns `SQUAD_ROLE_PRESSURE`.
+9. Phase 18 aggressive-fallback design checkpoint is recorded: detailed impact study complete, recommended options presented, and explicit user approval obtained before implementing the `_resolve_contextual_combat_role(...)` fallback branch.
+10. Tier 1 smoke suite commands from section 14 all exit `0`.
+11. Tier 2 full regression (`xvfb-run -a godot-4 --headless --path . res://tests/test_runner.tscn`) exits `0`.
+12. `tests/test_runner_node.gd` contains the 3 new Phase 18 scene constants, 3 `_scene_exists(...)` assertions, and 3 `_run_embedded_scene_suite(...)` calls.
+13. `CHANGELOG.md` contains one prepended Phase 18 entry under the current date header.
 
 ---
 
@@ -10972,6 +11031,7 @@ Required changes:
   - `"slot_path_length": 420.0`
   - `"slot_path_eta_sec": 2.8`
 - Add a second flank assignment literal with `"path_status": "unreachable_policy"` (or `slot_path_eta_sec` above budget) and assert the no-contact contextual role result is not `SQUAD_ROLE_FLANK`.
+- Add a valid-contact mid-range invalid-FLANK sub-case (`candidate_role = SQUAD_ROLE_FLANK`, `has_valid_contact = true`, `target_distance` inside hold range, invalid flank contract) and assert `_resolve_contextual_combat_role(...) == SQUAD_ROLE_PRESSURE`.
 - Retain all existing early-trigger reason assertions unchanged.
 
 ---
@@ -11063,7 +11123,9 @@ Step 11: Rewrite `EnemySquadSystem._pick_slot_for_enemy(...)` in `src/systems/en
 
 Step 12: Modify `EnemySquadSystem._recompute_assignments(...)` and `EnemySquadSystem._default_assignment(...)` in `src/systems/enemy_squad_system.gd` to persist all `SquadTacticalAssignmentContractV2` keys from section 6.
 
-Step 13: Modify `Enemy._resolve_squad_assignment()`, `Enemy._assignment_supports_flank_role(...)`, and `Enemy._build_utility_context(...)` in `src/entities/enemy.gd` to implement Contracts 3 and 4 from section 6.
+Step 12a (design checkpoint — BLOCKING for Contract 5 / section 7.6 Step 4): perform a detailed behavior-impact study for the aggressive valid-contact FLANK fallback in `Enemy._resolve_contextual_combat_role(...)`, prepare recommended options/tradeoffs, return to the user for explicit approval, and only then implement that fallback branch.
+
+Step 13: Modify `Enemy._resolve_squad_assignment()`, `Enemy._assignment_supports_flank_role(...)`, `_resolve_contextual_combat_role(...)`, and `Enemy._build_utility_context(...)` in `src/entities/enemy.gd` to implement Contracts 3, 4, and 5 from section 6 (with Contract 5 gated by Step 12a user approval).
 
 Step 14: Modify `EnemyUtilityBrain._choose_intent(ctx)` in `src/systems/enemy_utility_brain.gd` to gate both LOS `MOVE_TO_SLOT` branches with `flank_slot_contract_ok` as defined in section 7.
 
@@ -11108,6 +11170,7 @@ Step 24: Prepend one `CHANGELOG.md` entry under the current date header for Phas
 7. **Trigger:** Any `slot_path_tail_tolerance_px` string remains in `src/core/game_config.gd` or `src/core/config_validator.gd` after step 23. **Rollback action:** revert all Phase 18 changes and restart from section 14 step 1. Phase result = FAIL.
 8. **Trigger:** Any out-of-scope file in section 4 is modified. **Rollback action:** revert out-of-scope edits immediately, then revert all Phase 18 edits. Phase result = FAIL.
 9. **Trigger:** Implementation completes cover scoring or utility FLANK gating without the policy-valid slot contract migration (section 6 Contract 1 + Contract 2 keys). **Rollback action:** revert all changes to pre-phase state. Phase result = FAIL (Hard Rule 11).
+10. **Trigger:** The aggressive valid-contact FLANK fallback in `_resolve_contextual_combat_role(...)` is implemented or tuned without the Step 12a user-approval checkpoint (detailed study + recommended options + explicit user approval). **Rollback action:** revert the `_resolve_contextual_combat_role(...)` fallback changes and all dependent test/spec edits, then stop Phase 18 implementation pending approval. Phase result = FAIL.
 
 ---
 
@@ -11125,14 +11188,18 @@ Step 24: Prepend one `CHANGELOG.md` entry under the current date header for Phas
 - [ ] `tests/test_combat_role_distribution_not_all_pressure.gd` records at least two distinct `slot_role` values among assigned enemies
 - [ ] `tests/test_enemy_squad_system.gd` contains no `build_path_points(...)` FakeNav branch and asserts `path_status`/`path_reason` fields
 - [ ] `tests/test_combat_role_lock_and_reassign_triggers.gd` includes Phase 18 flank contract keys in the manual `flank_assignment` literal
+- [ ] `tests/test_combat_role_lock_and_reassign_triggers.gd` verifies valid-contact mid-range invalid-FLANK fallback to `SQUAD_ROLE_PRESSURE`
+- [ ] Phase 18 aggressive-fallback design checkpoint is recorded (detailed impact study + recommended options + explicit user approval before implementation)
 
 ---
 
-## 17. Ambiguity check: 0
+## 17. Ambiguity check: 1
 
 ---
 
-## 18. Open questions: 0
+## 18. Open questions: 1
+
+1. Phase 18 adds a gameplay-impacting aggressive valid-contact fallback in `Enemy._resolve_contextual_combat_role(...)` (`candidate_role == FLANK` + invalid flank contract -> `SQUAD_ROLE_PRESSURE`). Before implementing this subchange, return to the user after a detailed behavior-impact study with recommended options/tradeoffs and obtain explicit approval (section 14, Step 12a).
 
 ---
 
@@ -11147,9 +11214,10 @@ Step 24: Prepend one `CHANGELOG.md` entry under the current date header for Phas
 - `SquadTacticalAssignmentContractV2` (section 6): inspect `EnemySquadSystem._pick_slot_for_enemy(...)`, `_recompute_assignments(...)`, and `_default_assignment(...)` and verify all assignment keys, defaults, and `slot_role`/cover metadata are present exactly.
 - `EnemyFlankSlotContractGateV2` (section 6): inspect `Enemy._assignment_supports_flank_role(...)` and verify `slot_role`, `path_status`, ETA fallback, and Phase 10 budget checks order from section 7.
 - `UtilityFlankSlotContextGateContractV1` (section 6): inspect `Enemy._build_utility_context(...)` and `EnemyUtilityBrain._choose_intent(...)` and verify `flank_slot_contract_ok` is produced exactly once and used in both LOS `MOVE_TO_SLOT` branches.
+- `AggressiveValidContactFlankFallbackContractV1` (section 6): inspect `Enemy._resolve_contextual_combat_role(...)` and verify the new valid-contact invalid-FLANK fallback-to-`PRESSURE` branch occurs before the final `return candidate_role`, while the no-contact branch remains unchanged.
 - Legacy removal check (section 10): run all L1–L4 commands and confirm `0 matches`.
 
-**Runtime scenarios from section 20:** execute P18-A, P18-B, P18-C, P18-D, P18-E, P18-F, and P18-G.
+**Runtime scenarios from section 20:** execute P18-A, P18-B, P18-C, P18-D, P18-E, P18-F, P18-G, and P18-H.
 
 ---
 
@@ -11239,6 +11307,18 @@ Step 24: Prepend one `CHANGELOG.md` entry under the current date header for Phas
   - Policy parity suite fails after squad migration changes.
 - Covered by: `_test_failure_reason_contract`, `_test_path_policy_parity`
 
+**P18-H: Valid-contact invalid-FLANK candidate falls back to PRESSURE (aggressive fallback)**
+- Scene: `tests/test_combat_role_lock_and_reassign_triggers.tscn`
+- Setup: updated suite creates a FLANK candidate assignment with valid-contact inputs (`has_valid_contact=true`, `target_distance` inside hold range, `candidate_role=SQUAD_ROLE_FLANK`) and an invalid flank contract (`path_status="unreachable_policy"` or ETA over budget).
+- Frame count: `0` (unit-level `_resolve_contextual_combat_role(...)` call inside suite)
+- Expected invariants:
+  - `_resolve_contextual_combat_role(...) == SQUAD_ROLE_PRESSURE`
+  - Existing no-contact invalid-FLANK sub-case still does not return `SQUAD_ROLE_FLANK`
+- Fail conditions:
+  - Function preserves `SQUAD_ROLE_FLANK` in the valid-contact mid-range invalid-FLANK case
+  - No-contact branch behavior regresses
+- Covered by: updated `_test_role_lock_and_triggered_reassign()`
+
 ---
 
 ## 21. Verification report format (what must be recorded to close phase).
@@ -11256,6 +11336,8 @@ Record all fields below to close phase:
 - `tier2_regression: {command: "xvfb-run -a godot-4 --headless --path . res://tests/test_runner.tscn", exit_code, PASS|FAIL}`
 - `squad_cover_selection_check: {valid_wall_cover_selected: true|false, policy_blocked_cover_rejected: true|false, cover_sources_seen: [..], PASS|FAIL}`
 - `flank_contract_gate_check: {path_status_mismatch_rejected: true|false, eta_over_budget_rejected: true|false, utility_move_to_slot_blocked_when_contract_false: true|false, utility_move_to_slot_allowed_when_contract_true: true|false, PASS|FAIL}`
+- `aggressive_valid_contact_flank_fallback_check: {valid_contact_mid_range_invalid_flank_demotes_to_pressure: true|false, no_contact_invalid_flank_not_flank: true|false, PASS|FAIL}`
+- `design_checkpoint_user_approval: {detailed_impact_study_completed: true|false, recommended_options_presented: true|false, explicit_user_approval_before_impl: true|false, PASS|FAIL}`
 - `slot_role_distribution_check: {slot_roles_seen: [..], not_all_pressure: true|false, invalid_flank_slot_role_count: int, PASS|FAIL}`
 - `legacy_slot_validation_removed_check: {is_slot_path_ok_absent: true|false, build_path_points_absent_in_squad: true|false, slot_path_tail_tolerance_removed_from_config: true|false, slot_path_tail_tolerance_removed_from_validator: true|false, PASS|FAIL}`
 - `pmb_contract_check: [PMB-1: PASS|FAIL, PMB-2: PASS|FAIL, PMB-3: PASS|FAIL, PMB-4: PASS|FAIL, PMB-5: PASS|FAIL]` **[BLOCKING — all must be PASS to close phase]**

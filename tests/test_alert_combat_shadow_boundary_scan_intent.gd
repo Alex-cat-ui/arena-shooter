@@ -44,7 +44,7 @@ class FakeShadowNav:
 	func can_enemy_traverse_point(_enemy: Node, _point: Vector2) -> bool:
 		return true
 
-	func build_policy_valid_path(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> Dictionary:
+	func build_policy_valid_path(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		return {
 			"status": "ok",
 			"path_points": [to_pos],
@@ -207,7 +207,8 @@ func _test_pursuit_shadow_scan_execution_result_contract() -> void:
 	)
 
 	nav.boundary_point = Vector2(36.0, 0.0)
-	pursuit.set("_shadow_scan_active", true)
+	pursuit.set("_shadow_search_stage", int(ENEMY_PURSUIT_SYSTEM_SCRIPT.ShadowSearchStage.SWEEP))
+	pursuit.set("_shadow_search_total_timer", 12.0)
 	pursuit.set("_shadow_scan_timer", 0.01)
 	pursuit.set("_shadow_scan_target", shadow_target)
 	var timeout_result := pursuit.execute_intent(

@@ -34,7 +34,7 @@ class PatrolNavStub:
 	func is_point_in_shadow(_point: Vector2) -> bool:
 		return false
 
-	func build_policy_valid_path(_from: Vector2, _to: Vector2, _enemy: Node = null) -> Dictionary:
+	func build_policy_valid_path(_from: Vector2, _to: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		return {"status": "ok", "path_points": [Vector2.ZERO], "reason": "ok"}
 
 

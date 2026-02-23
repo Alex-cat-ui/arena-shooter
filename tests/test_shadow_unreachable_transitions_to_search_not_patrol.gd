@@ -46,7 +46,7 @@ class FakeNav:
 			return true
 		return point.x < shadow_start_x
 
-	func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Dictionary:
+	func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		var path: Array[Vector2] = [to_pos]
 		var prev := from_pos
 		for point in path:

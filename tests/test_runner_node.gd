@@ -17,6 +17,8 @@ const ALERT_MARKER_TEST_SCENE := "res://tests/test_enemy_alert_marker.tscn"
 const ALERT_SYSTEM_TEST_SCENE := "res://tests/test_enemy_alert_system.tscn"
 const SQUAD_SYSTEM_TEST_SCENE := "res://tests/test_enemy_squad_system.tscn"
 const UTILITY_BRAIN_TEST_SCENE := "res://tests/test_enemy_utility_brain.tscn"
+const PURSUIT_MODE_SELECTION_BY_CONTEXT_TEST_SCENE := "res://tests/test_pursuit_mode_selection_by_context.tscn"
+const MODE_TRANSITION_GUARD_NO_JITTER_TEST_SCENE := "res://tests/test_mode_transition_guard_no_jitter.tscn"
 const BEHAVIOR_INTEGRATION_TEST_SCENE := "res://tests/test_enemy_behavior_integration.tscn"
 const RUNTIME_BUDGET_SCHEDULER_TEST_SCENE := "res://tests/test_enemy_runtime_budget_scheduler.tscn"
 const CONFIG_VALIDATOR_AI_BALANCE_TEST_SCENE := "res://tests/test_config_validator_ai_balance.tscn"
@@ -86,6 +88,13 @@ const NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE := "res://tests/test_navigation
 const NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE := "res://tests/test_navigation_shadow_policy_runtime.tscn"
 const NAVIGATION_SHOT_GATE_PARITY_TEST_SCENE := "res://tests/test_navigation_shot_gate_parity.tscn"
 const NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE := "res://tests/test_navigation_path_policy_parity.tscn"
+const NAVIGATION_SHADOW_COST_PREFERS_COVER_PATH_TEST_SCENE := "res://tests/test_navigation_shadow_cost_prefers_cover_path.tscn"
+const NAVIGATION_SHADOW_COST_PUSH_MODE_SHORTCUT_TEST_SCENE := "res://tests/test_navigation_shadow_cost_push_mode_allows_shortcut.tscn"
+const TACTIC_CONTAIN_EXIT_SLOTS_TEST_SCENE := "res://tests/test_tactic_contain_assigns_exit_slots.tscn"
+const TACTIC_FLANK_BUDGET_GUARD_TEST_SCENE := "res://tests/test_tactic_flank_requires_path_and_time_budget.tscn"
+const MULTI_ENEMY_PRESSURE_NO_PATROL_REGRESSION_TEST_SCENE := "res://tests/test_multi_enemy_pressure_no_patrol_regression.tscn"
+const SHADOW_SEARCH_STAGE_TRANSITION_TEST_SCENE := "res://tests/test_shadow_search_stage_transition_contract.tscn"
+const SHADOW_SEARCH_PROGRESSIVE_COVERAGE_TEST_SCENE := "res://tests/test_shadow_search_choreography_progressive_coverage.tscn"
 const FRIENDLY_BLOCK_PREVENTS_FIRE_AND_TRIGGERS_REPOSITION_TEST_SCENE := "res://tests/test_friendly_block_prevents_fire_and_triggers_reposition.tscn"
 const SHADOW_FLASHLIGHT_RULE_BLOCKS_OR_ALLOWS_FIRE_TEST_SCENE := "res://tests/test_shadow_flashlight_rule_blocks_or_allows_fire.tscn"
 const SHADOW_SINGLE_SOURCE_OF_TRUTH_NAV_AND_DETECTION_TEST_SCENE := "res://tests/test_shadow_single_source_of_truth_nav_and_detection.tscn"
@@ -559,6 +568,12 @@ func _run_tests() -> void:
 	_test("Enemy utility brain test scene exists", func():
 		return _scene_exists(UTILITY_BRAIN_TEST_SCENE)
 	)
+	_test("Pursuit mode selection by context test scene exists", func():
+		return _scene_exists(PURSUIT_MODE_SELECTION_BY_CONTEXT_TEST_SCENE)
+	)
+	_test("Mode transition guard no jitter test scene exists", func():
+		return _scene_exists(MODE_TRANSITION_GUARD_NO_JITTER_TEST_SCENE)
+	)
 	_test("Enemy behavior integration test scene exists", func():
 		return _scene_exists(BEHAVIOR_INTEGRATION_TEST_SCENE)
 	)
@@ -651,6 +666,8 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Enemy alert system suite", ALERT_SYSTEM_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy squad system suite", SQUAD_SYSTEM_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy utility brain suite", UTILITY_BRAIN_TEST_SCENE)
+	await _run_embedded_scene_suite("Pursuit mode selection by context suite", PURSUIT_MODE_SELECTION_BY_CONTEXT_TEST_SCENE)
+	await _run_embedded_scene_suite("Mode transition guard no jitter suite", MODE_TRANSITION_GUARD_NO_JITTER_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy behavior integration suite", BEHAVIOR_INTEGRATION_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy runtime budget scheduler suite", RUNTIME_BUDGET_SCHEDULER_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy suspicion suite", ENEMY_SUSPICION_TEST_SCENE)
@@ -863,6 +880,12 @@ func _run_tests() -> void:
 	)
 	_test("Navigation policy detour two-waypoint test scene exists", func():
 		return _scene_exists(NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE)
+	)
+	_test("Navigation shadow cost prefers cover path test scene exists", func():
+		return _scene_exists(NAVIGATION_SHADOW_COST_PREFERS_COVER_PATH_TEST_SCENE)
+	)
+	_test("Navigation shadow cost push-mode shortcut test scene exists", func():
+		return _scene_exists(NAVIGATION_SHADOW_COST_PUSH_MODE_SHORTCUT_TEST_SCENE)
 	)
 	_test("Pursuit plan-lock edge-case test scene exists", func():
 		return _scene_exists(PURSUIT_PLAN_LOCK_EDGE_CASE_TEST_SCENE)
@@ -1122,6 +1145,8 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Navigation path policy parity suite", NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation policy detour direct-blocked suite", NAVIGATION_POLICY_DETOUR_BLOCKED_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation policy detour two-waypoint suite", NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation shadow cost prefers cover path suite", NAVIGATION_SHADOW_COST_PREFERS_COVER_PATH_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation shadow cost push-mode shortcut suite", NAVIGATION_SHADOW_COST_PUSH_MODE_SHORTCUT_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit plan-lock edge-case suite", PURSUIT_PLAN_LOCK_EDGE_CASE_TEST_SCENE)
 	await _run_embedded_scene_suite("ZoneDirector single-owner transitions suite", ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE)
 	await _run_embedded_scene_suite("Zone hysteresis hold/no-event decay suite", ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE)
@@ -1146,6 +1171,42 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Flashlight active in combat suite", FLASHLIGHT_ACTIVE_IN_COMBAT_TEST_SCENE)
 	await _run_embedded_scene_suite("Flashlight single source parity suite", FLASHLIGHT_SINGLE_SOURCE_PARITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Flashlight bonus in combat suite", FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE)
+
+	print("\n--- SECTION 18d: Phase 10 tactic suites ---")
+
+	_test("Tactic contain exit slots test scene exists", func():
+		return _scene_exists(TACTIC_CONTAIN_EXIT_SLOTS_TEST_SCENE)
+	)
+	_test("Tactic flank budget guard test scene exists", func():
+		return _scene_exists(TACTIC_FLANK_BUDGET_GUARD_TEST_SCENE)
+	)
+	_test("Multi-enemy pressure no-patrol regression test scene exists", func():
+		return _scene_exists(MULTI_ENEMY_PRESSURE_NO_PATROL_REGRESSION_TEST_SCENE)
+	)
+
+	await _run_embedded_scene_suite("Tactic contain exit slots suite", TACTIC_CONTAIN_EXIT_SLOTS_TEST_SCENE)
+	await _run_embedded_scene_suite("Tactic flank budget guard suite", TACTIC_FLANK_BUDGET_GUARD_TEST_SCENE)
+	await _run_embedded_scene_suite(
+		"Multi-enemy pressure no-patrol regression suite",
+		MULTI_ENEMY_PRESSURE_NO_PATROL_REGRESSION_TEST_SCENE
+	)
+
+	print("\n--- SECTION 18e: Shadow search choreography unit tests ---")
+
+	_test("Shadow search stage transition test scene exists", func():
+		return _scene_exists(SHADOW_SEARCH_STAGE_TRANSITION_TEST_SCENE)
+	)
+	_test("Shadow search progressive coverage test scene exists", func():
+		return _scene_exists(SHADOW_SEARCH_PROGRESSIVE_COVERAGE_TEST_SCENE)
+	)
+	await _run_embedded_scene_suite(
+		"Shadow search stage transition suite",
+		SHADOW_SEARCH_STAGE_TRANSITION_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Shadow search progressive coverage suite",
+		SHADOW_SEARCH_PROGRESSIVE_COVERAGE_TEST_SCENE
+	)
 
 	print("\n--- SECTION 19: Level decomposition controller suites ---")
 

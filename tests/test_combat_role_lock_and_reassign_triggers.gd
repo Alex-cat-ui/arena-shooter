@@ -72,6 +72,7 @@ func _test_role_lock_and_triggered_reassign() -> void:
 		"role": Enemy.SQUAD_ROLE_FLANK,
 		"has_slot": true,
 		"path_ok": true,
+		"slot_path_length": 420.0,
 	}
 	enemy.call("_update_combat_role_runtime", 0.1, false, false, 4.0, false, 0, 420.0, flank_assignment)
 	var snap_context_flank := enemy.get_debug_detection_snapshot() as Dictionary

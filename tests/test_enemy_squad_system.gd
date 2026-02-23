@@ -14,6 +14,11 @@ class FakeNav extends Node:
 			return []
 		return [to_pos]
 
+	func nav_path_length(from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> float:
+		if from_pos.distance_to(to_pos) > max_reachable_dist:
+			return INF
+		return from_pos.distance_to(to_pos)
+
 class FakeEnemy extends CharacterBody2D:
 	var entity_id: int = 0
 	var is_dead: bool = false
@@ -45,6 +50,7 @@ func run_suite() -> Dictionary:
 	_test_unique_slot_reservations()
 	_test_role_stability()
 	_test_path_fallback()
+	_test_slot_path_length_in_assignment()
 	_cleanup()
 
 	_t.summary("ENEMY SQUAD SYSTEM RESULTS")
@@ -147,3 +153,30 @@ func _test_path_fallback() -> void:
 
 	_t.run_test("Path-aware assignment keeps reachable slots", has_path_ok)
 	_t.run_test("Fallback keeps assignment even when some slots unreachable", has_path_bad or has_path_ok)
+
+
+func _test_slot_path_length_in_assignment() -> void:
+	var default_assignment := _squad._default_assignment(_squad.Role.FLANK) as Dictionary
+	_t.run_test(
+		"Default assignment includes slot_path_length=INF",
+		default_assignment.has("slot_path_length") and is_inf(float(default_assignment.get("slot_path_length", 0.0)))
+	)
+
+	_squad.recompute_now()
+	var assigned_have_float := true
+	var unassigned_have_inf := true
+	for child_variant in _entities.get_children():
+		var enemy := child_variant as FakeEnemy
+		var assignment := _squad.get_assignment(enemy.entity_id) as Dictionary
+		if bool(assignment.get("has_slot", false)):
+			if not assignment.has("slot_path_length"):
+				assigned_have_float = false
+				continue
+			if typeof(assignment.get("slot_path_length", null)) != TYPE_FLOAT:
+				assigned_have_float = false
+		else:
+			if not is_inf(float(assignment.get("slot_path_length", 0.0))):
+				unassigned_have_inf = false
+
+	_t.run_test("Assigned slots publish float slot_path_length", assigned_have_float)
+	_t.run_test("Unassigned slots keep slot_path_length=INF", unassigned_have_inf)

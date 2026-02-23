@@ -5,6 +5,7 @@ extends RefCounted
 
 var _service: Node = null
 const POLICY_SAMPLE_STEP_PX := 12.0
+const NAV_COST_SHADOW_SAMPLE_STEP_PX := 16.0
 
 
 func _init(service: Node) -> void:
@@ -216,7 +217,12 @@ func build_reachable_path_points(from_pos: Vector2, to_pos: Vector2, enemy: Node
 	return _extract_path_points(policy_plan.get("path_points", []))
 
 
-func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Dictionary:
+func build_policy_valid_path(
+	from_pos: Vector2,
+	to_pos: Vector2,
+	enemy: Node = null,
+	cost_profile: Dictionary = {}
+) -> Dictionary:
 	var geometry_plan := _build_geometry_path_plan(from_pos, to_pos)
 	var geometry_status := String(geometry_plan.get("status", "unreachable_geometry"))
 	if geometry_status != "ok":
@@ -253,15 +259,15 @@ func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, enemy: Node = n
 		}
 	var candidates := _build_detour_candidates(from_pos, to_pos, from_room, to_room)
 	var best_valid: Dictionary = {}
-	var best_len: float = INF
+	var best_score: float = INF
 	for cand_variant in candidates:
 		var cand := cand_variant as Dictionary
 		var cand_points := _extract_path_points(cand.get("path_points", []))
 		var cand_validation := _validate_enemy_policy_path(enemy, from_pos, cand_points)
-		var cand_len := float(cand.get("euclidean_length", INF))
-		if bool(cand_validation.get("valid", false)) and cand_len < best_len:
+		var score := _score_path_cost(cand_points, from_pos, cost_profile)
+		if bool(cand_validation.get("valid", false)) and score < best_score:
 			best_valid = cand
-			best_len = cand_len
+			best_score = score
 	if not best_valid.is_empty():
 		return {
 			"status": "ok",
@@ -438,6 +444,28 @@ func _euclidean_path_length(from_pos: Vector2, path_points: Array[Vector2]) -> f
 		total += prev.distance_to(p)
 		prev = p
 	return total
+
+
+func _score_path_cost(path_points: Array[Vector2], from_pos: Vector2, cost_profile: Dictionary) -> float:
+	if path_points.is_empty():
+		return INF
+	var shadow_weight := float(cost_profile.get("shadow_weight", 0.0))
+	var sample_step := maxf(float(cost_profile.get("shadow_sample_step_px", NAV_COST_SHADOW_SAMPLE_STEP_PX)), 1.0)
+	var total_len := 0.0
+	var lit_count := 0
+	var prev := from_pos
+	for point in path_points:
+		var seg_len := prev.distance_to(point)
+		var steps := maxi(int(ceil(seg_len / sample_step)), 1)
+		if shadow_weight > 0.0:
+			for s in range(1, steps + 1):
+				var sample := prev.lerp(point, float(s) / float(steps))
+				if _service != null and _service.has_method("is_point_in_shadow"):
+					if not bool(_service.call("is_point_in_shadow", sample)):
+						lit_count += 1
+		total_len += seg_len
+		prev = point
+	return total_len + shadow_weight * float(lit_count)
 
 
 func nav_path_length(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> float:

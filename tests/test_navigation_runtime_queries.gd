@@ -76,7 +76,8 @@ func _test_runtime_query_contracts() -> void:
 	nav.layout = layout
 	nav.entities_container = entities
 	nav.player_node = player
-	nav._nav_regions = [NavigationRegion2D.new()]
+	var stub_region := NavigationRegion2D.new()
+	nav._nav_regions = [stub_region]
 	nav._room_graph = {0: [1], 1: [0]}
 	nav._pair_doors = {
 		"0|1": [Vector2(90.0, 50.0), Vector2(110.0, 50.0)],
@@ -100,6 +101,8 @@ func _test_runtime_query_contracts() -> void:
 	)
 	_t.run_test("get_player_position uses player_node when available", nav.get_player_position() == Vector2(42.0, 24.0))
 
+	nav._nav_regions.clear()
+	stub_region.free()
 	nav.queue_free()
 	entities.queue_free()
 	player.queue_free()

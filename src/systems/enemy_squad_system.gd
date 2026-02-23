@@ -18,6 +18,9 @@ const PRESSURE_SLOT_COUNT := 6
 const HOLD_SLOT_COUNT := 8
 const FLANK_SLOT_COUNT := 8
 const INVALID_PATH_SCORE_PENALTY := 100000.0
+const FLANK_MAX_PATH_PX := 900.0
+const FLANK_MAX_TIME_SEC := 3.5
+const FLANK_WALK_SPEED_ASSUMED_PX_PER_SEC := 150.0
 
 var player_node: Node2D = null
 var navigation_service: Node = null
@@ -133,6 +136,7 @@ func _recompute_assignments() -> void:
 			"slot_position": slot_pick.get("position", enemy.global_position) as Vector2,
 			"slot_key": slot_key,
 			"path_ok": bool(slot_pick.get("path_ok", false)),
+			"slot_path_length": float(slot_pick.get("slot_path_length", INF)),
 			"has_slot": true,
 			"reserved_until": _clock_sec + _squad_cfg_float("slot_reservation_ttl_sec", SLOT_RESERVATION_TTL_SEC),
 		}
@@ -170,11 +174,20 @@ func _pick_slot_for_enemy(enemy: Node2D, preferred_role: int, slots_by_role: Dic
 		if best_for_role.is_empty():
 			continue
 		if bool(best_for_role.get("path_ok", false)):
+			best_for_role["slot_path_length"] = _slot_nav_path_length(
+				enemy,
+				best_for_role.get("position", Vector2.ZERO) as Vector2
+			)
 			return best_for_role
 		if best_score < best_any_score:
 			best_any_score = best_score
 			best_any = best_for_role
 
+	if not best_any.is_empty():
+		best_any["slot_path_length"] = _slot_nav_path_length(
+			enemy,
+			best_any.get("position", Vector2.ZERO) as Vector2
+		)
 	return best_any
 
 
@@ -195,7 +208,55 @@ func _is_slot_path_ok(enemy: Node2D, slot_pos: Vector2) -> bool:
 	return true
 
 
+func _slot_nav_path_length(enemy: Node2D, slot_pos: Vector2) -> float:
+	if navigation_service == null or not navigation_service.has_method("nav_path_length"):
+		return enemy.global_position.distance_to(slot_pos)
+	return float(navigation_service.call("nav_path_length", enemy.global_position, slot_pos, null))
+
+
+func _build_contain_slots_from_exits(player_pos: Vector2) -> Array:
+	if navigation_service == null:
+		return []
+	if not navigation_service.has_method("room_id_at_point"):
+		return []
+	if not navigation_service.has_method("get_adjacent_room_ids"):
+		return []
+	if not navigation_service.has_method("get_door_center_between"):
+		return []
+	var player_room_id: int = int(navigation_service.call("room_id_at_point", player_pos))
+	if player_room_id < 0:
+		return []
+	var adj_rooms: Array = navigation_service.call("get_adjacent_room_ids", player_room_id) as Array
+	if adj_rooms.is_empty():
+		return []
+	var slots: Array = []
+	for adj_variant in adj_rooms:
+		var adj_id: int = int(adj_variant)
+		var door_center: Vector2 = navigation_service.call(
+			"get_door_center_between",
+			player_room_id,
+			adj_id,
+			player_pos
+		) as Vector2
+		if door_center == Vector2.ZERO:
+			continue
+		slots.append({
+			"key": "hold_exit:%d:%d" % [player_room_id, adj_id],
+			"position": door_center,
+		})
+	return slots
+
+
 func _build_slots(player_pos: Vector2) -> Dictionary:
+	var hold_slots := _build_contain_slots_from_exits(player_pos)
+	if hold_slots.is_empty():
+		hold_slots = _build_ring_slots(
+			player_pos,
+			_squad_cfg_float("hold_radius_px", HOLD_RADIUS_PX),
+			_squad_cfg_int("hold_slot_count", HOLD_SLOT_COUNT),
+			Role.HOLD,
+			0.0
+		)
 	return {
 		Role.PRESSURE: _build_ring_slots(
 			player_pos,
@@ -204,13 +265,7 @@ func _build_slots(player_pos: Vector2) -> Dictionary:
 			Role.PRESSURE,
 			0.0
 		),
-		Role.HOLD: _build_ring_slots(
-			player_pos,
-			_squad_cfg_float("hold_radius_px", HOLD_RADIUS_PX),
-			_squad_cfg_int("hold_slot_count", HOLD_SLOT_COUNT),
-			Role.HOLD,
-			0.0
-		),
+		Role.HOLD: hold_slots,
 		Role.FLANK: _build_ring_slots(
 			player_pos,
 			_squad_cfg_float("flank_radius_px", FLANK_RADIUS_PX),
@@ -266,6 +321,7 @@ func _default_assignment(role: int) -> Dictionary:
 		"slot_key": "",
 		"path_ok": false,
 		"has_slot": false,
+		"slot_path_length": INF,
 		"reserved_until": 0.0,
 	}
 

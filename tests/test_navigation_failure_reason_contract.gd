@@ -36,7 +36,7 @@ class FakeNavMissingPlanner:
 class FakeNavInvalidPlanner:
 	extends Node
 
-	func build_policy_valid_path(_from_pos: Vector2, _to_pos: Vector2, _enemy: Node = null) -> Variant:
+	func build_policy_valid_path(_from_pos: Vector2, _to_pos: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Variant:
 		return null
 
 
@@ -45,7 +45,7 @@ class FakeNavValidPlanner:
 
 	var contract: Dictionary = {}
 
-	func build_policy_valid_path(_from_pos: Vector2, _to_pos: Vector2, _enemy: Node = null) -> Dictionary:
+	func build_policy_valid_path(_from_pos: Vector2, _to_pos: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		return contract.duplicate(true)
 
 
