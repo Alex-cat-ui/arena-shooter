@@ -20,6 +20,8 @@ var _pair_doors: Dictionary = {}      # "a|b" -> Array[Vector2]
 var _rng := RandomNumberGenerator.new()
 const DOOR_NAV_OVERLAP_PX := 16.0
 const NAV_CARVE_EPSILON := 0.5
+const OBSTACLE_CLEARANCE_PX := 16.0
+const NAV_OBSTACLE_GROUP := "nav_obstacles"
 const POLICY_SAMPLE_STEP_PX := 12.0
 var _nav_regions: Array[NavigationRegion2D] = []
 var _room_to_region: Dictionary = {} # room_id -> NavigationRegion2D
@@ -221,13 +223,18 @@ func build_from_layout(p_layout, parent: Node2D) -> void:
 				door_overlaps_per_room[room_id].append(overlap_rect)
 
 	var nav_obstacles := _extract_navigation_obstacles(layout)
+	if nav_obstacles.is_empty():
+		nav_obstacles = _extract_scene_obstacles() # build_from_layout single-owner fallback
+	var cleared_obstacles: Array[Rect2] = []
+	for obs in nav_obstacles:
+		cleared_obstacles.append((obs as Rect2).grow(OBSTACLE_CLEARANCE_PX))
 
 	for i in range(layout.rooms.size()):
 		if i in void_ids:
 			continue
 		var room := layout.rooms[i] as Dictionary
 		var rects := room.get("rects", []) as Array
-		var carved_rects := _subtract_obstacles_from_rects(rects, nav_obstacles)
+		var carved_rects := _subtract_obstacles_from_rects(rects, cleared_obstacles)
 		if carved_rects.is_empty():
 			carved_rects = rects
 		var door_overlaps: Array = door_overlaps_per_room.get(i, [])
@@ -605,6 +612,32 @@ func _extract_navigation_obstacles(p_layout) -> Array[Rect2]:
 			continue
 		obstacles.append(obstacle)
 	return obstacles
+
+
+func _extract_scene_obstacles() -> Array[Rect2]:
+	var result: Array[Rect2] = []
+	if not is_inside_tree():
+		return result
+	var nodes := get_tree().get_nodes_in_group(NAV_OBSTACLE_GROUP)
+	for node in nodes:
+		var body := node as StaticBody2D
+		if body == null:
+			continue
+		for child in body.get_children():
+			var col := child as CollisionShape2D
+			if col == null:
+				continue
+			if not (col.shape is RectangleShape2D):
+				continue
+			var rect_shape := col.shape as RectangleShape2D
+			if rect_shape == null:
+				continue
+			var half := rect_shape.size * 0.5
+			var obs_rect := Rect2(body.global_position + col.position - half, rect_shape.size)
+			if obs_rect.size.x <= NAV_CARVE_EPSILON or obs_rect.size.y <= NAV_CARVE_EPSILON:
+				continue
+			result.append(obs_rect)
+	return result
 
 
 func _subtract_obstacles_from_rects(rects: Array, obstacles: Array[Rect2]) -> Array:

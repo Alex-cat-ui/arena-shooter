@@ -50,8 +50,9 @@ func _test_suspicious_shadow_scan_intent_and_flashlight() -> void:
 	})) as Dictionary
 
 	_t.run_test(
-		"SUSPICIOUS + shadow target chooses SHADOW_BOUNDARY_SCAN",
-		int(intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
+		"SUSPICIOUS + shadow target no longer chooses SHADOW_BOUNDARY_SCAN",
+		int(intent.get("type", -1)) != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
+			and int(intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
 	)
 	_t.run_test(
 		"shadow scan target equals last seen position",
@@ -89,6 +90,8 @@ func _ctx(override: Dictionary) -> Dictionary:
 		"has_shadow_scan_target": false,
 		"shadow_scan_target": Vector2.ZERO,
 		"shadow_scan_target_in_shadow": false,
+		"shadow_scan_completed": false,
+		"shadow_scan_completed_reason": "none",
 	}
 	for key_variant in override.keys():
 		base[key_variant] = override[key_variant]

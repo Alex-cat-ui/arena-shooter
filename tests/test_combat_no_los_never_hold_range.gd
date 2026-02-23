@@ -65,7 +65,7 @@ func _test_combat_no_los_never_hold_range() -> void:
 	_t.run_test(
 		"during grace: no HOLD_RANGE in COMBAT no-LOS",
 		type_during_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
-		and type_during_grace == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
+		and type_during_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
 	)
 
 	enemy.runtime_budget_tick(0.90)

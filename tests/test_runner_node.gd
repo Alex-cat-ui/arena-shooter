@@ -79,6 +79,8 @@ const PURSUIT_ORIGIN_TARGET_NOT_SENTINEL_TEST_SCENE := "res://tests/test_pursuit
 const ALERT_COMBAT_CONTEXT_NEVER_PATROL_TEST_SCENE := "res://tests/test_alert_combat_context_never_patrol.tscn"
 const NAVIGATION_RUNTIME_QUERIES_TEST_SCENE := "res://tests/test_navigation_runtime_queries.tscn"
 const NAVIGATION_FAILURE_REASON_CONTRACT_TEST_SCENE := "res://tests/test_navigation_failure_reason_contract.tscn"
+const NAV_OBSTACLE_FALLBACK_TEST_SCENE := "res://tests/test_nav_obstacle_extraction_fallback.tscn"
+const NAV_CLEARANCE_MARGIN_TEST_SCENE := "res://tests/test_nav_clearance_margin_avoids_wall_hugging.tscn"
 const NAVIGATION_POLICY_DETOUR_BLOCKED_TEST_SCENE := "res://tests/test_navigation_policy_detour_shadow_blocked_direct.tscn"
 const NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE := "res://tests/test_navigation_policy_detour_two_waypoints.tscn"
 const NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE := "res://tests/test_navigation_shadow_policy_runtime.tscn"
@@ -121,6 +123,7 @@ const FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_bonu
 const ALERT_HOLD_DYNAMIC_TEST_SCENE := "res://tests/test_alert_hold_dynamic.tscn"
 const PATROL_ROUTE_VARIETY_TEST_SCENE := "res://tests/test_patrol_route_variety.tscn"
 const ALERT_INVESTIGATE_ANCHOR_TEST_SCENE := "res://tests/test_alert_investigate_anchor.tscn"
+const ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE := "res://tests/test_alert_combat_shadow_boundary_scan_intent.tscn"
 const SUSPICIOUS_SHADOW_SCAN_TEST_SCENE := "res://tests/test_suspicious_shadow_scan.tscn"
 const SHADOW_ROUTE_FILTER_TEST_SCENE := "res://tests/test_shadow_route_filter.tscn"
 const LEVEL_RUNTIME_GUARD_TEST_SCENE := "res://tests/test_level_runtime_guard.tscn"
@@ -804,6 +807,9 @@ func _run_tests() -> void:
 	_test("Alert investigate anchor test scene exists", func():
 		return _scene_exists(ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
 	)
+	_test("Alert/combat shadow boundary scan intent test scene exists", func():
+		return _scene_exists(ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE)
+	)
 	_test("Suspicious shadow scan test scene exists", func():
 		return _scene_exists(SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
 	)
@@ -827,6 +833,12 @@ func _run_tests() -> void:
 	)
 	_test("Navigation failure reason contract test scene exists", func():
 		return _scene_exists(NAVIGATION_FAILURE_REASON_CONTRACT_TEST_SCENE)
+	)
+	_test("Nav obstacle fallback test scene exists", func():
+		return _scene_exists(NAV_OBSTACLE_FALLBACK_TEST_SCENE)
+	)
+	_test("Nav clearance margin test scene exists", func():
+		return _scene_exists(NAV_CLEARANCE_MARGIN_TEST_SCENE)
 	)
 	_test("Navigation shadow policy runtime test scene exists", func():
 		return _scene_exists(NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
@@ -1105,6 +1117,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Alert hold dynamic suite", ALERT_HOLD_DYNAMIC_TEST_SCENE)
 	await _run_embedded_scene_suite("Patrol route variety suite", PATROL_ROUTE_VARIETY_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert investigate anchor suite", ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert/combat shadow boundary scan intent suite", ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE)
 	await _run_embedded_scene_suite("Suspicious shadow scan suite", SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow route filter suite", SHADOW_ROUTE_FILTER_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit intent-only runtime suite", PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
@@ -1113,6 +1126,8 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Alert/combat context never patrol suite", ALERT_COMBAT_CONTEXT_NEVER_PATROL_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation runtime queries suite", NAVIGATION_RUNTIME_QUERIES_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation failure reason contract suite", NAVIGATION_FAILURE_REASON_CONTRACT_TEST_SCENE)
+	await _run_embedded_scene_suite("Nav obstacle fallback suite", NAV_OBSTACLE_FALLBACK_TEST_SCENE)
+	await _run_embedded_scene_suite("Nav clearance margin suite", NAV_CLEARANCE_MARGIN_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation shadow policy runtime suite", NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation shot gate parity suite", NAVIGATION_SHOT_GATE_PARITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation path policy parity suite", NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE)

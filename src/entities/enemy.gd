@@ -151,6 +151,8 @@ var _flashlight_activation_delay_timer: float = 0.0
 var _shadow_check_flashlight_override: bool = false
 var _shadow_linger_flashlight: bool = false
 var _shadow_scan_active: bool = false
+var _shadow_scan_completed: bool = false
+var _shadow_scan_completed_reason: String = "none"
 var _debug_last_has_los: bool = false
 var _debug_last_visibility_factor: float = 0.0
 var _debug_last_distance_factor: float = 0.0
@@ -321,6 +323,8 @@ func initialize(id: int, type: String) -> void:
 	_shadow_check_flashlight_override = false
 	_shadow_linger_flashlight = false
 	_shadow_scan_active = false
+	_shadow_scan_completed = false
+	_shadow_scan_completed_reason = "none"
 	_player_visible_prev = false
 	_confirmed_visual_prev = false
 	_test_los_look_grace_timer = 0.0
@@ -622,6 +626,12 @@ func runtime_budget_tick(delta: float) -> void:
 	_debug_last_target_is_last_seen = bool(context.get("target_is_last_seen", false))
 	var pos_before_intent := global_position
 	var intent: Dictionary = _utility_brain.update(delta, context) if _utility_brain else {}
+	var consumed_shadow_scan_handoff := false
+	if _utility_brain and _utility_brain.has_method("consume_shadow_scan_handoff_selected"):
+		consumed_shadow_scan_handoff = bool(_utility_brain.call("consume_shadow_scan_handoff_selected"))
+	if consumed_shadow_scan_handoff:
+		_shadow_scan_completed = false
+		_shadow_scan_completed_reason = "none"
 	intent = _apply_runtime_intent_stability_policy(intent, context, suspicion_now, delta)
 	if _friendly_block_force_reposition:
 		intent = _inject_friendly_block_reposition_intent(intent, assignment, target_context)
@@ -629,6 +639,9 @@ func runtime_budget_tick(delta: float) -> void:
 	if _is_combat_reposition_phase_active():
 		intent = _inject_combat_cycle_reposition_intent(intent, assignment, target_context)
 	var exec_result: Dictionary = _pursuit.execute_intent(delta, intent, context) if _pursuit and _pursuit.has_method("execute_intent") else {}
+	if String(exec_result.get("shadow_scan_status", "inactive")) == "completed":
+		_shadow_scan_completed = true
+		_shadow_scan_completed_reason = String(exec_result.get("shadow_scan_complete_reason", "none"))
 	var moved_distance := global_position.distance_to(pos_before_intent)
 	var target_room_id := _resolve_target_room_id(target_context.get("known_target_pos", Vector2.ZERO) as Vector2)
 	_update_combat_role_runtime(
@@ -958,6 +971,8 @@ func _apply_awareness_transitions(transitions: Array[Dictionary], source: String
 				_investigate_anchor_valid = false
 				set_shadow_check_flashlight(false)
 				set_shadow_scan_active(false)
+				_shadow_scan_completed = false
+				_shadow_scan_completed_reason = "none"
 				if _pursuit and _pursuit.has_method("clear_shadow_scan_state"):
 					_pursuit.clear_shadow_scan_state()
 			if to_state == AWARENESS_COMBAT:
@@ -1005,6 +1020,10 @@ func _resolve_squad_assignment() -> Dictionary:
 	}
 
 
+func _is_finite_nonzero_vector2(value: Vector2) -> bool:
+	return is_finite(value.x) and is_finite(value.y) and value != Vector2.ZERO
+
+
 func _build_utility_context(player_valid: bool, player_visible: bool, assignment: Dictionary, target_context: Dictionary) -> Dictionary:
 	var slot_pos := assignment.get("slot_position", Vector2.ZERO) as Vector2
 	var hp_ratio := float(hp) / float(maxi(max_hp, 1))
@@ -1012,6 +1031,8 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 	var known_target_pos := target_context.get("known_target_pos", Vector2.ZERO) as Vector2
 	var target_is_last_seen := bool(target_context.get("target_is_last_seen", false))
 	var has_known_target := bool(target_context.get("has_known_target", false))
+	var has_investigate_anchor := _investigate_anchor_valid
+	var target_context_exists := has_known_target or has_last_seen or has_investigate_anchor
 	var combat_lock_for_context := bool(_is_combat_lock_active())
 	var dist_to_known_target := INF
 	if has_known_target:
@@ -1021,17 +1042,21 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 	var effective_role := _effective_squad_role_for_context(raw_role)
 	var effective_alert_level := _resolve_effective_alert_level_for_utility()
 	var shadow_scan_target := Vector2.ZERO
+	var shadow_scan_source := "none"
 	var has_shadow_scan_target := false
 	var shadow_scan_target_in_shadow := false
-	if effective_alert_level == ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS:
-		if has_last_seen:
-			shadow_scan_target = _last_seen_pos
-			has_shadow_scan_target = true
-		elif _investigate_anchor_valid:
-			shadow_scan_target = _investigate_anchor
-			has_shadow_scan_target = true
-		if has_shadow_scan_target and nav_system and nav_system.has_method("is_point_in_shadow"):
-			shadow_scan_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shadow_scan_target))
+	if has_known_target and _is_finite_nonzero_vector2(known_target_pos):
+		shadow_scan_target = known_target_pos
+		shadow_scan_source = "known_target_pos"
+	elif has_last_seen and _is_finite_nonzero_vector2(_last_seen_pos):
+		shadow_scan_target = _last_seen_pos
+		shadow_scan_source = "last_seen"
+	elif has_investigate_anchor and _is_finite_nonzero_vector2(_investigate_anchor):
+		shadow_scan_target = _investigate_anchor
+		shadow_scan_source = "investigate_anchor"
+	has_shadow_scan_target = shadow_scan_source != "none"
+	if has_shadow_scan_target and nav_system and nav_system.has_method("is_point_in_shadow"):
+		shadow_scan_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shadow_scan_target))
 	var home_pos := global_position
 	if nav_system and nav_system.has_method("get_room_center") and home_room_id >= 0:
 		var nav_home := nav_system.get_room_center(home_room_id) as Vector2
@@ -1046,9 +1071,9 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 		"last_seen_pos": _last_seen_pos if has_last_seen else Vector2.ZERO,
 		"has_last_seen": has_last_seen,
 		"dist_to_last_seen": global_position.distance_to(_last_seen_pos) if has_last_seen else INF,
-		"investigate_anchor": _investigate_anchor if _investigate_anchor_valid else Vector2.ZERO,
-		"has_investigate_anchor": _investigate_anchor_valid,
-		"dist_to_investigate_anchor": global_position.distance_to(_investigate_anchor) if _investigate_anchor_valid else INF,
+		"investigate_anchor": _investigate_anchor if has_investigate_anchor else Vector2.ZERO,
+		"has_investigate_anchor": has_investigate_anchor,
+		"dist_to_investigate_anchor": global_position.distance_to(_investigate_anchor) if has_investigate_anchor else INF,
 		"role": effective_role,
 		"slot_position": slot_pos,
 		"dist_to_slot": global_position.distance_to(slot_pos) if slot_pos != Vector2.ZERO else INF,
@@ -1059,10 +1084,14 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 		"known_target_pos": known_target_pos,
 		"target_is_last_seen": target_is_last_seen,
 		"has_known_target": has_known_target,
+		"target_context_exists": target_context_exists,
 		"home_position": home_pos,
 		"shadow_scan_target": shadow_scan_target,
 		"has_shadow_scan_target": has_shadow_scan_target,
 		"shadow_scan_target_in_shadow": shadow_scan_target_in_shadow,
+		"shadow_scan_source": shadow_scan_source,
+		"shadow_scan_completed": _shadow_scan_completed,
+		"shadow_scan_completed_reason": _shadow_scan_completed_reason,
 	}
 
 

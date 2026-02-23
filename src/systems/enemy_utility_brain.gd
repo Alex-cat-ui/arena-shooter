@@ -30,19 +30,28 @@ const SEARCH_MAX_LAST_SEEN_AGE := 8.0
 var _decision_timer: float = 0.0
 var _action_hold_timer: float = 0.0
 var _current_intent: Dictionary = {"type": IntentType.PATROL}
+var _shadow_scan_handoff_selected: bool = false
 
 
 func reset() -> void:
 	_decision_timer = 0.0
 	_action_hold_timer = 0.0
 	_current_intent = {"type": IntentType.PATROL}
+	_shadow_scan_handoff_selected = false
 
 
 func get_current_intent() -> Dictionary:
 	return _current_intent.duplicate(true)
 
 
+func consume_shadow_scan_handoff_selected() -> bool:
+	var selected := _shadow_scan_handoff_selected
+	_shadow_scan_handoff_selected = false
+	return selected
+
+
 func update(delta: float, context: Dictionary) -> Dictionary:
+	_shadow_scan_handoff_selected = false
 	_decision_timer = maxf(0.0, _decision_timer - maxf(delta, 0.0))
 	_action_hold_timer = maxf(0.0, _action_hold_timer - maxf(delta, 0.0))
 	if _decision_timer > 0.0 and _action_hold_timer > 0.0:
@@ -68,7 +77,6 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var path_ok := bool(ctx.get("path_ok", false))
 	var slot_pos := ctx.get("slot_position", Vector2.ZERO) as Vector2
 	var has_slot := bool(ctx.get("has_slot", false))
-	var combat_lock := bool(ctx.get("combat_lock", false))
 	var known_target_pos := ctx.get("known_target_pos", ctx.get("player_pos", Vector2.ZERO)) as Vector2
 	var last_seen_pos := ctx.get("last_seen_pos", Vector2.ZERO) as Vector2
 	var target_is_last_seen := bool(ctx.get("target_is_last_seen", false))
@@ -83,6 +91,8 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var shadow_scan_target := ctx.get("shadow_scan_target", Vector2.ZERO) as Vector2
 	var has_shadow_scan_target := bool(ctx.get("has_shadow_scan_target", false))
 	var shadow_scan_target_in_shadow := bool(ctx.get("shadow_scan_target_in_shadow", false))
+	var shadow_scan_completed := bool(ctx.get("shadow_scan_completed", false))
+	var _shadow_scan_completed_reason := String(ctx.get("shadow_scan_completed_reason", "none"))
 
 	var retreat_hp_ratio := _utility_cfg_float("retreat_hp_ratio", RETREAT_HP_RATIO)
 	var hold_range_min := _utility_cfg_float("hold_range_min_px", HOLD_RANGE_MIN_PX)
@@ -94,21 +104,20 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var search_target := last_seen_pos if has_last_seen else home_pos
 	var has_search_anchor := has_last_seen and last_seen_age <= search_max_last_seen_age
 
-	if combat_lock and not has_los:
-		return _combat_no_los_grace_intent(known_target_pos, last_seen_pos, home_pos)
-
 	if hp_ratio <= retreat_hp_ratio and has_los and dist < hold_range_min:
 		return {
 			"type": IntentType.RETREAT,
 			"target": known_target_pos,
 		}
 
+	if not has_los and shadow_scan_completed and has_shadow_scan_target:
+		_shadow_scan_handoff_selected = true
+		return {
+			"type": IntentType.SEARCH,
+			"target": shadow_scan_target,
+		}
+
 	if alert_level <= ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS and not has_los:
-		if alert_level == ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS and has_shadow_scan_target and shadow_scan_target_in_shadow:
-			return {
-				"type": IntentType.SHADOW_BOUNDARY_SCAN,
-				"target": shadow_scan_target,
-			}
 		var inv_target := investigate_anchor if has_investigate_anchor else last_seen_pos
 		var inv_dist := dist_to_investigate_anchor if has_investigate_anchor else dist_to_last_seen
 		var last_seen_valid := has_last_seen and last_seen_age <= investigate_max_age
@@ -126,6 +135,11 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 		return {"type": IntentType.PATROL}
 
 	if not has_los and alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.ALERT:
+		if has_shadow_scan_target and shadow_scan_target_in_shadow:
+			return {
+				"type": IntentType.SHADOW_BOUNDARY_SCAN,
+				"target": shadow_scan_target,
+			}
 		if has_last_seen and dist_to_last_seen > investigate_arrive_px:
 			return {
 				"type": IntentType.INVESTIGATE,

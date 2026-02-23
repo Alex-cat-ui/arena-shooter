@@ -2126,7 +2126,7 @@ Tests to update (exact filenames):
 - `tests/test_combat_no_los_never_hold_range.gd`.
 - `tests/test_runner_node.gd`.
 Purpose:
-- Preserve suspicious scan behavior after branch refactor.
+- Update assertions: SUSPICIOUS state does NOT select SHADOW_BOUNDARY_SCAN after branch refactor.
 - Preserve COMBAT no-LOS anti-hold behavior when no shadow target is present.
 - Register and execute new phase test scene.
 Phase test commands (exact):

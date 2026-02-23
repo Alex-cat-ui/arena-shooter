@@ -55,6 +55,15 @@ class FakeLayout:
 		return ids.keys()
 
 
+class FakeLayoutWithNavObstacles:
+	extends FakeLayout
+
+	var nav_obstacles_override: Array[Rect2] = []
+
+	func _navigation_obstacles() -> Array[Rect2]:
+		return nav_obstacles_override.duplicate()
+
+
 func _ready() -> void:
 	if embedded_mode:
 		return
@@ -78,6 +87,8 @@ func run_suite() -> Dictionary:
 	await _test_navmesh_disjoint_rects()
 	await _test_navmesh_door_overlap_connects_regions()
 	await _test_navmesh_notched_room()
+	await _test_obstacle_extraction_fallback()
+	await _test_clearance_margin_applied()
 
 	_t.summary("NAVMESH MIGRATION RESULTS")
 	return {
@@ -236,6 +247,52 @@ func _test_navmesh_notched_room() -> void:
 	await _cleanup_fixture(fixture)
 
 
+func _test_obstacle_extraction_fallback() -> void:
+	var fixture := await _create_single_room_fixture([Rect2(0.0, 0.0, 200.0, 200.0)])
+	var service = fixture.get("service") as Node
+	var world := fixture.get("world") as Node2D
+	var raw_obstacle := Rect2(80.0, 80.0, 40.0, 40.0)
+	var clearance := float(service.get("OBSTACLE_CLEARANCE_PX"))
+	var baseline_points := _collect_nav_outline_points(service, 0)
+	var grown := raw_obstacle.grow(clearance)
+	_spawn_grouped_nav_obstacle(world, raw_obstacle)
+	service.call("build_from_layout", fixture.get("layout"), world)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var extracted := service.call("_extract_scene_obstacles") as Array
+	var points := _collect_nav_outline_points(service, 0)
+	var ok := (
+		extracted.size() == 1
+		and _rect_approx_eq(extracted[0] as Rect2, raw_obstacle)
+		and not _has_point_near(baseline_points, grown.position)
+		and _has_point_near(points, grown.position)
+		and _has_point_near(points, grown.end)
+	)
+	_t.run_test("navmesh_scene_obstacle_fallback", ok)
+	await _cleanup_fixture(fixture)
+
+
+func _test_clearance_margin_applied() -> void:
+	var room_rect := Rect2(0.0, 0.0, 200.0, 200.0)
+	var room := {
+		"center": room_rect.get_center(),
+		"rects": [room_rect],
+	}
+	var raw_obstacle := Rect2(90.0, 90.0, 20.0, 20.0)
+	var layout := FakeLayoutWithNavObstacles.new([room], [], {})
+	layout.nav_obstacles_override = [raw_obstacle]
+	var fixture := await _create_fixture(layout, false)
+	var service = fixture.get("service") as Node
+	var clearance := float(service.get("OBSTACLE_CLEARANCE_PX"))
+	var points := _collect_nav_outline_points(service, 0)
+	var min_distance := _min_distance_to_rect(points, raw_obstacle)
+	var grown := raw_obstacle.grow(clearance)
+	var ok := min_distance >= (clearance - 0.1) and _has_point_near(points, grown.position)
+	_t.run_test("navmesh_clearance_margin_applied", ok)
+	await _cleanup_fixture(fixture)
+
+
 func _create_single_room_fixture(rects: Array) -> Dictionary:
 	var room := {
 		"center": (rects[0] as Rect2).get_center() if not rects.is_empty() else Vector2.ZERO,
@@ -381,3 +438,58 @@ func _spawn_static_wall(parent: Node2D, wall_rect: Rect2) -> void:
 	shape.shape = rect_shape
 	body.add_child(shape)
 	parent.add_child(body)
+
+
+func _spawn_grouped_nav_obstacle(parent: Node2D, obstacle_rect: Rect2) -> StaticBody2D:
+	var body := StaticBody2D.new()
+	body.position = obstacle_rect.get_center()
+	body.add_to_group("nav_obstacles")
+	var shape := CollisionShape2D.new()
+	var rect_shape := RectangleShape2D.new()
+	rect_shape.size = obstacle_rect.size
+	shape.shape = rect_shape
+	body.add_child(shape)
+	parent.add_child(body)
+	return body
+
+
+func _collect_nav_outline_points(service: Node, room_id: int) -> Array[Vector2]:
+	var points: Array[Vector2] = []
+	var room_to_region := service.get("_room_to_region") as Dictionary
+	var region := room_to_region.get(room_id, null) as NavigationRegion2D
+	if region == null:
+		return points
+	var nav_poly := region.navigation_polygon
+	if nav_poly == null:
+		return points
+	for outline_idx in range(nav_poly.get_outline_count()):
+		var outline := nav_poly.get_outline(outline_idx)
+		for point in outline:
+			points.append(point)
+	return points
+
+
+func _has_point_near(points: Array[Vector2], target: Vector2, epsilon: float = 0.25) -> bool:
+	for point in points:
+		if point.distance_to(target) <= epsilon:
+			return true
+	return false
+
+
+func _distance_to_rect(point: Vector2, rect: Rect2) -> float:
+	var cx := clampf(point.x, rect.position.x, rect.end.x)
+	var cy := clampf(point.y, rect.position.y, rect.end.y)
+	return point.distance_to(Vector2(cx, cy))
+
+
+func _min_distance_to_rect(points: Array[Vector2], rect: Rect2) -> float:
+	if points.is_empty():
+		return INF
+	var min_distance := INF
+	for point in points:
+		min_distance = minf(min_distance, _distance_to_rect(point, rect))
+	return min_distance
+
+
+func _rect_approx_eq(a: Rect2, b: Rect2, epsilon: float = 0.01) -> bool:
+	return a.position.distance_to(b.position) <= epsilon and a.size.distance_to(b.size) <= epsilon
