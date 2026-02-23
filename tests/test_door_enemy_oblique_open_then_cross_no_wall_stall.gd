@@ -25,6 +25,9 @@ class FakeNav:
 	func can_enemy_traverse_point(_enemy: Node, _point: Vector2) -> bool:
 		return true
 
+	func build_policy_valid_path(_from: Vector2, to: Vector2, _enemy: Node = null) -> Dictionary:
+		return {"status": "ok", "path_points": [to], "reason": "ok"}
+
 
 func _ready() -> void:
 	if embedded_mode:

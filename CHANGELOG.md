@@ -1,5 +1,14 @@
 # Arena Shooter Changelog
 
+## 2026-02-23
+
+### 17:01 MSK - Phase 6: Patrol Reachability Filter
+- **Removed**: Hard fallback route bypassing reachability in EnemyPatrolSystem._rebuild_route
+- **Removed**: Dead config key fallback_step_px from game_config.gd and config_validator.gd
+- **Added**: Reachability filter + refill loop using build_policy_valid_path(enemy=null) in _rebuild_route
+- **Added**: PATROL_REACHABILITY_REFILL_ATTEMPTS const (32) at file scope
+- **Files**: src/systems/enemy_patrol_system.gd, src/core/game_config.gd, src/core/config_validator.gd, tests/test_patrol_route_traversability_filter.gd, tests/test_patrol_route_traversability_filter.tscn, tests/test_shadow_route_filter.gd, tests/test_patrol_route_variety.gd, tests/test_runner_node.gd
+
 ## 2026-02-18
 
 ### 19:05 MSK - Phase 6 fix: post-COMBAT ALERT hold timer (pre-existing test failures)

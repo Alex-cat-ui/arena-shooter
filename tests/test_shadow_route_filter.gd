@@ -31,6 +31,9 @@ class ShadowRouteNavStub:
 	func is_point_in_shadow(point: Vector2) -> bool:
 		return point.x < 180.0
 
+	func build_policy_valid_path(_from: Vector2, _to: Vector2, _enemy: Node = null) -> Dictionary:
+		return {"status": "ok", "path_points": [Vector2.ZERO], "reason": "ok"}
+
 
 func _ready() -> void:
 	if embedded_mode:
@@ -63,7 +66,7 @@ func _test_patrol_route_avoids_shadow_points() -> void:
 	patrol.configure(nav, 0)
 	patrol._rebuild_route()
 
-	var route := patrol._route
+	var route: Array[Vector2] = patrol._route
 	var all_safe := true
 	for point in route:
 		if nav.is_point_in_shadow(point):

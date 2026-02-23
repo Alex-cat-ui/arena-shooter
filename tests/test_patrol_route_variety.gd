@@ -34,6 +34,9 @@ class PatrolNavStub:
 	func is_point_in_shadow(_point: Vector2) -> bool:
 		return false
 
+	func build_policy_valid_path(_from: Vector2, _to: Vector2, _enemy: Node = null) -> Dictionary:
+		return {"status": "ok", "path_points": [Vector2.ZERO], "reason": "ok"}
+
 
 func _ready() -> void:
 	if embedded_mode:
@@ -65,10 +68,10 @@ func _test_sequential_rebuilds_produce_variety() -> void:
 	var patrol = ENEMY_PATROL_SYSTEM_SCRIPT.new(owner)
 	patrol.configure(nav, 0)
 
-	var route_a := patrol._route.duplicate()
+	var route_a: Array[Vector2] = patrol._route.duplicate()
 	OS.delay_msec(3)
 	patrol._rebuild_route()
-	var route_b := patrol._route.duplicate()
+	var route_b: Array[Vector2] = patrol._route.duplicate()
 
 	_t.run_test("route A is not empty", not route_a.is_empty())
 	_t.run_test("route B is not empty", not route_b.is_empty())

@@ -140,6 +140,8 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 				"type": IntentType.SHADOW_BOUNDARY_SCAN,
 				"target": shadow_scan_target,
 			}
+		if alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.COMBAT:
+			return _combat_no_los_grace_intent(known_target_pos, last_seen_pos, home_pos)
 		if has_last_seen and dist_to_last_seen > investigate_arrive_px:
 			return {
 				"type": IntentType.INVESTIGATE,

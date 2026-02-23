@@ -197,7 +197,6 @@ const DEFAULT_AI_BALANCE := {
 			"look_sweep_rad": 0.62,
 			"look_sweep_speed": 2.6,
 			"route_dedup_min_dist_px": 42.0,
-			"fallback_step_px": 24.0,
 			"cross_room_patrol_chance": 0.20,
 			"cross_room_patrol_penetration": 0.25,
 		},

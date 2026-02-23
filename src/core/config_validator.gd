@@ -256,7 +256,6 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_number_key(result, patrol, "look_sweep_rad", "ai_balance.patrol", 0.0, TAU)
 		_validate_number_key(result, patrol, "look_sweep_speed", "ai_balance.patrol", 0.0, 50.0)
 		_validate_number_key(result, patrol, "route_dedup_min_dist_px", "ai_balance.patrol", 0.0, 1000.0)
-		_validate_number_key(result, patrol, "fallback_step_px", "ai_balance.patrol", 0.01, 1000.0)
 		if route_points_min != -1 and route_points_max != -1 and route_points_min > route_points_max:
 			result.add_error("ai_balance.patrol.route_points_min must be <= route_points_max")
 		if not is_nan(route_rebuild_min) and not is_nan(route_rebuild_max) and route_rebuild_min > route_rebuild_max:

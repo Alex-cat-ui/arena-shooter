@@ -29,6 +29,7 @@ const SHADOW_CHECK_CHANCE := 0.30
 const SHADOW_CHECK_DURATION_MIN_SEC := 1.5
 const SHADOW_CHECK_DURATION_MAX_SEC := 2.5
 const SHADOW_CHECK_SWEEP_RAD := 0.70
+const PATROL_REACHABILITY_REFILL_ATTEMPTS := 32
 
 var owner: CharacterBody2D = null
 var nav_system: Node = null
@@ -294,6 +295,32 @@ func _rebuild_route() -> void:
 				if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", refill_point)):
 					continue
 				candidates.append(refill_point)
+
+		# --- reachability filter (Phase 6) ---
+		if nav_system.has_method("build_policy_valid_path"):
+			var reach_pass: Array[Vector2] = []
+			for pt in candidates:
+				var r := nav_system.call("build_policy_valid_path", owner.global_position, pt, null) as Dictionary
+				if String(r.get("status", "")) == "ok":
+					reach_pass.append(pt)
+			if not reach_pass.is_empty():
+				candidates = reach_pass
+
+		# --- reachability refill (Phase 6) ---
+		if nav_system.has_method("random_point_in_room"):
+			var min_pts_reach := _patrol_cfg_int("route_points_min", ROUTE_POINTS_MIN)
+			var reach_refill_attempts := 0
+			while candidates.size() < min_pts_reach and reach_refill_attempts < PATROL_REACHABILITY_REFILL_ATTEMPTS:
+				var margin := _rng.randf_range(18.0, 34.0)
+				var rp: Vector2 = nav_system.random_point_in_room(home_room_id, margin) as Vector2
+				reach_refill_attempts += 1
+				if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", rp)):
+					continue
+				if nav_system.has_method("build_policy_valid_path"):
+					var rr := nav_system.call("build_policy_valid_path", owner.global_position, rp, null) as Dictionary
+					if String(rr.get("status", "")) != "ok":
+						continue
+				candidates.append(rp)
 	else:
 		candidates.append(fallback)
 
@@ -309,8 +336,6 @@ func _rebuild_route() -> void:
 		if keep:
 			compact.append(p)
 	_route = compact
-	if _route.size() < 2:
-		_route = [fallback, fallback + Vector2(_patrol_cfg_float("fallback_step_px", 24.0), 0.0)]
 
 
 func _patrol_cfg_float(key: String, fallback: float) -> float:

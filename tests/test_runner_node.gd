@@ -122,6 +122,7 @@ const FLASHLIGHT_SINGLE_SOURCE_PARITY_TEST_SCENE := "res://tests/test_flashlight
 const FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_bonus_applies_in_combat.tscn"
 const ALERT_HOLD_DYNAMIC_TEST_SCENE := "res://tests/test_alert_hold_dynamic.tscn"
 const PATROL_ROUTE_VARIETY_TEST_SCENE := "res://tests/test_patrol_route_variety.tscn"
+const PATROL_ROUTE_TRAVERSABILITY_FILTER_TEST_SCENE := "res://tests/test_patrol_route_traversability_filter.tscn"
 const ALERT_INVESTIGATE_ANCHOR_TEST_SCENE := "res://tests/test_alert_investigate_anchor.tscn"
 const ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE := "res://tests/test_alert_combat_shadow_boundary_scan_intent.tscn"
 const SUSPICIOUS_SHADOW_SCAN_TEST_SCENE := "res://tests/test_suspicious_shadow_scan.tscn"
@@ -804,6 +805,9 @@ func _run_tests() -> void:
 	_test("Patrol route variety test scene exists", func():
 		return _scene_exists(PATROL_ROUTE_VARIETY_TEST_SCENE)
 	)
+	_test("Patrol route traversability filter test scene exists", func():
+		return _scene_exists(PATROL_ROUTE_TRAVERSABILITY_FILTER_TEST_SCENE)
+	)
 	_test("Alert investigate anchor test scene exists", func():
 		return _scene_exists(ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
 	)
@@ -1116,6 +1120,7 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Stall definition reproducible thresholds suite", STALL_DEFINITION_REPRODUCIBLE_THRESHOLDS_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert hold dynamic suite", ALERT_HOLD_DYNAMIC_TEST_SCENE)
 	await _run_embedded_scene_suite("Patrol route variety suite", PATROL_ROUTE_VARIETY_TEST_SCENE)
+	await _run_embedded_scene_suite("Patrol route traversability filter suite", PATROL_ROUTE_TRAVERSABILITY_FILTER_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert investigate anchor suite", ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert/combat shadow boundary scan intent suite", ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE)
 	await _run_embedded_scene_suite("Suspicious shadow scan suite", SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
