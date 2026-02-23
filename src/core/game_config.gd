@@ -256,7 +256,7 @@ const DEFAULT_STEALTH_CANON := {
 	"suspicion_gain_partial": 0.24,
 	"suspicion_gain_silhouette": 0.18,
 	"suspicion_gain_flashlight_glimpse": 0.30,
-	"minimum_hold_alert_sec": 2.5,
+	"minimum_hold_alert_sec": 5.0,
 	"shadow_is_binary": true,
 	"flashlight_works_in_alert": true,
 	"flashlight_works_in_combat": true,

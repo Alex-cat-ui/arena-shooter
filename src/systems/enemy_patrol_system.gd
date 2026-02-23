@@ -289,7 +289,7 @@ func _rebuild_route() -> void:
 			var refill_attempts := 0
 			while candidates.size() < min_pts_after_filter and refill_attempts < 32:
 				var margin := _rng.randf_range(18.0, 34.0)
-				var refill_point := nav_system.random_point_in_room(home_room_id, margin)
+				var refill_point: Vector2 = nav_system.random_point_in_room(home_room_id, margin) as Vector2
 				refill_attempts += 1
 				if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", refill_point)):
 					continue

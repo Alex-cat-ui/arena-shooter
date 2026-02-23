@@ -20,7 +20,6 @@ const TARGET_FACING_SHARP_DELTA_RAD := 1.8
 const ENEMY_ACCEL_TIME_SEC := 1.0 / 3.0
 const ENEMY_DECEL_TIME_SEC := 1.0 / 3.0
 const COMBAT_REPATH_INTERVAL_NO_LOS_SEC := 0.2
-const PATH_POLICY_REPLAN_LIMIT := 10
 const PATH_POLICY_SAMPLE_STEP_PX := 12.0
 const FALLBACK_RING_MIN_RADIUS_PX := 48.0
 const FALLBACK_RING_STEP_RADIUS_PX := 48.0
@@ -40,6 +39,9 @@ const SHADOW_SCAN_DURATION_MIN_SEC := 2.0
 const SHADOW_SCAN_DURATION_MAX_SEC := 3.0
 const SHADOW_SCAN_SWEEP_RAD := 0.87
 const SHADOW_SCAN_SWEEP_SPEED := 2.4
+const PATH_PLAN_STATUS_OK := "ok"
+const PATH_PLAN_STATUS_UNREACHABLE_POLICY := "unreachable_policy"
+const PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY := "unreachable_geometry"
 
 var owner: CharacterBody2D = null
 var sprite: Sprite2D = null
@@ -72,9 +74,12 @@ var _last_path_failed: bool = false
 var _last_path_failed_reason: String = ""
 var _last_policy_blocked_segment: int = -1
 var _path_policy_blocked: bool = false
-var _policy_replan_attempts: int = 0
 var _policy_fallback_used: bool = false
 var _policy_fallback_target: Vector2 = Vector2.ZERO
+var _last_path_plan_status: String = ""
+var _last_path_plan_reason: String = ""
+var _last_path_plan_blocked_point: Vector2 = Vector2.ZERO
+var _last_path_plan_blocked_point_valid: bool = false
 var _last_valid_path_node: Vector2 = Vector2.ZERO
 var _last_valid_path_node_valid: bool = false
 var _active_move_target: Vector2 = Vector2.ZERO
@@ -149,9 +154,12 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_path_failed_reason = ""
 	_last_policy_blocked_segment = -1
 	_path_policy_blocked = false
-	_policy_replan_attempts = 0
 	_policy_fallback_used = false
 	_policy_fallback_target = Vector2.ZERO
+	_last_path_plan_status = ""
+	_last_path_plan_reason = ""
+	_last_path_plan_blocked_point = Vector2.ZERO
+	_last_path_plan_blocked_point_valid = false
 	_last_valid_path_node = Vector2.ZERO
 	_last_valid_path_node_valid = false
 	_active_move_target = Vector2.ZERO
@@ -328,7 +336,7 @@ func _execute_move_to_target(
 	if _repath_timer <= 0.0 or _path_policy_blocked:
 		_repath_timer = repath_interval
 		if not _attempt_replan_with_policy(movement_target):
-			if not _handle_replan_failure(movement_target) and not _attempt_shadow_escape_recovery():
+			if not _attempt_shadow_escape_recovery():
 				_stop_motion(delta)
 				_mark_path_failed("replan_failed")
 				return false
@@ -341,17 +349,14 @@ func _execute_move_to_target(
 		_mark_path_failed("policy_blocked")
 		_repath_timer = 0.0
 		if not _attempt_replan_with_policy(movement_target):
-			_handle_replan_failure(movement_target)
 			_attempt_shadow_escape_recovery()
 	if _update_stall_monitor(delta, movement_target, has_target):
 		_mark_path_failed("hard_stall")
 		_repath_timer = 0.0
 		if not _attempt_replan_with_policy(movement_target):
-			_handle_replan_failure(movement_target)
 			_attempt_shadow_escape_recovery()
 	if owner.global_position.distance_to(movement_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
 		_stop_motion(delta)
-		_policy_replan_attempts = 0
 		_policy_fallback_used = false
 		_policy_fallback_target = Vector2.ZERO
 		_active_move_target_valid = false
@@ -507,28 +512,26 @@ func _update_idle_roam(delta: float) -> void:
 
 
 func _plan_path_to(target_pos: Vector2, has_target: bool = true) -> bool:
-	if not has_target:
-		_waypoints.clear()
-		_path_policy_blocked = false
-		return false
-	var planned_points := _build_reachable_path_points_for_enemy(target_pos, has_target)
-	if planned_points.is_empty():
-		_path_policy_blocked = true
-		_last_policy_blocked_segment = -1
-		if nav_system and nav_system.has_method("can_enemy_traverse_point") and not bool(nav_system.call("can_enemy_traverse_point", owner, target_pos)):
+	var plan_contract := _request_path_plan_contract(target_pos, has_target)
+	var normalized_plan := _normalize_path_plan_contract(plan_contract, target_pos)
+	_record_path_plan_contract(normalized_plan)
+	var status := String(normalized_plan.get("status", PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY))
+	var planned_points := _extract_vector2_path_points(normalized_plan.get("path_points", []))
+	var failed_reason := String(normalized_plan.get("reason", "path_unreachable"))
+	if status != PATH_PLAN_STATUS_OK:
+		_path_policy_blocked = status == PATH_PLAN_STATUS_UNREACHABLE_POLICY
+		_last_policy_blocked_segment = int(normalized_plan.get("segment_index", -1))
+		if _path_policy_blocked and _last_policy_blocked_segment < 0:
 			_last_policy_blocked_segment = 0
-			_mark_path_failed("policy_blocked")
-		else:
-			_mark_path_failed("path_unreachable")
+		_mark_path_failed(failed_reason)
 		if _use_navmesh and _nav_agent:
 			_nav_agent.target_position = owner.global_position
 		_waypoints.clear()
 		return false
-	var policy_validation := _validate_path_policy(owner.global_position, planned_points)
-	if not bool(policy_validation.get("valid", false)):
-		_path_policy_blocked = true
-		_last_policy_blocked_segment = int(policy_validation.get("segment_index", -1))
-		_mark_path_failed("policy_blocked")
+	if planned_points.is_empty():
+		_path_policy_blocked = false
+		_last_policy_blocked_segment = -1
+		_mark_path_failed("empty_path")
 		if _use_navmesh and _nav_agent:
 			_nav_agent.target_position = owner.global_position
 		_waypoints.clear()
@@ -543,6 +546,87 @@ func _plan_path_to(target_pos: Vector2, has_target: bool = true) -> bool:
 	else:
 		_waypoints = planned_points.duplicate()
 	return true
+
+
+func _request_path_plan_contract(target_pos: Vector2, has_target: bool = true) -> Dictionary:
+	if not has_target:
+		return {
+			"status": PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY,
+			"path_points": [],
+			"reason": "no_target",
+		}
+	if nav_system == null:
+		return {
+			"status": PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY,
+			"path_points": [],
+			"reason": "nav_system_missing",
+		}
+	if not nav_system.has_method("build_policy_valid_path"):
+		return {
+			"status": PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY,
+			"path_points": [],
+			"reason": "nav_system_missing",
+		}
+	var contract_variant: Variant = nav_system.call("build_policy_valid_path", owner.global_position, target_pos, owner)
+	if not (contract_variant is Dictionary):
+		return {
+			"status": PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY,
+			"path_points": [],
+			"reason": "nav_system_missing",
+		}
+	return contract_variant as Dictionary
+
+
+func _normalize_path_plan_contract(contract: Dictionary, target_pos: Vector2) -> Dictionary:
+	var status := String(contract.get("status", PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY))
+	if status != PATH_PLAN_STATUS_OK and status != PATH_PLAN_STATUS_UNREACHABLE_POLICY and status != PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY:
+		status = PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY
+	var path_points := _extract_vector2_path_points(contract.get("path_points", []))
+	if status == PATH_PLAN_STATUS_OK and not path_points.is_empty() and path_points[path_points.size() - 1].distance_to(target_pos) > 0.5:
+		path_points.append(target_pos)
+	var reason := String(contract.get("reason", ""))
+	if reason == "":
+		match status:
+			PATH_PLAN_STATUS_OK:
+				reason = "ok"
+			PATH_PLAN_STATUS_UNREACHABLE_POLICY:
+				reason = "policy_blocked"
+			_:
+				reason = "path_unreachable"
+	var out := {
+		"status": status,
+		"path_points": path_points,
+		"reason": reason,
+		"segment_index": int(contract.get("segment_index", -1)),
+	}
+	var blocked_point_variant: Variant = contract.get("blocked_point", null)
+	if blocked_point_variant is Vector2:
+		out["blocked_point"] = blocked_point_variant as Vector2
+	if status == PATH_PLAN_STATUS_OK and path_points.is_empty():
+		out["status"] = PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY
+		out["reason"] = "empty_path"
+	return out
+
+
+func _record_path_plan_contract(contract: Dictionary) -> void:
+	_last_path_plan_status = String(contract.get("status", ""))
+	_last_path_plan_reason = String(contract.get("reason", ""))
+	_last_path_plan_blocked_point = Vector2.ZERO
+	_last_path_plan_blocked_point_valid = false
+	if contract.has("blocked_point"):
+		var blocked_variant: Variant = contract.get("blocked_point", null)
+		if blocked_variant is Vector2:
+			_last_path_plan_blocked_point = blocked_variant as Vector2
+			_last_path_plan_blocked_point_valid = true
+
+
+func _extract_vector2_path_points(points_variant: Variant) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	if not (points_variant is Array):
+		return out
+	for point_variant in (points_variant as Array):
+		out.append(point_variant as Vector2)
+	return out
 
 
 func _has_active_path_to(target_pos: Vector2) -> bool:
@@ -729,17 +813,9 @@ func _attempt_replan_with_policy(target_pos: Vector2) -> bool:
 		AIWatchdog.record_replan()
 	var planned := _plan_path_to(target_pos)
 	if planned:
-		_policy_replan_attempts = 0
 		_policy_fallback_used = false
 		_policy_fallback_target = Vector2.ZERO
 		return true
-	_policy_replan_attempts += 1
-	return false
-
-
-func _handle_replan_failure(target_pos: Vector2) -> bool:
-	if _policy_replan_attempts < PATH_POLICY_REPLAN_LIMIT:
-		return false
 	var fallback_pick := _resolve_nearest_reachable_fallback(target_pos)
 	if not bool(fallback_pick.get("found", false)):
 		_mark_path_failed("fallback_missing")
@@ -747,71 +823,10 @@ func _handle_replan_failure(target_pos: Vector2) -> bool:
 	var fallback_target := fallback_pick.get("point", Vector2.ZERO) as Vector2
 	_policy_fallback_used = true
 	_policy_fallback_target = fallback_target
-	_policy_replan_attempts = 0
 	if _plan_path_to(fallback_target, true):
 		return true
 	_mark_path_failed("fallback_failed")
 	return false
-
-
-func _build_reachable_path_points_for_enemy(target_pos: Vector2, has_target: bool = true) -> Array[Vector2]:
-	var out: Array[Vector2] = []
-	if not has_target:
-		return out
-	if nav_system and nav_system.has_method("build_reachable_path_points"):
-		var path_variant: Variant = nav_system.call("build_reachable_path_points", owner.global_position, target_pos, owner)
-		if path_variant is Array:
-			for point_variant in (path_variant as Array):
-				out.append(point_variant as Vector2)
-		return out
-	if nav_system and nav_system.has_method("build_path_points"):
-		var fallback_variant: Variant = nav_system.call("build_path_points", owner.global_position, target_pos)
-		if fallback_variant is Array:
-			for point_variant in (fallback_variant as Array):
-				out.append(point_variant as Vector2)
-		if out.is_empty():
-			out.append(target_pos)
-		return out
-	out.append(target_pos)
-	return out
-
-
-func _validate_path_policy(from_pos: Vector2, path_points: Array[Vector2]) -> Dictionary:
-	if path_points.is_empty():
-		return {"valid": false, "segment_index": -1}
-	if nav_system and nav_system.has_method("validate_enemy_path_policy"):
-		var validation_variant: Variant = nav_system.call(
-			"validate_enemy_path_policy",
-			owner,
-			from_pos,
-			path_points,
-			PATH_POLICY_SAMPLE_STEP_PX
-		)
-		if validation_variant is Dictionary:
-			return validation_variant as Dictionary
-	return _validate_path_policy_with_traverse_samples(from_pos, path_points)
-
-
-func _validate_path_policy_with_traverse_samples(from_pos: Vector2, path_points: Array[Vector2]) -> Dictionary:
-	if nav_system == null or not nav_system.has_method("can_enemy_traverse_point"):
-		return {"valid": true, "segment_index": -1}
-	var prev := from_pos
-	var segment_index := 0
-	for point in path_points:
-		var segment_len := prev.distance_to(point)
-		var steps := maxi(int(ceil(segment_len / PATH_POLICY_SAMPLE_STEP_PX)), 1)
-		for step in range(1, steps + 1):
-			var t := float(step) / float(steps)
-			var sample := prev.lerp(point, t)
-			if not bool(nav_system.call("can_enemy_traverse_point", owner, sample)):
-				return {
-					"valid": false,
-					"segment_index": segment_index,
-					"blocked_point": sample,
-				}
-		prev = point
-		segment_index += 1
-	return {"valid": true, "segment_index": -1}
 
 
 func _resolve_nearest_reachable_fallback(target_pos: Vector2) -> Dictionary:
@@ -860,7 +875,6 @@ func _attempt_shadow_escape_recovery() -> bool:
 	_shadow_escape_active = true
 	_shadow_escape_target = escape_target
 	_shadow_escape_target_valid = true
-	_policy_replan_attempts = 0
 	_policy_fallback_used = true
 	_policy_fallback_target = escape_target
 	_active_move_target = Vector2.ZERO
@@ -960,11 +974,12 @@ func _nav_path_length_to(target_pos: Vector2) -> float:
 		if is_finite(len_value):
 			return len_value
 		return INF
-	var path_points := _build_reachable_path_points_for_enemy(target_pos)
-	if path_points.is_empty():
+	var plan_contract := _request_path_plan_contract(target_pos, true)
+	var normalized_plan := _normalize_path_plan_contract(plan_contract, target_pos)
+	if String(normalized_plan.get("status", PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY)) != PATH_PLAN_STATUS_OK:
 		return INF
-	var policy_validation := _validate_path_policy(owner.global_position, path_points)
-	if not bool(policy_validation.get("valid", false)):
+	var path_points := _extract_vector2_path_points(normalized_plan.get("path_points", []))
+	if path_points.is_empty():
 		return INF
 	return _path_length(owner.global_position, path_points)
 
@@ -1047,9 +1062,12 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 	return {
 		"path_failed": _last_path_failed,
 		"path_failed_reason": _last_path_failed_reason,
+		"path_plan_status": _last_path_plan_status,
+		"path_plan_reason": _last_path_plan_reason,
+		"path_plan_blocked_point": _last_path_plan_blocked_point,
+		"path_plan_blocked_point_valid": _last_path_plan_blocked_point_valid,
 		"policy_blocked": _path_policy_blocked,
 		"policy_blocked_segment": _last_policy_blocked_segment,
-		"policy_replan_attempts": _policy_replan_attempts,
 		"policy_fallback_used": _policy_fallback_used,
 		"policy_fallback_target": _policy_fallback_target,
 		"last_valid_path_node": _last_valid_path_node,

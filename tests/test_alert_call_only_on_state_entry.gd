@@ -42,7 +42,7 @@ class FakeEnemy:
 		set_meta("awareness_state", "CALM")
 		add_to_group("enemies")
 
-	func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1) -> bool:
+	func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1, _shot_pos: Vector2 = Vector2.ZERO) -> bool:
 		teammate_accepts += 1
 		var from_state := String(get_meta("awareness_state", "CALM"))
 		set_meta("awareness_state", "ALERT")
@@ -165,7 +165,7 @@ func _flush_event_bus_frames(frames: int = 4) -> void:
 		await get_tree().process_frame
 
 
-func _on_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int, _timestamp_sec: float) -> void:
+func _on_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int, _timestamp_sec: float, _shot_pos: Vector2) -> void:
 	_teammate_calls += 1
 
 

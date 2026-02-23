@@ -799,13 +799,33 @@ func apply_room_alert_propagation(_source_enemy_id: int, _source_room_id: int) -
 		_apply_awareness_transitions(_awareness.register_room_alert_propagation(), "room_alert_propagation")
 
 
-func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1) -> bool:
+func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1, shot_pos: Vector2 = Vector2.ZERO) -> bool:
 	if not _awareness:
 		return false
 	var transitions: Array = _awareness.register_teammate_call()
 	if transitions.is_empty():
 		return false
 	_apply_awareness_transitions(transitions, REASON_TEAMMATE_CALL)
+	if shot_pos != Vector2.ZERO:
+		_investigate_anchor = shot_pos
+		_investigate_anchor_valid = true
+		_investigate_target_in_shadow = false
+		if nav_system and nav_system.has_method("is_point_in_shadow"):
+			_investigate_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shot_pos))
+		var tile_size: int = GameConfig.tile_size if GameConfig else 32
+		var walk_speed := speed_tiles * float(tile_size)
+		var walk_time := global_position.distance_to(shot_pos) / maxf(walk_speed, 0.001)
+		var dynamic_hold := walk_time + randf_range(3.0, 10.0)
+		if _awareness.has_method("override_alert_hold_timer"):
+			_awareness.override_alert_hold_timer(dynamic_hold)
+		var dist_to_shot := global_position.distance_to(shot_pos)
+		if dist_to_shot < FLASHLIGHT_NEAR_THRESHOLD_PX:
+			_flashlight_activation_delay_timer = randf_range(0.3, 0.8)
+		else:
+			_flashlight_activation_delay_timer = randf_range(1.0, 1.8)
+	else:
+		if _awareness.has_method("override_alert_hold_timer"):
+			_awareness.override_alert_hold_timer(randf_range(8.0, 15.0))
 	return true
 
 
@@ -988,8 +1008,7 @@ func _resolve_squad_assignment() -> Dictionary:
 func _build_utility_context(player_valid: bool, player_visible: bool, assignment: Dictionary, target_context: Dictionary) -> Dictionary:
 	var slot_pos := assignment.get("slot_position", Vector2.ZERO) as Vector2
 	var hp_ratio := float(hp) / float(maxi(max_hp, 1))
-	var in_combat_state := _is_combat_awareness_active()
-	var has_last_seen := _last_seen_age < INF and not in_combat_state
+	var has_last_seen := _last_seen_age < INF
 	var known_target_pos := target_context.get("known_target_pos", Vector2.ZERO) as Vector2
 	var target_is_last_seen := bool(target_context.get("target_is_last_seen", false))
 	var has_known_target := bool(target_context.get("has_known_target", false))

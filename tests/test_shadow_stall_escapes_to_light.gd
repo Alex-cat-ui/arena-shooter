@@ -36,6 +36,38 @@ class FakeNav:
 	func build_reachable_path_points(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> Array:
 		return [to_pos]
 
+	func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Dictionary:
+		var path := build_reachable_path_points(from_pos, to_pos, enemy)
+		if path.is_empty():
+			return {
+				"status": "unreachable_geometry",
+				"path_points": [],
+				"reason": "path_unreachable",
+			}
+		var prev := from_pos
+		var segment_index := 0
+		for point_variant in path:
+			var point := point_variant as Vector2
+			var steps := maxi(int(ceil(prev.distance_to(point) / 12.0)), 1)
+			for step in range(1, steps + 1):
+				var t := float(step) / float(steps)
+				var sample := prev.lerp(point, t)
+				if not can_enemy_traverse_point(enemy, sample):
+					return {
+						"status": "unreachable_policy",
+						"path_points": [],
+						"reason": "policy_blocked",
+						"segment_index": segment_index,
+						"blocked_point": sample,
+					}
+			prev = point
+			segment_index += 1
+		return {
+			"status": "ok",
+			"path_points": path,
+			"reason": "ok",
+		}
+
 	func nav_path_length(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> float:
 		var steps := maxi(int(ceil(from_pos.distance_to(to_pos) / 12.0)), 1)
 		for step in range(1, steps + 1):
@@ -89,6 +121,7 @@ func _test_shadow_stall_prefers_escape_to_light() -> void:
 
 	var blocked_shadow_target := Vector2(-140.0, 0.0)
 	var escape_target_in_light_seen := false
+	var recovery_target_in_light_seen := false
 	var escaped_to_light := false
 
 	for _i in range(240):
@@ -98,12 +131,18 @@ func _test_shadow_stall_prefers_escape_to_light() -> void:
 		var escape_target := snap.get("shadow_escape_target", Vector2.ZERO) as Vector2
 		if bool(snap.get("shadow_escape_active", false)) and escape_target.x >= nav.shadow_edge_x:
 			escape_target_in_light_seen = true
+		var fallback_target := snap.get("policy_fallback_target", Vector2.ZERO) as Vector2
+		if bool(snap.get("policy_fallback_used", false)) and fallback_target.x >= nav.shadow_edge_x:
+			recovery_target_in_light_seen = true
 		if owner.global_position.x >= nav.shadow_edge_x:
 			escaped_to_light = true
 			break
 
 	_t.run_test("setup: owner starts in shadow", nav.is_point_in_shadow(Vector2(-40.0, 0.0)))
-	_t.run_test("shadow stall picks escape target in light", escape_target_in_light_seen)
+	_t.run_test(
+		"shadow recovery picks target in light (shadow_escape or policy_fallback)",
+		escape_target_in_light_seen or recovery_target_in_light_seen
+	)
 	_t.run_test("enemy exits shadow to light during recovery", escaped_to_light)
 	_t.run_test("after recovery owner remains outside shadow", escaped_to_light and not nav.is_point_in_shadow(owner.global_position))
 

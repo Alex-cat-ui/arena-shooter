@@ -74,7 +74,7 @@ signal enemy_state_changed(enemy_id: int, from_state: String, to_state: String, 
 signal enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, target_room_ids: Array)
 
 ## One-shot teammate call on SUSPICIOUS->ALERT edge.
-signal enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, timestamp_sec: float)
+signal enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, timestamp_sec: float, shot_pos: Vector2)
 
 ## Zone state changed
 signal zone_state_changed(zone_id: int, old_state: int, new_state: int)
@@ -205,8 +205,8 @@ func emit_enemy_state_changed(enemy_id: int, from_state: String, to_state: Strin
 func emit_enemy_reinforcement_called(source_enemy_id: int, source_room_id: int, target_room_ids: Array) -> void:
 	_queue_event("enemy_reinforcement_called", [source_enemy_id, source_room_id, target_room_ids.duplicate()], Priority.HIGH)
 
-func emit_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, timestamp_sec: float) -> void:
-	_queue_event("enemy_teammate_call", [source_enemy_id, source_room_id, call_id, timestamp_sec], Priority.HIGH)
+func emit_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, timestamp_sec: float, shot_pos: Vector2 = Vector2.ZERO) -> void:
+	_queue_event("enemy_teammate_call", [source_enemy_id, source_room_id, call_id, timestamp_sec, shot_pos], Priority.HIGH)
 
 func emit_zone_state_changed(zone_id: int, old_state: int, new_state: int) -> void:
 	_queue_event("zone_state_changed", [zone_id, old_state, new_state], Priority.HIGH)
@@ -365,7 +365,7 @@ func _dispatch_event(event: Dictionary) -> void:
 		"enemy_reinforcement_called":
 			enemy_reinforcement_called.emit(event.args[0], event.args[1], event.args[2])
 		"enemy_teammate_call":
-			enemy_teammate_call.emit(event.args[0], event.args[1], event.args[2], event.args[3])
+			enemy_teammate_call.emit(event.args[0], event.args[1], event.args[2], event.args[3], event.args[4])
 		"zone_state_changed":
 			zone_state_changed.emit(event.args[0], event.args[1], event.args[2])
 		"hostile_escalation":

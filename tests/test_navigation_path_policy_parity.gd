@@ -2,7 +2,6 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const NAVIGATION_SERVICE_SCRIPT := preload("res://src/systems/navigation_service.gd")
-const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
 const SHADOW_ZONE_SCRIPT := preload("res://src/systems/stealth/shadow_zone.gd")
 
 var embedded_mode: bool = false
@@ -15,6 +14,29 @@ class FakeEnemy:
 
 	func is_flashlight_active_for_navigation() -> bool:
 		return flashlight_active
+
+
+class FakeLayout:
+	extends RefCounted
+	var valid: bool = true
+	var rooms: Array = [
+		{
+			"center": Vector2(-100.0, 0.0),
+			"rects": [Rect2(-220.0, -120.0, 220.0, 240.0)],
+		},
+		{
+			"center": Vector2(100.0, 0.0),
+			"rects": [Rect2(0.0, -120.0, 220.0, 240.0)],
+		},
+	]
+	var doors: Array = []
+	var _door_adj: Dictionary = {
+		0: [1],
+		1: [0],
+	}
+
+	func _room_id_at_point(p: Vector2) -> int:
+		return 0 if p.x < 0.0 else 1
 
 
 func _ready() -> void:
@@ -57,41 +79,39 @@ func _test_path_policy_parity() -> void:
 	world.add_child(zone)
 	await get_tree().process_frame
 	await get_tree().physics_frame
+	nav.layout = FakeLayout.new()
+	nav._nav_regions = [NavigationRegion2D.new()]
+	nav._room_graph = {
+		0: [1],
+		1: [0],
+	}
+	nav._pair_doors = {
+		"0|1": [Vector2(-12.0, 0.0), Vector2(12.0, 0.0)],
+	}
 
 	var enemy := FakeEnemy.new()
 	enemy.global_position = Vector2(-100.0, 0.0)
 	enemy.flashlight_active = false
 	world.add_child(enemy)
 
-	var sprite := Sprite2D.new()
-	enemy.add_child(sprite)
-	var pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(enemy, sprite, 2.0)
-	pursuit.configure_navigation(nav, 0)
-
-	var blocked_path: Array[Vector2] = [Vector2(100.0, 0.0)]
-	var blocked_nav := bool(nav.call("_path_crosses_policy_block", enemy, enemy.global_position, blocked_path))
-	var blocked_validation := pursuit.call("_validate_path_policy", enemy.global_position, blocked_path) as Dictionary
+	var target := Vector2(100.0, 0.0)
+	var blocked_plan := nav.build_policy_valid_path(enemy.global_position, target, enemy) as Dictionary
 	_t.run_test(
-		"blocked shadow segment parity",
-		blocked_nav and not bool(blocked_validation.get("valid", true)) and int(blocked_validation.get("segment_index", -1)) == 0
+		"build_policy_valid_path returns unreachable_policy when only route is shadow-blocked",
+		String(blocked_plan.get("status", "")) == "unreachable_policy"
+			and String(blocked_plan.get("reason", "")) == "policy_blocked"
+			and (blocked_plan.get("path_points", []) as Array).is_empty()
 	)
 
 	enemy.flashlight_active = true
-	var lit_nav := bool(nav.call("_path_crosses_policy_block", enemy, enemy.global_position, blocked_path))
-	var lit_validation := pursuit.call("_validate_path_policy", enemy.global_position, blocked_path) as Dictionary
+	var lit_plan := nav.build_policy_valid_path(enemy.global_position, target, enemy) as Dictionary
+	var lit_path := lit_plan.get("path_points", []) as Array
 	_t.run_test(
-		"flashlight override parity",
-		not lit_nav and bool(lit_validation.get("valid", false))
-	)
-
-	enemy.flashlight_active = false
-	enemy.global_position = Vector2(0.0, 0.0)
-	var inside_path: Array[Vector2] = [Vector2(20.0, 0.0)]
-	var inside_nav := bool(nav.call("_path_crosses_policy_block", enemy, enemy.global_position, inside_path))
-	var inside_validation := pursuit.call("_validate_path_policy", enemy.global_position, inside_path) as Dictionary
-	_t.run_test(
-		"inside-shadow escape parity",
-		not inside_nav and bool(inside_validation.get("valid", false))
+		"flashlight override allows build_policy_valid_path direct route_type",
+		String(lit_plan.get("status", "")) == "ok"
+			and String(lit_plan.get("reason", "")) == "ok"
+			and String(lit_plan.get("route_type", "")) == "direct"
+			and not lit_path.is_empty()
 	)
 
 	world.queue_free()

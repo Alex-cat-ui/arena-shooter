@@ -57,6 +57,9 @@ class FakeEnemy:
 
 	var entity_id: int = 0
 	var teammate_calls: int = 0
+	var last_teammate_shot_pos: Vector2 = Vector2.ZERO
+	var _investigate_anchor: Vector2 = Vector2.ZERO
+	var _investigate_anchor_valid: bool = false
 
 	func _init(p_entity_id: int, room_id: int, awareness_state: String = "CALM") -> void:
 		entity_id = p_entity_id
@@ -64,10 +67,11 @@ class FakeEnemy:
 		set_meta("awareness_state", awareness_state)
 		add_to_group("enemies")
 
-	func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1) -> bool:
+	func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1, shot_pos: Vector2 = Vector2.ZERO) -> bool:
 		var state := String(get_meta("awareness_state", "CALM"))
 		if state == "COMBAT" or state == "ALERT":
 			return false
+		last_teammate_shot_pos = shot_pos
 		teammate_calls += 1
 		set_meta("awareness_state", "ALERT")
 		if EventBus:
@@ -135,6 +139,7 @@ func run_suite() -> Dictionary:
 	print("============================================================")
 
 	await _test_teammate_call_acceptance_reported_to_zone_director()
+	await _test_teammate_call_forwards_source_anchor()
 	await _test_reinforcement_blocked_in_calm_zone()
 	await _test_reinforcement_allowed_in_elevated_zone()
 
@@ -157,6 +162,25 @@ func _test_teammate_call_acceptance_reported_to_zone_director() -> void:
 
 	_t.run_test("teammate call accepted by calm target", same_room_calm.teammate_calls == 1)
 	_t.run_test("accepted teammate call reported to ZoneDirector", director.accepted_teammate_calls.size() >= 1)
+	_cleanup_fixture(fixture)
+	await get_tree().process_frame
+
+
+func _test_teammate_call_forwards_source_anchor() -> void:
+	var fixture := _create_fixture(ZONE_ELEVATED)
+	var source := fixture["source"] as FakeEnemy
+	var same_room_calm := fixture["same_room_calm"] as FakeEnemy
+	var anchor := Vector2(320.0, 144.0)
+
+	source._investigate_anchor = anchor
+	source._investigate_anchor_valid = true
+	EventBus.emit_enemy_state_changed(source.entity_id, "SUSPICIOUS", "ALERT", 10, "vision")
+	await _flush_event_bus_frames(5)
+
+	_t.run_test(
+		"teammate call forwards source investigate anchor as shot_pos",
+		same_room_calm.last_teammate_shot_pos.distance_to(anchor) <= 0.001
+	)
 	_cleanup_fixture(fixture)
 	await get_tree().process_frame
 

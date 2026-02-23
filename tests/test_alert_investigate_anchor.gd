@@ -22,6 +22,7 @@ func run_suite() -> Dictionary:
 	print("============================================================")
 
 	_test_alert_uses_investigate_anchor_without_last_seen()
+	_test_suspicious_uses_anchor_even_when_last_seen_is_stale()
 
 	_t.summary("ALERT INVESTIGATE ANCHOR RESULTS")
 	return {
@@ -54,6 +55,33 @@ func _test_alert_uses_investigate_anchor_without_last_seen() -> void:
 	)
 	_t.run_test(
 		"investigate target equals investigate_anchor",
+		(intent.get("target", Vector2.ZERO) as Vector2).distance_to(anchor) <= 0.001
+	)
+
+
+func _test_suspicious_uses_anchor_even_when_last_seen_is_stale() -> void:
+	var brain = ENEMY_UTILITY_BRAIN_SCRIPT.new()
+	brain.reset()
+
+	var anchor := Vector2(180.0, -72.0)
+	var intent := brain.update(0.3, _ctx({
+		"los": false,
+		"alert_level": ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS,
+		"has_last_seen": true,
+		"last_seen_age": 99.0,
+		"last_seen_pos": Vector2(48.0, 48.0),
+		"dist_to_last_seen": 70.0,
+		"has_investigate_anchor": true,
+		"investigate_anchor": anchor,
+		"dist_to_investigate_anchor": 190.0,
+	})) as Dictionary
+
+	_t.run_test(
+		"SUSPICIOUS uses investigate_anchor even when last_seen_age is stale",
+		int(intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
+	)
+	_t.run_test(
+		"SUSPICIOUS stale-last_seen investigate target equals anchor",
 		(intent.get("target", Vector2.ZERO) as Vector2).distance_to(anchor) <= 0.001
 	)
 

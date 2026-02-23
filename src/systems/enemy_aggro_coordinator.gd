@@ -61,7 +61,7 @@ func _on_enemy_state_changed(enemy_id: int, from_state: String, to_state: String
 	_call_reinforcements(enemy_id, room_id, reason, to_state)
 
 
-func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, _timestamp_sec: float) -> void:
+func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, _timestamp_sec: float, shot_pos: Vector2) -> void:
 	if source_enemy_id <= 0 or source_room_id < 0 or call_id <= 0:
 		return
 	for enemy_variant in _get_all_enemies():
@@ -82,7 +82,7 @@ func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id:
 			continue
 		if not enemy.has_method("apply_teammate_call"):
 			continue
-		var accepted_variant: Variant = enemy.call("apply_teammate_call", source_enemy_id, source_room_id, call_id)
+		var accepted_variant: Variant = enemy.call("apply_teammate_call", source_enemy_id, source_room_id, call_id, shot_pos)
 		var accepted := bool(accepted_variant)
 		if accepted:
 			_target_last_accept_sec[target_enemy_id] = _now_sec()
@@ -118,7 +118,12 @@ func _emit_teammate_call(source_enemy_id: int, source_room_id: int) -> void:
 	_next_teammate_call_id += 1
 	var now_sec := _now_sec()
 	_source_last_call_sec[source_enemy_id] = now_sec
-	EventBus.emit_enemy_teammate_call(source_enemy_id, source_room_id, call_id, now_sec)
+	var shot_pos := Vector2.ZERO
+	var source_node := _find_enemy_by_id(source_enemy_id)
+	if source_node and "_investigate_anchor" in source_node and "_investigate_anchor_valid" in source_node:
+		if bool(source_node.get("_investigate_anchor_valid")):
+			shot_pos = source_node.get("_investigate_anchor") as Vector2
+	EventBus.emit_enemy_teammate_call(source_enemy_id, source_room_id, call_id, now_sec, shot_pos)
 
 
 func _can_source_emit_teammate_call(source_enemy_id: int) -> bool:
@@ -165,6 +170,24 @@ func _get_all_enemies() -> Array:
 		if enemy and enemy.is_in_group("enemies"):
 			result.append(enemy)
 	return result
+
+
+func _find_enemy_by_id(enemy_id: int) -> Node:
+	if enemy_id <= 0:
+		return null
+	if not entities_container:
+		return null
+	for child_variant in entities_container.get_children():
+		var enemy := child_variant as Node
+		if enemy == null:
+			continue
+		if not enemy.is_in_group("enemies"):
+			continue
+		if not ("entity_id" in enemy):
+			continue
+		if int(enemy.get("entity_id")) == enemy_id:
+			return enemy
+	return null
 
 
 func _now_sec() -> float:

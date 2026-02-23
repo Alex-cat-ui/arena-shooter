@@ -4,6 +4,7 @@ class_name NavigationRuntimeQueries
 extends RefCounted
 
 var _service: Node = null
+const POLICY_SAMPLE_STEP_PX := 12.0
 
 
 func _init(service: Node) -> void:
@@ -201,41 +202,249 @@ func random_point_in_room(room_id: int, margin: float = 20.0) -> Vector2:
 
 
 func build_path_points(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
-	var reachable_path := build_reachable_path_points(from_pos, to_pos)
-	if not reachable_path.is_empty():
-		return reachable_path
+	var policy_plan := build_policy_valid_path(from_pos, to_pos)
+	var path_points := _extract_path_points(policy_plan.get("path_points", []))
+	if not path_points.is_empty():
+		return path_points
 	return [to_pos]
 
 
 func build_reachable_path_points(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Array[Vector2]:
-	var map_rid: RID = _service.get_navigation_map_rid()
+	var policy_plan := build_policy_valid_path(from_pos, to_pos, enemy)
+	if String(policy_plan.get("status", "")) != "ok":
+		return []
+	return _extract_path_points(policy_plan.get("path_points", []))
+
+
+func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Dictionary:
+	var geometry_plan := _build_geometry_path_plan(from_pos, to_pos)
+	var geometry_status := String(geometry_plan.get("status", "unreachable_geometry"))
+	if geometry_status != "ok":
+		return geometry_plan
+	var direct_pts := _extract_path_points(geometry_plan.get("path_points", []))
+	if direct_pts.is_empty():
+		return {
+			"status": "unreachable_geometry",
+			"path_points": [],
+			"reason": "empty_path",
+		}
+	if enemy == null:
+		return {
+			"status": "ok",
+			"path_points": direct_pts,
+			"reason": "ok",
+			"route_type": "direct",
+		}
+	var direct_valid := _validate_enemy_policy_path(enemy, from_pos, direct_pts)
+	if bool(direct_valid.get("valid", false)):
+		return {
+			"status": "ok",
+			"path_points": direct_pts,
+			"reason": "ok",
+			"route_type": "direct",
+		}
+	var from_room := room_id_at_point(from_pos)
+	var to_room := room_id_at_point(to_pos)
+	if from_room < 0 or to_room < 0:
+		return {
+			"status": "unreachable_policy",
+			"path_points": [],
+			"reason": "policy_blocked",
+		}
+	var candidates := _build_detour_candidates(from_pos, to_pos, from_room, to_room)
+	var best_valid: Dictionary = {}
+	var best_len: float = INF
+	for cand_variant in candidates:
+		var cand := cand_variant as Dictionary
+		var cand_points := _extract_path_points(cand.get("path_points", []))
+		var cand_validation := _validate_enemy_policy_path(enemy, from_pos, cand_points)
+		var cand_len := float(cand.get("euclidean_length", INF))
+		if bool(cand_validation.get("valid", false)) and cand_len < best_len:
+			best_valid = cand
+			best_len = cand_len
+	if not best_valid.is_empty():
+		return {
+			"status": "ok",
+			"path_points": _extract_path_points(best_valid.get("path_points", [])),
+			"reason": "ok",
+			"route_type": String(best_valid.get("route_type", "")),
+		}
+	return {
+		"status": "unreachable_policy",
+		"path_points": [],
+		"reason": "policy_blocked",
+	}
+
+
+func _build_geometry_path_plan(from_pos: Vector2, to_pos: Vector2) -> Dictionary:
+	var map_rid := RID()
+	if _service and _service.has_method("get_navigation_map_rid"):
+		map_rid = _service.get_navigation_map_rid()
 	if map_rid.is_valid():
 		var raw_path: PackedVector2Array = NavigationServer2D.map_get_path(map_rid, from_pos, to_pos, true)
 		if raw_path.is_empty():
-			return []
+			return {
+				"status": "unreachable_geometry",
+				"path_points": [],
+				"reason": "navmesh_no_path",
+			}
 		var out: Array[Vector2] = []
 		for p in raw_path:
 			out.append(p)
 		if out.is_empty() or out[out.size() - 1].distance_to(to_pos) > 0.5:
 			out.append(to_pos)
-		if enemy != null and bool(_service.call("_path_crosses_policy_block", enemy, from_pos, out)):
-			return []
-		return out
+		return {
+			"status": "ok",
+			"path_points": out,
+			"reason": "ok",
+		}
 
+	if _service == null or not _service.has_method("_build_room_graph_path_points_reachable"):
+		return {
+			"status": "unreachable_geometry",
+			"path_points": [],
+			"reason": "room_graph_unavailable",
+		}
 	var room_graph_variant: Variant = _service.call("_build_room_graph_path_points_reachable", from_pos, to_pos)
-	var room_graph_path: Array[Vector2] = []
-	if room_graph_variant is Array:
-		for point_variant in (room_graph_variant as Array):
-			room_graph_path.append(point_variant as Vector2)
+	var room_graph_path := _extract_path_points(room_graph_variant)
 	if room_graph_path.is_empty():
-		return []
-	if enemy != null and bool(_service.call("_path_crosses_policy_block", enemy, from_pos, room_graph_path)):
-		return []
-	return room_graph_path
+		return {
+			"status": "unreachable_geometry",
+			"path_points": [],
+			"reason": "room_graph_no_path",
+		}
+	if room_graph_path[room_graph_path.size() - 1].distance_to(to_pos) > 0.5:
+		room_graph_path.append(to_pos)
+	return {
+		"status": "ok",
+		"path_points": room_graph_path,
+		"reason": "ok",
+	}
+
+
+func _build_detour_candidates(from_pos: Vector2, to_pos: Vector2, from_room: int, to_room: int) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var neighbors_from := get_neighbors(from_room)
+
+	for mid in neighbors_from:
+		if mid == to_room:
+			continue
+		if not is_adjacent(mid, to_room):
+			continue
+		var wp1 := get_door_center_between(from_room, mid, from_pos)
+		var wp2 := get_door_center_between(mid, to_room, wp1)
+		var pts: Array[Vector2] = [wp1, wp2, to_pos]
+		result.append({
+			"path_points": pts,
+			"euclidean_length": _euclidean_path_length(from_pos, pts),
+			"route_type": "1wp",
+			"_sort_key": [mid],
+		})
+
+	if is_adjacent(from_room, to_room):
+		var wp := get_door_center_between(from_room, to_room, from_pos)
+		var pts_direct_neighbor: Array[Vector2] = [wp, to_pos]
+		result.append({
+			"path_points": pts_direct_neighbor,
+			"euclidean_length": _euclidean_path_length(from_pos, pts_direct_neighbor),
+			"route_type": "1wp",
+			"_sort_key": [to_room],
+		})
+
+	for mid1 in neighbors_from:
+		var neighbors_mid1 := get_neighbors(mid1)
+		for mid2 in neighbors_mid1:
+			if mid2 == from_room or mid2 == mid1 or mid2 == to_room:
+				continue
+			if not is_adjacent(mid2, to_room):
+				continue
+			var wp1 := get_door_center_between(from_room, mid1, from_pos)
+			var wp2 := get_door_center_between(mid1, mid2, wp1)
+			var wp3 := get_door_center_between(mid2, to_room, wp2)
+			var pts_two_wp: Array[Vector2] = [wp1, wp2, wp3, to_pos]
+			result.append({
+				"path_points": pts_two_wp,
+				"euclidean_length": _euclidean_path_length(from_pos, pts_two_wp),
+				"route_type": "2wp",
+				"_sort_key": [mid1, mid2],
+			})
+
+	var deduped: Array[Dictionary] = []
+	for cand_variant in result:
+		var cand := cand_variant as Dictionary
+		var cand_points := _extract_path_points(cand.get("path_points", []))
+		var duplicate := false
+		for seen_variant in deduped:
+			var seen := seen_variant as Dictionary
+			var seen_points := _extract_path_points(seen.get("path_points", []))
+			if cand_points.size() != seen_points.size():
+				continue
+			var same_points := true
+			for i in range(cand_points.size()):
+				var a := cand_points[i]
+				var b := seen_points[i]
+				if abs(a.x - b.x) >= 0.01 or abs(a.y - b.y) >= 0.01:
+					same_points = false
+					break
+			if same_points:
+				duplicate = true
+				break
+		if not duplicate:
+			deduped.append(cand)
+	result = deduped
+
+	result.sort_custom(func(a_variant, b_variant):
+		var a := a_variant as Dictionary
+		var b := b_variant as Dictionary
+		var len_a := float(a.get("euclidean_length", INF))
+		var len_b := float(b.get("euclidean_length", INF))
+		if not is_equal_approx(len_a, len_b):
+			return len_a < len_b
+		var key_a := a.get("_sort_key", []) as Array
+		var key_b := b.get("_sort_key", []) as Array
+		var key_count := mini(key_a.size(), key_b.size())
+		for i in range(key_count):
+			var part_a := int(key_a[i])
+			var part_b := int(key_b[i])
+			if part_a != part_b:
+				return part_a < part_b
+		if key_a.size() != key_b.size():
+			return key_a.size() < key_b.size()
+		var route_a := String(a.get("route_type", ""))
+		var route_b := String(b.get("route_type", ""))
+		if route_a != route_b:
+			return route_a < route_b
+		var pts_a := _extract_path_points(a.get("path_points", []))
+		var pts_b := _extract_path_points(b.get("path_points", []))
+		var point_count := mini(pts_a.size(), pts_b.size())
+		for i in range(point_count):
+			var pa := pts_a[i]
+			var pb := pts_b[i]
+			if not is_equal_approx(pa.x, pb.x):
+				return pa.x < pb.x
+			if not is_equal_approx(pa.y, pb.y):
+				return pa.y < pb.y
+		return pts_a.size() < pts_b.size()
+	)
+	return result
+
+
+func _euclidean_path_length(from_pos: Vector2, path_points: Array[Vector2]) -> float:
+	if path_points.is_empty():
+		return 0.0
+	var total: float = 0.0
+	var prev := from_pos
+	for p in path_points:
+		total += prev.distance_to(p)
+		prev = p
+	return total
 
 
 func nav_path_length(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> float:
-	var path := build_reachable_path_points(from_pos, to_pos, enemy)
+	var policy_plan := build_policy_valid_path(from_pos, to_pos, enemy)
+	if String(policy_plan.get("status", "")) != "ok":
+		return INF
+	var path := _extract_path_points(policy_plan.get("path_points", []))
 	if path.is_empty():
 		return INF
 	var total := 0.0
@@ -244,3 +453,49 @@ func nav_path_length(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> 
 		total += prev.distance_to(point)
 		prev = point
 	return total
+
+
+func _validate_enemy_policy_path(enemy: Node, from_pos: Vector2, path_points: Array[Vector2]) -> Dictionary:
+	if enemy == null:
+		return {
+			"valid": true,
+			"segment_index": -1,
+		}
+	if _service and _service.has_method("validate_enemy_path_policy"):
+		var validation_variant: Variant = _service.call(
+			"validate_enemy_path_policy",
+			enemy,
+			from_pos,
+			path_points,
+			POLICY_SAMPLE_STEP_PX
+		)
+		if validation_variant is Dictionary:
+			return validation_variant as Dictionary
+	if _service and _service.has_method("can_enemy_traverse_point"):
+		var prev := from_pos
+		for point in path_points:
+			var segment_len := prev.distance_to(point)
+			var steps := maxi(int(ceil(segment_len / POLICY_SAMPLE_STEP_PX)), 1)
+			for step in range(1, steps + 1):
+				var t := float(step) / float(steps)
+				var sample := prev.lerp(point, t)
+				if not bool(_service.call("can_enemy_traverse_point", enemy, sample)):
+					return {
+						"valid": false,
+						"segment_index": -1,
+						"blocked_point": sample,
+					}
+			prev = point
+	return {
+		"valid": true,
+		"segment_index": -1,
+	}
+
+
+func _extract_path_points(points_variant: Variant) -> Array[Vector2]:
+	var out: Array[Vector2] = []
+	if not (points_variant is Array):
+		return out
+	for point_variant in (points_variant as Array):
+		out.append(point_variant as Vector2)
+	return out

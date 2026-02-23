@@ -11,6 +11,17 @@ class FakeNavByDistance:
 	extends Node
 
 	var nav_lengths: Dictionary = {}
+	var plan_contracts: Dictionary = {}
+
+	func build_policy_valid_path(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> Dictionary:
+		var key := _key(to_pos)
+		if plan_contracts.has(key):
+			return (plan_contracts.get(key, {}) as Dictionary).duplicate(true)
+		return {
+			"status": "unreachable_geometry",
+			"path_points": [],
+			"reason": "stub_unreachable",
+		}
 
 	func nav_path_length(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> float:
 		return float(nav_lengths.get(_key(to_pos), INF))
@@ -50,6 +61,14 @@ func _test_stall_and_fallback_invariants() -> void:
 
 	var nav := FakeNavByDistance.new()
 	add_child(nav)
+	_t.run_test(
+		"fake nav omits legacy build_reachable_path_points API",
+		not nav.has_method("build_reachable_path_points")
+	)
+	_t.run_test(
+		"fake nav omits legacy build_path_points API",
+		not nav.has_method("build_path_points")
+	)
 
 	var pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(owner, sprite, 2.0)
 	pursuit.configure_navigation(nav, 0)
@@ -75,6 +94,29 @@ func _test_stall_and_fallback_invariants() -> void:
 	var point2 := result2.get("point", Vector2.ZERO) as Vector2
 	_t.run_test("fallback selection deterministic for same inputs", point1 == point2)
 	_t.run_test("fallback selects reachable candidate", bool(result1.get("found", false)) and point1 != Vector2.ZERO)
+
+	var blocked_target := Vector2(220.0, 100.0)
+	var fallback_target := blocked_target + Vector2(48.0, 0.0)
+	nav.plan_contracts[nav._key(blocked_target)] = {
+		"status": "unreachable_geometry",
+		"path_points": [],
+		"reason": "primary_unreachable",
+	}
+	nav.plan_contracts[nav._key(fallback_target)] = {
+		"status": "ok",
+		"path_points": [fallback_target],
+		"reason": "ok",
+	}
+	nav.nav_lengths[nav._key(fallback_target)] = owner.global_position.distance_to(fallback_target)
+
+	pursuit.call("_execute_move_to_target", 0.2, blocked_target, 1.0)
+	var snap := pursuit.debug_get_navigation_policy_snapshot() as Dictionary
+	var picked_target := snap.get("policy_fallback_target", Vector2.ZERO) as Vector2
+	var legacy_retry_key := "policy_" + "replan_attempts"
+	_t.run_test("contract fallback starts after first failed plan", bool(snap.get("policy_fallback_used", false)) and picked_target.distance_to(fallback_target) <= 0.001)
+	_t.run_test("planner contract reason is surfaced in snapshot", String(snap.get("path_failed_reason", "")) == "primary_unreachable")
+	_t.run_test("planner snapshot exposes last contract status", String(snap.get("path_plan_status", "")) == "ok")
+	_t.run_test("legacy retry counter key removed from snapshot", not snap.has(legacy_retry_key))
 
 	owner.queue_free()
 	nav.queue_free()

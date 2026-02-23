@@ -113,6 +113,8 @@ func get_last_suspicion_debug() -> Dictionary:
 
 
 func override_alert_hold_timer(sec: float) -> void:
+	if _state != State.ALERT:
+		return
 	_alert_hold_timer = maxf(_alert_hold_timer, maxf(sec, 0.0))
 
 

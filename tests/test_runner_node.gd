@@ -76,7 +76,11 @@ const ENEMY_FIRE_TRACE_CACHE_RUNTIME_TEST_SCENE := "res://tests/test_enemy_fire_
 const PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE := "res://tests/test_pursuit_intent_only_runtime.tscn"
 const PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE := "res://tests/test_pursuit_stall_fallback_invariants.tscn"
 const PURSUIT_ORIGIN_TARGET_NOT_SENTINEL_TEST_SCENE := "res://tests/test_pursuit_origin_target_not_sentinel.tscn"
+const ALERT_COMBAT_CONTEXT_NEVER_PATROL_TEST_SCENE := "res://tests/test_alert_combat_context_never_patrol.tscn"
 const NAVIGATION_RUNTIME_QUERIES_TEST_SCENE := "res://tests/test_navigation_runtime_queries.tscn"
+const NAVIGATION_FAILURE_REASON_CONTRACT_TEST_SCENE := "res://tests/test_navigation_failure_reason_contract.tscn"
+const NAVIGATION_POLICY_DETOUR_BLOCKED_TEST_SCENE := "res://tests/test_navigation_policy_detour_shadow_blocked_direct.tscn"
+const NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE := "res://tests/test_navigation_policy_detour_two_waypoints.tscn"
 const NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE := "res://tests/test_navigation_shadow_policy_runtime.tscn"
 const NAVIGATION_SHOT_GATE_PARITY_TEST_SCENE := "res://tests/test_navigation_shot_gate_parity.tscn"
 const NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE := "res://tests/test_navigation_path_policy_parity.tscn"
@@ -809,8 +813,14 @@ func _run_tests() -> void:
 	_test("Pursuit origin target not sentinel test scene exists", func():
 		return _scene_exists(PURSUIT_ORIGIN_TARGET_NOT_SENTINEL_TEST_SCENE)
 	)
+	_test("Alert/combat context never patrol test scene exists", func():
+		return _scene_exists(ALERT_COMBAT_CONTEXT_NEVER_PATROL_TEST_SCENE)
+	)
 	_test("Navigation runtime queries test scene exists", func():
 		return _scene_exists(NAVIGATION_RUNTIME_QUERIES_TEST_SCENE)
+	)
+	_test("Navigation failure reason contract test scene exists", func():
+		return _scene_exists(NAVIGATION_FAILURE_REASON_CONTRACT_TEST_SCENE)
 	)
 	_test("Navigation shadow policy runtime test scene exists", func():
 		return _scene_exists(NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
@@ -820,6 +830,12 @@ func _run_tests() -> void:
 	)
 	_test("Navigation path policy parity test scene exists", func():
 		return _scene_exists(NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE)
+	)
+	_test("Navigation policy detour direct-blocked test scene exists", func():
+		return _scene_exists(NAVIGATION_POLICY_DETOUR_BLOCKED_TEST_SCENE)
+	)
+	_test("Navigation policy detour two-waypoint test scene exists", func():
+		return _scene_exists(NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE)
 	)
 	_test("Nearest reachable fallback by nav distance test scene exists", func():
 		return _scene_exists(NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE)
@@ -1081,10 +1097,14 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Pursuit intent-only runtime suite", PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit stall/fallback invariants suite", PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit origin target not sentinel suite", PURSUIT_ORIGIN_TARGET_NOT_SENTINEL_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert/combat context never patrol suite", ALERT_COMBAT_CONTEXT_NEVER_PATROL_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation runtime queries suite", NAVIGATION_RUNTIME_QUERIES_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation failure reason contract suite", NAVIGATION_FAILURE_REASON_CONTRACT_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation shadow policy runtime suite", NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation shot gate parity suite", NAVIGATION_SHOT_GATE_PARITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation path policy parity suite", NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation policy detour direct-blocked suite", NAVIGATION_POLICY_DETOUR_BLOCKED_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation policy detour two-waypoint suite", NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE)
 	await _run_embedded_scene_suite("Nearest reachable fallback by nav distance suite", NEAREST_REACHABLE_FALLBACK_BY_NAV_DISTANCE_TEST_SCENE)
 	await _run_embedded_scene_suite("ZoneDirector single-owner transitions suite", ZONE_DIRECTOR_SINGLE_OWNER_TRANSITIONS_TEST_SCENE)
 	await _run_embedded_scene_suite("Zone hysteresis hold/no-event decay suite", ZONE_HYSTERESIS_HOLD_AND_NO_EVENT_DECAY_TEST_SCENE)

@@ -76,6 +76,7 @@ func _test_runtime_query_contracts() -> void:
 	nav.layout = layout
 	nav.entities_container = entities
 	nav.player_node = player
+	nav._nav_regions = [NavigationRegion2D.new()]
 	nav._room_graph = {0: [1], 1: [0]}
 	nav._pair_doors = {
 		"0|1": [Vector2(90.0, 50.0), Vector2(110.0, 50.0)],
@@ -93,6 +94,10 @@ func _test_runtime_query_contracts() -> void:
 	_t.run_test("get_room_rect chooses largest room rect", nav.get_room_rect(0).size == Vector2(120.0, 120.0))
 	_t.run_test("get_door_center_between picks closest center to anchor", nav.get_door_center_between(0, 1, Vector2(70.0, 50.0)) == Vector2(90.0, 50.0))
 	_t.run_test("build_path_points always ends at target", (nav.build_path_points(Vector2(10.0, 10.0), Vector2(190.0, 30.0)) as Array).back() == Vector2(190.0, 30.0))
+	_t.run_test(
+		"build_policy_valid_path enemy=null reports direct route_type",
+		String((nav.build_policy_valid_path(Vector2(10.0, 10.0), Vector2(190.0, 30.0)) as Dictionary).get("route_type", "")) == "direct"
+	)
 	_t.run_test("get_player_position uses player_node when available", nav.get_player_position() == Vector2(42.0, 24.0))
 
 	nav.queue_free()

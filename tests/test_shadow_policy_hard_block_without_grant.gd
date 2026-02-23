@@ -35,6 +35,38 @@ class FakeNav:
 		# Force path through blocked shadow segment.
 		return [Vector2(blocked_x + 18.0, from_pos.y), to_pos]
 
+	func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Dictionary:
+		var path := build_reachable_path_points(from_pos, to_pos, enemy)
+		if path.is_empty():
+			return {
+				"status": "unreachable_geometry",
+				"path_points": [],
+				"reason": "path_unreachable",
+			}
+		var prev := from_pos
+		var segment_index := 0
+		for point_variant in path:
+			var point := point_variant as Vector2
+			var steps := maxi(int(ceil(prev.distance_to(point) / 12.0)), 1)
+			for step in range(1, steps + 1):
+				var t := float(step) / float(steps)
+				var sample := prev.lerp(point, t)
+				if not can_enemy_traverse_point(enemy, sample):
+					return {
+						"status": "unreachable_policy",
+						"path_points": [],
+						"reason": "policy_blocked",
+						"segment_index": segment_index,
+						"blocked_point": sample,
+					}
+			prev = point
+			segment_index += 1
+		return {
+			"status": "ok",
+			"path_points": path,
+			"reason": "ok",
+		}
+
 	func nav_path_length(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> float:
 		var path := build_reachable_path_points(from_pos, to_pos, enemy)
 		var total := 0.0
@@ -96,7 +128,7 @@ func _test_policy_block_and_fallback() -> void:
 	var snap := pursuit.debug_get_navigation_policy_snapshot() as Dictionary
 	var fallback_target := snap.get("policy_fallback_target", Vector2.ZERO) as Vector2
 	_t.run_test("blocked shadow segment is marked as policy_blocked", String(snap.get("path_failed_reason", "")) == "policy_blocked")
-	_t.run_test("replan limit triggers nearest-reachable fallback", bool(snap.get("policy_fallback_used", false)))
+	_t.run_test("blocked plan triggers nearest-reachable fallback", bool(snap.get("policy_fallback_used", false)))
 	_t.run_test("fallback target avoids shadow without grant", fallback_target.x < nav.blocked_x)
 	_t.run_test("enemy starts moving on fallback path", owner.global_position.distance_to(Vector2.ZERO) > 0.1)
 

@@ -319,7 +319,7 @@ func _on_enemy_state_changed(enemy_id: int, from_state: String, to_state: String
 	_append_event_log("[#%d] %s -> %s room=%d (%s)" % [enemy_id, from_state, to_state, room_id, reason])
 
 
-func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, _timestamp_sec: float) -> void:
+func _on_enemy_teammate_call(source_enemy_id: int, source_room_id: int, call_id: int, _timestamp_sec: float, _shot_pos: Vector2) -> void:
 	_append_event_log("[#%d] TEAM_CALL room=%d call=%d" % [source_enemy_id, source_room_id, call_id])
 
 

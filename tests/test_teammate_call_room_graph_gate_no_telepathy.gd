@@ -40,7 +40,7 @@ class FakeEnemy:
 		set_meta("awareness_state", "CALM")
 		add_to_group("enemies")
 
-	func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1) -> bool:
+	func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1, _shot_pos: Vector2 = Vector2.ZERO) -> bool:
 		teammate_accepts += 1
 		set_meta("awareness_state", "ALERT")
 		return true
@@ -76,7 +76,7 @@ func _test_room_graph_gate_blocks_telepathy() -> void:
 	var adjacent_room := fixture.get("adjacent_room") as FakeEnemy
 	var far_room := fixture.get("far_room") as FakeEnemy
 
-	EventBus.emit_enemy_teammate_call(source.entity_id, 10, 8801, 0.0)
+	EventBus.emit_enemy_teammate_call(source.entity_id, 10, 8801, 0.0, Vector2.ZERO)
 	await _flush_event_bus_frames()
 
 	_t.run_test("same-room teammate call accepted", same_room.teammate_accepts == 1)

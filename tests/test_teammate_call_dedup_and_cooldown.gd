@@ -41,7 +41,7 @@ class FakeEnemy:
 		set_meta("awareness_state", "CALM")
 		add_to_group("enemies")
 
-	func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1) -> bool:
+	func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: int = -1, _shot_pos: Vector2 = Vector2.ZERO) -> bool:
 		teammate_accepts += 1
 		var from_state := String(get_meta("awareness_state", "CALM"))
 		set_meta("awareness_state", "ALERT")
@@ -109,18 +109,18 @@ func _test_target_dedup_and_cooldown() -> void:
 	var target := fixture.get("target") as FakeEnemy
 
 	coordinator.call("debug_set_time_override_sec", 0.0)
-	EventBus.emit_enemy_teammate_call(100, 10, 7001, 0.0)
-	EventBus.emit_enemy_teammate_call(100, 10, 7001, 0.0)
+	EventBus.emit_enemy_teammate_call(100, 10, 7001, 0.0, Vector2.ZERO)
+	EventBus.emit_enemy_teammate_call(100, 10, 7001, 0.0, Vector2.ZERO)
 	await _flush_event_bus_frames()
 	var accepts_after_dedup := target.teammate_accepts
 
 	coordinator.call("debug_set_time_override_sec", 1.0)
-	EventBus.emit_enemy_teammate_call(100, 10, 7002, 1.0)
+	EventBus.emit_enemy_teammate_call(100, 10, 7002, 1.0, Vector2.ZERO)
 	await _flush_event_bus_frames()
 	var accepts_after_cooldown_block := target.teammate_accepts
 
 	coordinator.call("debug_set_time_override_sec", 6.2)
-	EventBus.emit_enemy_teammate_call(100, 10, 7003, 6.2)
+	EventBus.emit_enemy_teammate_call(100, 10, 7003, 6.2, Vector2.ZERO)
 	await _flush_event_bus_frames()
 
 	_t.run_test("dedup-key(target,call_id): duplicate call is consumed once", accepts_after_dedup == 1)
@@ -178,5 +178,5 @@ func _flush_event_bus_frames(frames: int = 4) -> void:
 		await get_tree().process_frame
 
 
-func _on_teammate_call_counter(_source_enemy_id: int, _source_room_id: int, _call_id: int, _timestamp_sec: float) -> void:
+func _on_teammate_call_counter(_source_enemy_id: int, _source_room_id: int, _call_id: int, _timestamp_sec: float, _shot_pos: Vector2) -> void:
 	_teammate_event_count += 1

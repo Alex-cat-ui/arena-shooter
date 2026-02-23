@@ -77,6 +77,8 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var home_pos := ctx.get("home_position", Vector2.ZERO) as Vector2
 	var investigate_anchor := ctx.get("investigate_anchor", Vector2.ZERO) as Vector2
 	var has_investigate_anchor := bool(ctx.get("has_investigate_anchor", false))
+	var has_known_target := bool(ctx.get("has_known_target", false))
+	var target_context_exists := has_known_target or has_last_seen or has_investigate_anchor
 	var dist_to_investigate_anchor := float(ctx.get("dist_to_investigate_anchor", INF))
 	var shadow_scan_target := ctx.get("shadow_scan_target", Vector2.ZERO) as Vector2
 	var has_shadow_scan_target := bool(ctx.get("has_shadow_scan_target", false))
@@ -109,7 +111,8 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 			}
 		var inv_target := investigate_anchor if has_investigate_anchor else last_seen_pos
 		var inv_dist := dist_to_investigate_anchor if has_investigate_anchor else dist_to_last_seen
-		var inv_valid := (has_investigate_anchor or has_last_seen) and last_seen_age <= investigate_max_age
+		var last_seen_valid := has_last_seen and last_seen_age <= investigate_max_age
+		var inv_valid := last_seen_valid or has_investigate_anchor
 		if inv_valid and inv_dist > investigate_arrive_px:
 			return {
 				"type": IntentType.INVESTIGATE,
@@ -137,6 +140,11 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 			return {
 				"type": IntentType.INVESTIGATE,
 				"target": investigate_anchor,
+			}
+		if target_context_exists:
+			return {
+				"type": IntentType.SEARCH,
+				"target": home_pos,
 			}
 		return {
 			"type": IntentType.RETURN_HOME,
@@ -173,6 +181,11 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 			"target": slot_pos if has_slot and slot_pos != Vector2.ZERO else known_target_pos,
 		}
 
+	if alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.ALERT and target_context_exists:
+		return {
+			"type": IntentType.SEARCH,
+			"target": home_pos,
+		}
 	return {
 		"type": IntentType.RETURN_HOME,
 		"target": home_pos,
