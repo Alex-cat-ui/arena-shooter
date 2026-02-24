@@ -1,5 +1,25 @@
 # Arena Shooter Changelog
 
+## 2026-02-24
+
+### 14:35 MSK - Phase 17: Pursuit Repath Recovery Feedback + Dark-Search Node Skip Recovery
+- **Changed**: `EnemyPursuitSystem.execute_intent(...)` now emits deterministic Phase 17 `repath_recovery_*` feedback (collision-blocked / hard-stall / repeated blocked-point watchdog) while preserving PMB boundaries and policy-path planner ownership
+- **Added**: blocked-point repeat tracker + thresholds in `src/systems/enemy_pursuit_system.gd` and pursuit config keys/validator checks (`repath_recovery_blocked_point_bucket_px`, `repath_recovery_blocked_point_repeat_threshold`, `repath_recovery_intent_target_match_radius_px`)
+- **Changed**: `Enemy.runtime_budget_tick(...)` now consumes pursuit recovery feedback immediately after `_pursuit.execute_intent(...)` via single-owner `_apply_combat_search_repath_recovery_feedback(...)`, allowing dark-search node skip/escalation without mutating the current tick intent/context
+- **Added**: Phase 17 recovery debug snapshot fields in `Enemy.get_debug_detection_snapshot()` (`combat_search_recovery_*`)
+- **Added tests**: `tests/test_shadow_stuck_watchdog_escalates_to_next_node.gd/.tscn`, `tests/test_repeated_blocked_point_triggers_scan_then_search.gd/.tscn`
+- **Updated tests**: `tests/test_shadow_stall_escapes_to_light.gd`, `tests/test_pursuit_stall_fallback_invariants.gd`, `tests/test_detour_side_flip_on_stall.gd`, and `tests/test_runner_node.gd` (Phase 17 scene registration)
+
+### 12:40 MSK - Phase 16: Combat Dark-Search Node Sessions (progressive coverage + `SHADOW_BOUNDARY_SCAN -> SEARCH`)
+- **Changed**: `Enemy` combat no-contact search runtime in `src/entities/enemy.gd` now uses per-room dark-search nodes (dark pockets + boundary points) instead of fixed anchor loops, with deterministic node selection/scoring and weighted coverage aggregation
+- **Added**: Phase 16 session state/feedback plumbing in `Enemy` (`_record_combat_search_execution_feedback`, active node state, pursuit shadow-stage edge integration, dwell-based node completion, debug snapshot node/session fields)
+- **Changed**: `Enemy._build_utility_context(...)` applies shadow-scan suppression for an active dark node after one completed boundary scan to prevent repeated `SHADOW_BOUNDARY_SCAN` on the same node target
+- **Added**: pursuit config keys for dark-search sampling/boundary radius/dwell/scoring in `src/core/game_config.gd` and validator checks in `src/core/config_validator.gd`
+- **Added tests**: `tests/test_dark_search_graph_progressive_coverage.gd/.tscn`, `tests/test_alert_combat_search_session_completion_contract.gd/.tscn`, `tests/test_unreachable_shadow_node_forces_scan_then_search.gd/.tscn`
+- **Updated tests**: `tests/test_shadow_stall_escapes_to_light.gd`, `tests/test_shadow_policy_hard_block_without_grant.gd`, and `tests/test_runner_node.gd` (Phase 16 scene registration)
+- **Gameplay fix (narrow)**: `src/systems/enemy_utility_brain.gd` now bypasses intent hold only for completed shadow-scan handoff when current intent is `SHADOW_BOUNDARY_SCAN`, ensuring immediate `SHADOW_BOUNDARY_SCAN -> SEARCH` transition without waiting out `min_action_hold_sec`
+- **Spec fix**: corrected Phase 16 `G6/G9` regex in `docs/ai_nav_refactor_execution_v2.md` to match the actual contract key `combat_dark_search_boundary_radius_px`
+
 ## 2026-02-23
 
 ### 00:24 MSK - Phase 15: State Doctrine Matrix (seeded suspicious flashlight 30%, alert/combat dark-pocket search)

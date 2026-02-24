@@ -72,7 +72,12 @@ func update(delta: float, context: Dictionary) -> Dictionary:
 	_decision_timer = maxf(0.0, _decision_timer - maxf(delta, 0.0))
 	_action_hold_timer = maxf(0.0, _action_hold_timer - maxf(delta, 0.0))
 	_mode_hold_timer = maxf(0.0, _mode_hold_timer - maxf(delta, 0.0))
-	if _decision_timer > 0.0 and _action_hold_timer > 0.0:
+	var force_shadow_handoff_recompute := (
+		int(_current_intent.get("type", -1)) == IntentType.SHADOW_BOUNDARY_SCAN
+		and bool(context.get("shadow_scan_completed", false))
+		and bool(context.get("has_shadow_scan_target", false))
+	)
+	if _decision_timer > 0.0 and _action_hold_timer > 0.0 and not force_shadow_handoff_recompute:
 		return get_current_intent()
 
 	var next_intent := _choose_intent(context)

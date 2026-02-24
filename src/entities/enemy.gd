@@ -63,6 +63,14 @@ const COMBAT_SEARCH_TOTAL_CAP_SEC := 24.0
 const COMBAT_SEARCH_UNVISITED_PENALTY := 220.0
 const COMBAT_SEARCH_DOOR_COST_PER_HOP := 80.0
 const COMBAT_SEARCH_PROGRESS_THRESHOLD := 0.8
+const COMBAT_DARK_SEARCH_NODE_STATE_NONE := 0
+const COMBAT_DARK_SEARCH_NODE_STATE_NEEDS_SHADOW_SCAN := 1
+const COMBAT_DARK_SEARCH_NODE_STATE_SEARCH_DWELL := 2
+const COMBAT_DARK_SEARCH_NODE_STATE_COVERED := 3
+const COMBAT_DARK_SEARCH_NODE_SAMPLE_OFFSETS := [Vector2.ZERO, Vector2.RIGHT, Vector2.LEFT, Vector2.UP, Vector2.DOWN]
+const COMBAT_DARK_SEARCH_NODE_DEDUP_PX := 12.0
+const COMBAT_DARK_SEARCH_POCKET_COVERAGE_WEIGHT := 1.0
+const COMBAT_DARK_SEARCH_BOUNDARY_COVERAGE_WEIGHT := 0.5
 const COMBAT_NO_CONTACT_WINDOW_SEC := 8.0
 const COMBAT_NO_CONTACT_WINDOW_LOCKDOWN_SEC := 12.0
 const FLASHLIGHT_NEAR_THRESHOLD_PX := 400.0
@@ -267,8 +275,23 @@ var _combat_search_room_elapsed_sec: float = 0.0
 var _combat_search_room_budget_sec: float = 0.0
 var _combat_search_current_room_id: int = -1
 var _combat_search_target_pos: Vector2 = Vector2.ZERO
-var _combat_search_anchor_points: Array[Vector2] = []
-var _combat_search_anchor_index: int = 0
+var _combat_search_room_nodes: Dictionary = {} # room_id -> Array[Dictionary]
+var _combat_search_room_node_visited: Dictionary = {} # room_id -> Dictionary[node_key: bool]
+var _combat_search_current_node_key: String = ""
+var _combat_search_current_node_kind: String = ""
+var _combat_search_current_node_requires_shadow_scan: bool = false
+var _combat_search_current_node_shadow_scan_done: bool = false
+var _combat_search_node_search_dwell_sec: float = 0.0
+var _combat_search_last_pursuit_shadow_stage: int = -1
+var _combat_search_feedback_intent_type: int = -1
+var _combat_search_feedback_intent_target: Vector2 = Vector2.ZERO
+var _combat_search_feedback_delta: float = 0.0
+var _combat_search_shadow_scan_suppressed_last_tick: bool = false
+var _combat_search_recovery_applied_last_tick: bool = false
+var _combat_search_recovery_reason_last_tick: String = "none"
+var _combat_search_recovery_blocked_point_last: Vector2 = Vector2.ZERO
+var _combat_search_recovery_blocked_point_valid_last: bool = false
+var _combat_search_recovery_skipped_node_key_last: String = ""
 var _combat_search_room_coverage: Dictionary = {} # room_id -> 0..1
 var _combat_search_visited_rooms: Dictionary = {} # room_id -> true
 var _combat_search_progress: float = 0.0
@@ -648,8 +671,16 @@ func runtime_budget_tick(delta: float) -> void:
 	if _utility_brain and _utility_brain.has_method("consume_shadow_scan_handoff_selected"):
 		consumed_shadow_scan_handoff = bool(_utility_brain.call("consume_shadow_scan_handoff_selected"))
 	if consumed_shadow_scan_handoff:
-		_shadow_scan_completed = false
-		_shadow_scan_completed_reason = "none"
+		var keep_shadow_scan_handoff_for_dark_node_dwell := (
+			_combat_search_current_node_key != ""
+			and _combat_search_current_node_requires_shadow_scan
+			and _combat_search_current_node_shadow_scan_done
+			and int(intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+			and ((intent.get("target", Vector2.ZERO) as Vector2).distance_to(_combat_search_target_pos) <= 0.5)
+		)
+		if not keep_shadow_scan_handoff_for_dark_node_dwell:
+			_shadow_scan_completed = false
+			_shadow_scan_completed_reason = "none"
 	intent = _apply_runtime_intent_stability_policy(intent, context, suspicion_now, delta)
 	if _friendly_block_force_reposition:
 		intent = _inject_friendly_block_reposition_intent(intent, assignment, target_context)
@@ -657,6 +688,8 @@ func runtime_budget_tick(delta: float) -> void:
 	if _is_combat_reposition_phase_active():
 		intent = _inject_combat_cycle_reposition_intent(intent, assignment, target_context)
 	var exec_result: Dictionary = _pursuit.execute_intent(delta, intent, context) if _pursuit and _pursuit.has_method("execute_intent") else {}
+	_apply_combat_search_repath_recovery_feedback(intent, exec_result)
+	_record_combat_search_execution_feedback(intent, delta)
 	if String(exec_result.get("shadow_scan_status", "inactive")) == "completed":
 		_shadow_scan_completed = true
 		_shadow_scan_completed_reason = String(exec_result.get("shadow_scan_complete_reason", "none"))
@@ -1114,6 +1147,19 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 		has_shadow_scan_target = shadow_scan_source != "none"
 		if has_shadow_scan_target and nav_system and nav_system.has_method("is_point_in_shadow"):
 			shadow_scan_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shadow_scan_target))
+	var shadow_scan_suppressed := false
+	if (
+		_combat_search_current_node_key != ""
+		and _combat_search_current_node_requires_shadow_scan
+		and _combat_search_current_node_shadow_scan_done
+		and has_known_target
+		and known_target_pos.distance_to(_combat_search_target_pos) <= 0.5
+		and has_shadow_scan_target
+		and shadow_scan_target.distance_to(_combat_search_target_pos) <= 0.5
+	):
+		shadow_scan_suppressed = true
+		shadow_scan_target_in_shadow = false
+	_combat_search_shadow_scan_suppressed_last_tick = shadow_scan_suppressed
 	var home_pos := global_position
 	if nav_system and nav_system.has_method("get_room_center") and home_room_id >= 0:
 		var nav_home := nav_system.get_room_center(home_room_id) as Vector2
@@ -1349,6 +1395,23 @@ func get_debug_detection_snapshot() -> Dictionary:
 			suspicion = float(_awareness.get_suspicion())
 		if _awareness.has_method("has_confirmed_visual"):
 			confirmed = bool(_awareness.has_confirmed_visual())
+	var combat_search_nodes_total := 0
+	var combat_search_nodes_covered := 0
+	var combat_search_room_coverage_raw := 0.0
+	if _combat_search_current_room_id >= 0:
+		var room_nodes_variant: Variant = _combat_search_room_nodes.get(_combat_search_current_room_id, [])
+		var room_nodes := room_nodes_variant as Array
+		var visited := _combat_search_room_node_visited.get(_combat_search_current_room_id, {}) as Dictionary
+		for node_variant in room_nodes:
+			var node := node_variant as Dictionary
+			var node_key := String(node.get("key", ""))
+			var weight := float(node.get("coverage_weight", 0.0))
+			if node_key == "" or not is_finite(weight) or weight <= 0.0:
+				continue
+			combat_search_nodes_total += 1
+			if bool(visited.get(node_key, false)):
+				combat_search_nodes_covered += 1
+		combat_search_room_coverage_raw = clampf(float(_combat_search_room_coverage.get(_combat_search_current_room_id, 0.0)), 0.0, 1.0)
 	return {
 		"state": state_enum,
 		"state_name": state_name,
@@ -1428,6 +1491,19 @@ func get_debug_detection_snapshot() -> Dictionary:
 		"combat_search_current_room_id": _combat_search_current_room_id,
 		"combat_search_target_pos": _combat_search_target_pos,
 		"combat_search_total_cap_hit": _combat_search_total_cap_hit,
+		"combat_search_node_key": _combat_search_current_node_key,
+		"combat_search_node_kind": _combat_search_current_node_kind,
+		"combat_search_node_requires_shadow_scan": _combat_search_current_node_requires_shadow_scan,
+		"combat_search_node_shadow_scan_done": _combat_search_current_node_shadow_scan_done,
+		"combat_search_room_nodes_total": combat_search_nodes_total,
+		"combat_search_room_nodes_covered": combat_search_nodes_covered,
+		"combat_search_room_coverage_raw": combat_search_room_coverage_raw,
+		"combat_search_shadow_scan_suppressed": _combat_search_shadow_scan_suppressed_last_tick,
+		"combat_search_recovery_applied": _combat_search_recovery_applied_last_tick,
+		"combat_search_recovery_reason": _combat_search_recovery_reason_last_tick,
+		"combat_search_recovery_blocked_point": _combat_search_recovery_blocked_point_last,
+		"combat_search_recovery_blocked_point_valid": _combat_search_recovery_blocked_point_valid_last,
+		"combat_search_recovery_skipped_node_key": _combat_search_recovery_skipped_node_key_last,
 		"suspicion_ring_progress": _suspicion_ring.call("get_progress") if _suspicion_ring and _suspicion_ring.has_method("get_progress") else suspicion,
 		"target_is_last_seen": _debug_last_target_is_last_seen,
 		"last_seen_grace_left": _last_seen_grace_timer,
@@ -1615,6 +1691,13 @@ func _flashlight_policy_flag(key: String, fallback: bool) -> bool:
 func _utility_cfg_float(key: String, fallback: float) -> float:
 	if GameConfig and GameConfig.ai_balance.has("utility"):
 		var section := GameConfig.ai_balance["utility"] as Dictionary
+		return float(section.get(key, fallback))
+	return fallback
+
+
+func _pursuit_cfg_float(key: String, fallback: float) -> float:
+	if GameConfig and GameConfig.ai_balance.has("pursuit"):
+		var section := GameConfig.ai_balance["pursuit"] as Dictionary
 		return float(section.get(key, fallback))
 	return fallback
 
@@ -2396,14 +2479,127 @@ func _resolve_contextual_combat_role(
 	return candidate_role
 
 
+func _record_combat_search_execution_feedback(intent: Dictionary, delta: float) -> void:
+	_combat_search_feedback_intent_type = int(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
+	_combat_search_feedback_intent_target = intent.get("target", Vector2.ZERO) as Vector2
+	_combat_search_feedback_delta = maxf(delta, 0.0)
+
+
+func _apply_combat_search_repath_recovery_feedback(intent: Dictionary, exec_result: Dictionary) -> void:
+	_combat_search_recovery_applied_last_tick = false
+	_combat_search_recovery_reason_last_tick = "none"
+	_combat_search_recovery_blocked_point_last = Vector2.ZERO
+	_combat_search_recovery_blocked_point_valid_last = false
+	_combat_search_recovery_skipped_node_key_last = ""
+
+	var required_keys := [
+		"repath_recovery_request_next_search_node",
+		"repath_recovery_reason",
+		"repath_recovery_blocked_point",
+		"repath_recovery_blocked_point_valid",
+		"repath_recovery_repeat_count",
+		"repath_recovery_preserve_intent",
+		"repath_recovery_intent_target",
+	]
+	for key_variant in required_keys:
+		var key := String(key_variant)
+		if not exec_result.has(key):
+			return
+
+	var request_next := bool(exec_result.get("repath_recovery_request_next_search_node", false))
+	var preserve_intent := bool(exec_result.get("repath_recovery_preserve_intent", false))
+	if not request_next or not preserve_intent:
+		return
+	if _combat_search_current_room_id < 0:
+		return
+	if _combat_search_current_node_key == "":
+		return
+
+	var intent_type := int(intent.get("type", -1))
+	if (
+		intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+		and intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
+	):
+		return
+
+	var intent_target_variant: Variant = exec_result.get("repath_recovery_intent_target", Vector2.ZERO)
+	if not (intent_target_variant is Vector2):
+		return
+	var intent_target := intent_target_variant as Vector2
+	if not is_finite(intent_target.x) or not is_finite(intent_target.y):
+		return
+	var target_match_radius := maxf(_pursuit_cfg_float("repath_recovery_intent_target_match_radius_px", 28.0), 0.0)
+	if intent_target.distance_to(_combat_search_target_pos) > target_match_radius:
+		return
+
+	var blocked_point_valid := bool(exec_result.get("repath_recovery_blocked_point_valid", false))
+	var blocked_point := exec_result.get("repath_recovery_blocked_point", Vector2.ZERO) as Vector2
+	if blocked_point_valid and (not is_finite(blocked_point.x) or not is_finite(blocked_point.y)):
+		return
+
+	var skipped_key := _combat_search_current_node_key
+	_mark_combat_search_current_node_covered()
+	_combat_search_current_node_key = ""
+	_combat_search_current_node_kind = ""
+	_combat_search_current_node_requires_shadow_scan = false
+	_combat_search_current_node_shadow_scan_done = false
+	_combat_search_node_search_dwell_sec = 0.0
+	_combat_search_shadow_scan_suppressed_last_tick = false
+
+	var select_result := _select_next_combat_dark_search_node(_combat_search_current_room_id, _combat_search_target_pos)
+	var select_status := String(select_result.get("status", "room_invalid"))
+	if select_status == "ok":
+		_combat_search_current_node_key = String(select_result.get("node_key", ""))
+		_combat_search_current_node_kind = String(select_result.get("node_kind", ""))
+		_combat_search_target_pos = select_result.get("target_pos", Vector2.ZERO) as Vector2
+		_combat_search_current_node_requires_shadow_scan = bool(select_result.get("requires_shadow_boundary_scan", false))
+		_combat_search_current_node_shadow_scan_done = false
+		_combat_search_node_search_dwell_sec = 0.0
+		_combat_search_shadow_scan_suppressed_last_tick = false
+	elif select_status == "no_nodes" or select_status == "all_blocked":
+		_combat_search_visited_rooms[_combat_search_current_room_id] = true
+		var next_room := _select_next_combat_search_room(_combat_search_current_room_id, _combat_search_target_pos)
+		_ensure_combat_search_room(next_room, _combat_search_target_pos)
+
+	_update_combat_search_progress()
+	_combat_search_recovery_applied_last_tick = true
+	_combat_search_recovery_reason_last_tick = String(exec_result.get("repath_recovery_reason", "none"))
+	_combat_search_recovery_blocked_point_last = blocked_point if blocked_point_valid else Vector2.ZERO
+	_combat_search_recovery_blocked_point_valid_last = blocked_point_valid
+	_combat_search_recovery_skipped_node_key_last = skipped_key
+
+
+func _current_pursuit_shadow_search_stage() -> int:
+	if _pursuit == null:
+		return -1
+	if not _pursuit.has_method("get_shadow_search_stage"):
+		return -1
+	return int(_pursuit.get_shadow_search_stage())
+
+
 func _reset_combat_search_state() -> void:
 	_combat_search_total_elapsed_sec = 0.0
 	_combat_search_room_elapsed_sec = 0.0
 	_combat_search_room_budget_sec = 0.0
 	_combat_search_current_room_id = -1
 	_combat_search_target_pos = Vector2.ZERO
-	_combat_search_anchor_points.clear()
-	_combat_search_anchor_index = 0
+	_combat_search_room_nodes.clear()
+	_combat_search_room_node_visited.clear()
+	_combat_search_current_node_key = ""
+	_combat_search_current_node_kind = ""
+	_combat_search_current_node_requires_shadow_scan = false
+	_combat_search_current_node_shadow_scan_done = false
+	_combat_search_node_search_dwell_sec = 0.0
+	_combat_search_last_pursuit_shadow_stage = -1
+	_combat_search_feedback_intent_type = -1
+	_combat_search_feedback_intent_target = Vector2.ZERO
+	_combat_search_feedback_delta = 0.0
+	_combat_search_shadow_scan_suppressed_last_tick = false
+	_combat_search_recovery_applied_last_tick = false
+	_combat_search_recovery_reason_last_tick = "none"
+	_combat_search_recovery_blocked_point_last = Vector2.ZERO
+	_combat_search_recovery_blocked_point_valid_last = false
+	_combat_search_recovery_skipped_node_key_last = ""
 	_combat_search_room_coverage.clear()
 	_combat_search_visited_rooms.clear()
 	_combat_search_progress = 0.0
@@ -2424,18 +2620,75 @@ func _update_combat_search_runtime(
 	if _combat_search_current_room_id < 0:
 		var start_room := _resolve_room_id_for_events()
 		_ensure_combat_search_room(start_room, combat_target_pos)
-	_combat_search_total_elapsed_sec += maxf(delta, 0.0)
-	_combat_search_room_elapsed_sec += maxf(delta, 0.0)
+
+	var clamped_delta := maxf(delta, 0.0)
+	_combat_search_total_elapsed_sec += clamped_delta
+	_combat_search_room_elapsed_sec += clamped_delta
 	if _combat_search_total_elapsed_sec >= COMBAT_SEARCH_TOTAL_CAP_SEC:
 		_combat_search_total_cap_hit = true
 
-	_mark_combat_search_anchor_progress()
-	var room_done := _combat_search_anchor_index >= _combat_search_anchor_points.size()
-	if room_done:
+	var stage_now := _current_pursuit_shadow_search_stage()
+	if (
+		_combat_search_current_node_requires_shadow_scan
+		and not _combat_search_current_node_shadow_scan_done
+		and _combat_search_current_node_key != ""
+	):
+		if _combat_search_last_pursuit_shadow_stage >= 0 and _combat_search_last_pursuit_shadow_stage != 0 and stage_now == 0:
+			_combat_search_current_node_shadow_scan_done = true
+			_combat_search_node_search_dwell_sec = 0.0
+	_combat_search_last_pursuit_shadow_stage = stage_now
+
+	var can_accumulate_dwell := (
+		_combat_search_current_node_key != ""
+		and _combat_search_feedback_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+		and _combat_search_feedback_intent_target.distance_to(_combat_search_target_pos) <= 0.5
+		and (not _combat_search_current_node_requires_shadow_scan or _combat_search_current_node_shadow_scan_done)
+	)
+	if can_accumulate_dwell:
+		_combat_search_node_search_dwell_sec += _combat_search_feedback_delta
+	else:
+		_combat_search_node_search_dwell_sec = 0.0
+
+	if (
+		_combat_search_current_node_key != ""
+		and _combat_search_node_search_dwell_sec >= _pursuit_cfg_float("combat_dark_search_node_dwell_sec", 1.25)
+	):
+		_mark_combat_search_current_node_covered()
+		_shadow_scan_completed = false
+		_shadow_scan_completed_reason = "none"
+		_combat_search_current_node_key = ""
+		_combat_search_current_node_kind = ""
+		_combat_search_current_node_requires_shadow_scan = false
+		_combat_search_current_node_shadow_scan_done = false
+		_combat_search_node_search_dwell_sec = 0.0
+		_combat_search_shadow_scan_suppressed_last_tick = false
+
+	var current_coverage := _compute_combat_search_room_coverage(_combat_search_current_room_id)
+	if _combat_search_current_room_id >= 0:
+		_combat_search_room_coverage[_combat_search_current_room_id] = current_coverage
+	var room_done_by_coverage := current_coverage >= COMBAT_SEARCH_PROGRESS_THRESHOLD
+	var room_done_by_timeout := _combat_search_room_elapsed_sec >= _combat_search_room_budget_sec
+	if _combat_search_current_room_id >= 0 and (room_done_by_coverage or room_done_by_timeout):
 		_combat_search_visited_rooms[_combat_search_current_room_id] = true
-	if room_done or _combat_search_room_elapsed_sec >= _combat_search_room_budget_sec:
 		var next_room := _select_next_combat_search_room(_combat_search_current_room_id, combat_target_pos)
 		_ensure_combat_search_room(next_room, combat_target_pos)
+
+	if _combat_search_current_node_key == "" and _combat_search_current_room_id >= 0:
+		var pick := _select_next_combat_dark_search_node(_combat_search_current_room_id, combat_target_pos)
+		var pick_status := String(pick.get("status", "room_invalid"))
+		if pick_status == "ok":
+			_combat_search_current_node_key = String(pick.get("node_key", ""))
+			_combat_search_current_node_kind = String(pick.get("node_kind", ""))
+			_combat_search_target_pos = pick.get("target_pos", Vector2.ZERO) as Vector2
+			_combat_search_current_node_requires_shadow_scan = bool(pick.get("requires_shadow_boundary_scan", false))
+			_combat_search_current_node_shadow_scan_done = false
+			_combat_search_node_search_dwell_sec = 0.0
+			_combat_search_shadow_scan_suppressed_last_tick = false
+		elif pick_status == "no_nodes" or pick_status == "all_blocked":
+			_combat_search_visited_rooms[_combat_search_current_room_id] = true
+			var next_room_after_empty := _select_next_combat_search_room(_combat_search_current_room_id, combat_target_pos)
+			_ensure_combat_search_room(next_room_after_empty, combat_target_pos)
+
 	_update_combat_search_progress()
 
 
@@ -2448,56 +2701,273 @@ func _ensure_combat_search_room(room_id: int, combat_target_pos: Vector2) -> voi
 	_combat_search_current_room_id = valid_room
 	_combat_search_room_elapsed_sec = 0.0
 	_combat_search_room_budget_sec = _shot_rng.randf_range(COMBAT_SEARCH_ROOM_BUDGET_MIN_SEC, COMBAT_SEARCH_ROOM_BUDGET_MAX_SEC)
-	_combat_search_anchor_points = _build_combat_search_anchors(valid_room, combat_target_pos)
-	_combat_search_anchor_index = 0
-	if _combat_search_anchor_points.is_empty():
-		_combat_search_anchor_points = [global_position]
-	_combat_search_target_pos = _combat_search_anchor_points[0]
-	_combat_search_room_coverage[valid_room] = float(_combat_search_room_coverage.get(valid_room, 0.0))
+	_combat_search_room_nodes[valid_room] = _build_combat_dark_search_nodes(valid_room, combat_target_pos)
+	if not _combat_search_room_node_visited.has(valid_room):
+		_combat_search_room_node_visited[valid_room] = {}
+	_combat_search_current_node_key = ""
+	_combat_search_current_node_kind = ""
+	_combat_search_current_node_requires_shadow_scan = false
+	_combat_search_current_node_shadow_scan_done = false
+	_combat_search_node_search_dwell_sec = 0.0
+	_combat_search_shadow_scan_suppressed_last_tick = false
+	var first_pick := _select_next_combat_dark_search_node(valid_room, combat_target_pos)
+	if String(first_pick.get("status", "room_invalid")) == "ok":
+		_combat_search_current_node_key = String(first_pick.get("node_key", ""))
+		_combat_search_current_node_kind = String(first_pick.get("node_kind", ""))
+		_combat_search_target_pos = first_pick.get("target_pos", Vector2.ZERO) as Vector2
+		_combat_search_current_node_requires_shadow_scan = bool(first_pick.get("requires_shadow_boundary_scan", false))
+		_combat_search_current_node_shadow_scan_done = false
+		_combat_search_node_search_dwell_sec = 0.0
+	else:
+		_combat_search_target_pos = global_position
+	_combat_search_room_coverage[valid_room] = _compute_combat_search_room_coverage(valid_room)
 
 
-func _build_combat_search_anchors(room_id: int, combat_target_pos: Vector2) -> Array[Vector2]:
-	var anchors: Array[Vector2] = []
+func _build_combat_dark_search_nodes(room_id: int, combat_target_pos: Vector2) -> Array[Dictionary]:
+	var _unused_target := combat_target_pos
+	var nodes: Array[Dictionary] = []
 	var room_center := global_position
 	if nav_system and nav_system.has_method("get_room_center"):
 		var center := nav_system.get_room_center(room_id) as Vector2
 		if center != Vector2.ZERO:
 			room_center = center
-	var dir := (combat_target_pos - room_center).normalized()
-	if dir.length_squared() <= 0.0001:
-		dir = Vector2.RIGHT
-	var ortho := Vector2(-dir.y, dir.x).normalized()
-	var r := 36.0
-	anchors.append(room_center)
-	anchors.append(room_center + dir * r)
-	anchors.append(room_center - dir * r)
-	anchors.append(room_center + ortho * r)
-	anchors.append(room_center - ortho * r)
-	return anchors
+	var room_rect := Rect2()
+	if nav_system and nav_system.has_method("get_room_rect"):
+		room_rect = nav_system.get_room_rect(room_id) as Rect2
+	var sample_radius := _pursuit_cfg_float("combat_dark_search_node_sample_radius_px", 64.0)
+	var boundary_radius := _pursuit_cfg_float("combat_dark_search_boundary_radius_px", 96.0)
+	var sample_index := 0
+	for offset_variant in COMBAT_DARK_SEARCH_NODE_SAMPLE_OFFSETS:
+		var offset := offset_variant as Vector2
+		var sample := room_center if offset == Vector2.ZERO else room_center + offset * sample_radius
+		if room_rect.size.x > 0.0 and room_rect.size.y > 0.0:
+			var clamp_rect := room_rect.grow(-4.0)
+			if clamp_rect.size.x <= 0.0 or clamp_rect.size.y <= 0.0:
+				clamp_rect = room_rect
+			sample.x = clampf(sample.x, clamp_rect.position.x, clamp_rect.position.x + clamp_rect.size.x)
+			sample.y = clampf(sample.y, clamp_rect.position.y, clamp_rect.position.y + clamp_rect.size.y)
+
+		var sample_in_shadow := false
+		if nav_system and nav_system.has_method("is_point_in_shadow"):
+			sample_in_shadow = bool(nav_system.call("is_point_in_shadow", sample))
+
+		var boundary_candidate := {
+			"key": "r%d:boundary:%d" % [room_id, sample_index],
+			"kind": "boundary_point",
+			"target_pos": sample,
+			"approach_pos": sample,
+			"target_in_shadow": sample_in_shadow,
+			"requires_shadow_boundary_scan": false,
+			"coverage_weight": COMBAT_DARK_SEARCH_BOUNDARY_COVERAGE_WEIGHT,
+		}
+		var boundary_drop := false
+		for existing_variant in nodes:
+			var existing := existing_variant as Dictionary
+			if String(existing.get("kind", "")) != "boundary_point":
+				continue
+			var existing_target := existing.get("target_pos", Vector2.ZERO) as Vector2
+			if existing_target.distance_to(sample) <= COMBAT_DARK_SEARCH_NODE_DEDUP_PX:
+				boundary_drop = true
+				break
+		if not boundary_drop:
+			nodes.append(boundary_candidate)
+
+		if sample_in_shadow and nav_system and nav_system.has_method("get_nearest_non_shadow_point"):
+			var boundary := nav_system.get_nearest_non_shadow_point(sample, boundary_radius) as Vector2
+			if boundary != Vector2.ZERO:
+				var dark_candidate := {
+					"key": "r%d:dark:%d" % [room_id, sample_index],
+					"kind": "dark_pocket",
+					"target_pos": sample,
+					"approach_pos": boundary,
+					"target_in_shadow": true,
+					"requires_shadow_boundary_scan": true,
+					"coverage_weight": COMBAT_DARK_SEARCH_POCKET_COVERAGE_WEIGHT,
+				}
+				var dark_drop := false
+				for existing_variant in nodes:
+					var existing := existing_variant as Dictionary
+					if String(existing.get("kind", "")) != "dark_pocket":
+						continue
+					var existing_target := existing.get("target_pos", Vector2.ZERO) as Vector2
+					if existing_target.distance_to(sample) <= COMBAT_DARK_SEARCH_NODE_DEDUP_PX:
+						dark_drop = true
+						break
+				if not dark_drop:
+					nodes.append(dark_candidate)
+		sample_index += 1
+
+	if nodes.is_empty():
+		var fallback_in_shadow := false
+		if nav_system and nav_system.has_method("is_point_in_shadow"):
+			fallback_in_shadow = bool(nav_system.call("is_point_in_shadow", room_center))
+		nodes.append({
+			"key": "r%d:boundary:fallback" % room_id,
+			"kind": "boundary_point",
+			"target_pos": room_center,
+			"approach_pos": room_center,
+			"target_in_shadow": fallback_in_shadow,
+			"requires_shadow_boundary_scan": false,
+			"coverage_weight": 1.0,
+		})
+	return nodes
 
 
-func _mark_combat_search_anchor_progress() -> void:
+func _select_next_combat_dark_search_node(room_id: int, combat_target_pos: Vector2) -> Dictionary:
+	var invalid_out := {
+		"status": "room_invalid",
+		"reason": "room_invalid",
+		"room_id": room_id,
+		"node_key": "",
+		"node_kind": "",
+		"target_pos": Vector2.ZERO,
+		"approach_pos": Vector2.ZERO,
+		"target_in_shadow": false,
+		"requires_shadow_boundary_scan": false,
+		"score_uncovered": 0.0,
+		"score_path_len_px": INF,
+		"score_tactical_priority": -1,
+		"score_total": INF,
+	}
+	if room_id < 0 or not is_finite(combat_target_pos.x) or not is_finite(combat_target_pos.y):
+		return invalid_out
+
+	var node_list_variant: Variant = _combat_search_room_nodes.get(room_id, [])
+	var node_list := node_list_variant as Array
+	if node_list.is_empty():
+		var no_nodes_out := invalid_out.duplicate(true)
+		no_nodes_out["status"] = "no_nodes"
+		no_nodes_out["reason"] = "node_list_empty"
+		return no_nodes_out
+
+	var visited := _combat_search_room_node_visited.get(room_id, {}) as Dictionary
+	var best_found := false
+	var best_score_total := INF
+	var best_score_path := INF
+	var best_score_tactical := 999999
+	var best_key := ""
+	var best_node: Dictionary = {}
+	var best_score_uncovered := 0.0
+
+	var uncovered_bonus := _pursuit_cfg_float("combat_dark_search_node_uncovered_bonus", 1000.0)
+	var tactical_priority_weight := _pursuit_cfg_float("combat_dark_search_node_tactical_priority_weight", 80.0)
+
+	for node_variant in node_list:
+		var node := node_variant as Dictionary
+		var node_key := String(node.get("key", ""))
+		if node_key == "":
+			continue
+		if bool(visited.get(node_key, false)):
+			continue
+
+		var approach_pos := node.get("approach_pos", Vector2.ZERO) as Vector2
+		if not is_finite(approach_pos.x) or not is_finite(approach_pos.y):
+			continue
+		var path_len := INF
+		if nav_system and nav_system.has_method("nav_path_length"):
+			path_len = float(nav_system.call("nav_path_length", global_position, approach_pos, self))
+		else:
+			path_len = global_position.distance_to(approach_pos)
+		if not is_finite(path_len):
+			continue
+
+		var score_uncovered := float(node.get("coverage_weight", 0.0))
+		if not is_finite(score_uncovered):
+			continue
+		var node_kind := String(node.get("kind", "boundary_point"))
+		var score_tactical_priority := 0 if node_kind == "dark_pocket" else 1
+		var score_total := (
+			(uncovered_bonus - score_uncovered * uncovered_bonus)
+			+ path_len
+			+ float(score_tactical_priority) * tactical_priority_weight
+		)
+
+		var better := false
+		if not best_found:
+			better = true
+		elif score_total < best_score_total:
+			better = true
+		elif is_equal_approx(score_total, best_score_total) and path_len < best_score_path:
+			better = true
+		elif is_equal_approx(score_total, best_score_total) and is_equal_approx(path_len, best_score_path) and score_tactical_priority < best_score_tactical:
+			better = true
+		elif (
+			is_equal_approx(score_total, best_score_total)
+			and is_equal_approx(path_len, best_score_path)
+			and score_tactical_priority == best_score_tactical
+			and (best_key == "" or node_key < best_key)
+		):
+			better = true
+
+		if better:
+			best_found = true
+			best_score_total = score_total
+			best_score_path = path_len
+			best_score_tactical = score_tactical_priority
+			best_key = node_key
+			best_node = node.duplicate(true)
+			best_score_uncovered = score_uncovered
+
+	if not best_found:
+		var blocked_out := invalid_out.duplicate(true)
+		blocked_out["status"] = "all_blocked"
+		blocked_out["reason"] = "all_candidates_blocked"
+		return blocked_out
+
+	var selected_kind := String(best_node.get("kind", ""))
+	var out := {
+		"status": "ok",
+		"reason": "selected_dark_pocket" if selected_kind == "dark_pocket" else "selected_boundary_point",
+		"room_id": room_id,
+		"node_key": String(best_node.get("key", "")),
+		"node_kind": selected_kind,
+		"target_pos": best_node.get("target_pos", Vector2.ZERO) as Vector2,
+		"approach_pos": best_node.get("approach_pos", Vector2.ZERO) as Vector2,
+		"target_in_shadow": bool(best_node.get("target_in_shadow", false)),
+		"requires_shadow_boundary_scan": bool(best_node.get("requires_shadow_boundary_scan", false)),
+		"score_uncovered": best_score_uncovered,
+		"score_path_len_px": best_score_path,
+		"score_tactical_priority": best_score_tactical,
+		"score_total": best_score_total,
+	}
+	return out
+
+
+func _compute_combat_search_room_coverage(room_id: int) -> float:
+	if room_id < 0:
+		return 0.0
+	var node_list_variant: Variant = _combat_search_room_nodes.get(room_id, [])
+	var node_list := node_list_variant as Array
+	if node_list.is_empty():
+		return 0.0
+	var visited := _combat_search_room_node_visited.get(room_id, {}) as Dictionary
+	var total_weight := 0.0
+	var covered_weight := 0.0
+	for node_variant in node_list:
+		var node := node_variant as Dictionary
+		var node_key := String(node.get("key", ""))
+		var weight := float(node.get("coverage_weight", 0.0))
+		if node_key == "" or not is_finite(weight) or weight <= 0.0:
+			continue
+		total_weight += weight
+		if bool(visited.get(node_key, false)):
+			covered_weight += weight
+	if total_weight <= 0.0:
+		return 0.0
+	return clampf(covered_weight / total_weight, 0.0, 1.0)
+
+
+func _mark_combat_search_current_node_covered() -> void:
 	if _combat_search_current_room_id < 0:
 		return
-	if _combat_search_anchor_points.is_empty():
-		_combat_search_room_coverage[_combat_search_current_room_id] = 1.0
+	if _combat_search_current_node_key == "":
 		return
-	if _combat_search_anchor_index >= _combat_search_anchor_points.size():
-		_combat_search_room_coverage[_combat_search_current_room_id] = 1.0
-		return
-	var target_anchor := _combat_search_anchor_points[_combat_search_anchor_index]
-	if global_position.distance_to(target_anchor) <= 22.0:
-		_combat_search_anchor_index += 1
-	var coverage := clampf(
-		float(_combat_search_anchor_index) / float(maxi(_combat_search_anchor_points.size(), 1)),
-		0.0,
-		1.0
-	)
-	_combat_search_room_coverage[_combat_search_current_room_id] = coverage
-	if _combat_search_anchor_index < _combat_search_anchor_points.size():
-		_combat_search_target_pos = _combat_search_anchor_points[_combat_search_anchor_index]
-	else:
-		_combat_search_target_pos = _combat_search_anchor_points.back()
+	if not _combat_search_room_node_visited.has(_combat_search_current_room_id):
+		_combat_search_room_node_visited[_combat_search_current_room_id] = {}
+	var visited := _combat_search_room_node_visited[_combat_search_current_room_id] as Dictionary
+	visited[_combat_search_current_node_key] = true
+	_combat_search_room_node_visited[_combat_search_current_room_id] = visited
+	_combat_search_room_coverage[_combat_search_current_room_id] = _compute_combat_search_room_coverage(_combat_search_current_room_id)
 
 
 func _update_combat_search_progress() -> void:

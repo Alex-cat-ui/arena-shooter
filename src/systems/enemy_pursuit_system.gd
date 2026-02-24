@@ -85,6 +85,16 @@ var _stall_check_timer: float = 0.0
 var _stall_samples: Array[Dictionary] = []
 var _stall_consecutive_windows: int = 0
 var _hard_stall: bool = false
+var _blocked_point_repeat_bucket: Vector2i = Vector2i.ZERO
+var _blocked_point_repeat_bucket_valid: bool = false
+var _blocked_point_repeat_count: int = 0
+var _repath_recovery_request_next_search_node: bool = false
+var _repath_recovery_reason: String = "none"
+var _repath_recovery_blocked_point: Vector2 = Vector2.ZERO
+var _repath_recovery_blocked_point_valid: bool = false
+var _repath_recovery_repeat_count: int = 0
+var _repath_recovery_preserve_intent: bool = false
+var _repath_recovery_intent_target: Vector2 = Vector2.ZERO
 var _cost_profile: Dictionary = {}
 var _last_stall_speed_avg: float = 0.0
 var _last_stall_path_progress: float = 0.0
@@ -220,6 +230,10 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_slide_collision_forced_repath = false
 	_last_slide_collision_reason = "none"
 	_last_slide_collision_index = -1
+	_blocked_point_repeat_bucket = Vector2i.ZERO
+	_blocked_point_repeat_bucket_valid = false
+	_blocked_point_repeat_count = 0
+	_reset_repath_recovery_feedback()
 	_reset_stall_monitor()
 	if _patrol:
 		_patrol.configure(nav_system, home_room_id)
@@ -329,6 +343,9 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 	_last_slide_collision_index = -1
 	_intent_target = target if has_target else Vector2.ZERO
 	_intent_target_valid = has_target
+	_reset_repath_recovery_feedback()
+	_repath_recovery_intent_target = _intent_target if _intent_target_valid else Vector2.ZERO
+	_repath_recovery_repeat_count = _blocked_point_repeat_count if _blocked_point_repeat_bucket_valid else 0
 
 	var force_missing_move_target := _intent_uses_move_target(intent_type) and not has_target
 	var skip_plan_lock_update := force_missing_move_target
@@ -435,6 +452,13 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 		"intent_target": _intent_target if _intent_target_valid else Vector2.ZERO,
 		"plan_target": _plan_target if _plan_target_valid else Vector2.ZERO,
 		"shadow_unreachable_fsm_state": _shadow_unreachable_fsm_state,
+		"repath_recovery_request_next_search_node": _repath_recovery_request_next_search_node,
+		"repath_recovery_reason": _repath_recovery_reason,
+		"repath_recovery_blocked_point": _repath_recovery_blocked_point,
+		"repath_recovery_blocked_point_valid": _repath_recovery_blocked_point_valid,
+		"repath_recovery_repeat_count": _repath_recovery_repeat_count,
+		"repath_recovery_preserve_intent": _repath_recovery_preserve_intent,
+		"repath_recovery_intent_target": _repath_recovery_intent_target,
 	}
 
 
@@ -610,6 +634,79 @@ func _handle_replan_failure_or_shadow_fsm(delta: float, runtime_context: Diction
 	return false
 
 
+func _reset_repath_recovery_feedback() -> void:
+	_repath_recovery_request_next_search_node = false
+	_repath_recovery_reason = "none"
+	_repath_recovery_blocked_point = Vector2.ZERO
+	_repath_recovery_blocked_point_valid = false
+	_repath_recovery_repeat_count = 0
+	_repath_recovery_preserve_intent = false
+	_repath_recovery_intent_target = Vector2.ZERO
+
+
+func _is_repath_recovery_search_intent(intent_type: int) -> bool:
+	return (
+		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
+	)
+
+
+func _repath_recovery_reason_priority(reason: String) -> int:
+	match reason:
+		"collision_blocked":
+			return 1
+		"hard_stall":
+			return 2
+		"blocked_point_repeat":
+			return 3
+		_:
+			return 0
+
+
+func _set_repath_recovery_feedback(
+	reason: String,
+	_movement_target: Vector2,
+	request_next_search_node: bool,
+	blocked_point: Vector2,
+	blocked_point_valid: bool,
+	repeat_count_override: int = -1
+) -> void:
+	if _repath_recovery_reason_priority(reason) < _repath_recovery_reason_priority(_repath_recovery_reason):
+		return
+	_repath_recovery_reason = reason
+	_repath_recovery_request_next_search_node = request_next_search_node
+	_repath_recovery_preserve_intent = request_next_search_node
+	_repath_recovery_blocked_point = blocked_point if blocked_point_valid else Vector2.ZERO
+	_repath_recovery_blocked_point_valid = blocked_point_valid
+	_repath_recovery_intent_target = _intent_target if _intent_target_valid and _is_finite_vector2(_intent_target) else Vector2.ZERO
+	if repeat_count_override >= 0:
+		_repath_recovery_repeat_count = repeat_count_override
+
+
+func _update_blocked_point_repeat_tracker() -> void:
+	if not _last_path_plan_blocked_point_valid:
+		_blocked_point_repeat_bucket = Vector2i.ZERO
+		_blocked_point_repeat_bucket_valid = false
+		_blocked_point_repeat_count = 0
+		_repath_recovery_blocked_point = Vector2.ZERO
+		_repath_recovery_blocked_point_valid = false
+		_repath_recovery_repeat_count = 0
+		return
+	var bucket_px := maxf(_pursuit_cfg_float("repath_recovery_blocked_point_bucket_px", 24.0), 1.0)
+	var bucket_x := int(floor(_last_path_plan_blocked_point.x / bucket_px))
+	var bucket_y := int(floor(_last_path_plan_blocked_point.y / bucket_px))
+	var next_bucket := Vector2i(bucket_x, bucket_y)
+	if not _blocked_point_repeat_bucket_valid or next_bucket != _blocked_point_repeat_bucket:
+		_blocked_point_repeat_bucket = next_bucket
+		_blocked_point_repeat_bucket_valid = true
+		_blocked_point_repeat_count = 1
+	else:
+		_blocked_point_repeat_count += 1
+	_repath_recovery_blocked_point = _last_path_plan_blocked_point
+	_repath_recovery_blocked_point_valid = true
+	_repath_recovery_repeat_count = _blocked_point_repeat_count
+
+
 func _execute_move_to_target(
 	delta: float,
 	target: Vector2,
@@ -633,22 +730,123 @@ func _execute_move_to_target(
 	if _repath_timer <= 0.0 or _path_policy_blocked:
 		_repath_timer = repath_interval
 		if not _attempt_replan_with_policy(movement_target):
+			if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
+				_update_blocked_point_repeat_tracker()
+				var repeat_threshold := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
+				if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold and _last_path_plan_blocked_point_valid:
+					var repeat_count_for_feedback := _blocked_point_repeat_count
+					_set_repath_recovery_feedback(
+						"blocked_point_repeat",
+						movement_target,
+						true,
+						_last_path_plan_blocked_point,
+						true,
+						repeat_count_for_feedback
+					)
+					_repath_timer = 0.0
+					_blocked_point_repeat_bucket = Vector2i.ZERO
+					_blocked_point_repeat_bucket_valid = false
+					_blocked_point_repeat_count = 0
 			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
 	if not _has_active_path_to(movement_target):
 		_mark_path_failed("path_unavailable")
 		_stop_motion(delta)
 		return false
 	var moved := _follow_waypoints(speed_scale, delta)
+	if _last_path_failed_reason == "collision_blocked":
+		_set_repath_recovery_feedback(
+			"collision_blocked",
+			movement_target,
+			_is_repath_recovery_search_intent(_last_intent_type),
+			_last_path_plan_blocked_point,
+			_last_path_plan_blocked_point_valid
+		)
 	if not moved and _path_policy_blocked:
 		_mark_path_failed("policy_blocked")
 		_repath_timer = 0.0
 		if not _attempt_replan_with_policy(movement_target):
+			if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
+				_update_blocked_point_repeat_tracker()
+				var repeat_threshold2 := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
+				if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold2 and _last_path_plan_blocked_point_valid:
+					var repeat_count_for_feedback2 := _blocked_point_repeat_count
+					_set_repath_recovery_feedback(
+						"blocked_point_repeat",
+						movement_target,
+						true,
+						_last_path_plan_blocked_point,
+						true,
+						repeat_count_for_feedback2
+					)
+					_repath_timer = 0.0
+					_blocked_point_repeat_bucket = Vector2i.ZERO
+					_blocked_point_repeat_bucket_valid = false
+					_blocked_point_repeat_count = 0
 			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
+		if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
+			_update_blocked_point_repeat_tracker()
+			var repeat_threshold3 := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
+			if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold3 and _last_path_plan_blocked_point_valid:
+				var repeat_count_for_feedback3 := _blocked_point_repeat_count
+				_set_repath_recovery_feedback(
+					"blocked_point_repeat",
+					movement_target,
+					true,
+					_last_path_plan_blocked_point,
+					true,
+					repeat_count_for_feedback3
+				)
+				_repath_timer = 0.0
+				_blocked_point_repeat_bucket = Vector2i.ZERO
+				_blocked_point_repeat_bucket_valid = false
+				_blocked_point_repeat_count = 0
 	if _update_stall_monitor(delta, movement_target, has_target):
 		_mark_path_failed("hard_stall")
 		_repath_timer = 0.0
+		if _is_repath_recovery_search_intent(_last_intent_type):
+			_set_repath_recovery_feedback(
+				"hard_stall",
+				movement_target,
+				true,
+				_repath_recovery_blocked_point,
+				_repath_recovery_blocked_point_valid
+			)
 		if not _attempt_replan_with_policy(movement_target):
+			if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
+				_update_blocked_point_repeat_tracker()
+				var repeat_threshold4 := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
+				if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold4 and _last_path_plan_blocked_point_valid:
+					var repeat_count_for_feedback4 := _blocked_point_repeat_count
+					_set_repath_recovery_feedback(
+						"blocked_point_repeat",
+						movement_target,
+						true,
+						_last_path_plan_blocked_point,
+						true,
+						repeat_count_for_feedback4
+					)
+					_repath_timer = 0.0
+					_blocked_point_repeat_bucket = Vector2i.ZERO
+					_blocked_point_repeat_bucket_valid = false
+					_blocked_point_repeat_count = 0
 			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
+		if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
+			_update_blocked_point_repeat_tracker()
+			var repeat_threshold5 := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
+			if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold5 and _last_path_plan_blocked_point_valid:
+				var repeat_count_for_feedback5 := _blocked_point_repeat_count
+				_set_repath_recovery_feedback(
+					"blocked_point_repeat",
+					movement_target,
+					true,
+					_last_path_plan_blocked_point,
+					true,
+					repeat_count_for_feedback5
+				)
+				_repath_timer = 0.0
+				_blocked_point_repeat_bucket = Vector2i.ZERO
+				_blocked_point_repeat_bucket_valid = false
+				_blocked_point_repeat_count = 0
 	if owner.global_position.distance_to(movement_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
 		_stop_motion(delta)
 		_active_move_target_valid = false
@@ -1333,6 +1531,16 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"collision_forced_repath": _last_slide_collision_forced_repath,
 		"collision_reason": _last_slide_collision_reason,
 		"collision_index": _last_slide_collision_index,
+		"blocked_point_repeat_bucket": Vector2(float(_blocked_point_repeat_bucket.x), float(_blocked_point_repeat_bucket.y)),
+		"blocked_point_repeat_bucket_valid": _blocked_point_repeat_bucket_valid,
+		"blocked_point_repeat_count": _blocked_point_repeat_count,
+		"repath_recovery_request_next_search_node": _repath_recovery_request_next_search_node,
+		"repath_recovery_reason": _repath_recovery_reason,
+		"repath_recovery_blocked_point": _repath_recovery_blocked_point,
+		"repath_recovery_blocked_point_valid": _repath_recovery_blocked_point_valid,
+		"repath_recovery_repeat_count": _repath_recovery_repeat_count,
+		"repath_recovery_preserve_intent": _repath_recovery_preserve_intent,
+		"repath_recovery_intent_target": _repath_recovery_intent_target,
 	}
 
 

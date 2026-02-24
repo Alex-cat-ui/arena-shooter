@@ -108,8 +108,20 @@ func _test_stall_and_plan_lock_invariants() -> void:
 	var snap := pursuit.debug_get_navigation_policy_snapshot() as Dictionary
 	var legacy_k1 := "policy_" + "fallback_used"
 	var legacy_k2 := "shadow_" + "escape_active"
+	var legacy_k3 := "shadow_" + "escape" + "_target"
+	var legacy_k4 := "shadow_" + "escape" + "_target_valid"
 	_t.run_test("snapshot exposes phase2 plan/fsm keys", snap.has("plan_id") and snap.has("intent_target") and snap.has("plan_target") and snap.has("shadow_unreachable_fsm_state"))
-	_t.run_test("snapshot omits removed legacy keys", not snap.has(legacy_k1) and not snap.has(legacy_k2))
+	_t.run_test(
+		"snapshot exposes phase17 repath recovery keys",
+		snap.has("repath_recovery_request_next_search_node")
+			and snap.has("repath_recovery_reason")
+			and snap.has("repath_recovery_blocked_point")
+			and snap.has("repath_recovery_blocked_point_valid")
+			and snap.has("repath_recovery_repeat_count")
+			and snap.has("repath_recovery_preserve_intent")
+			and snap.has("repath_recovery_intent_target")
+	)
+	_t.run_test("snapshot omits removed legacy keys", not snap.has(legacy_k1) and not snap.has(legacy_k2) and not snap.has(legacy_k3) and not snap.has(legacy_k4))
 
 	owner.queue_free()
 	nav.queue_free()

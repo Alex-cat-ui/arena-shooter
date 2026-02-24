@@ -128,14 +128,31 @@ func _test_shadow_stall_uses_scan_search_canon() -> void:
 	var transitions: Array[String] = []
 	var escaped_to_light := false
 	var first_result: Dictionary = {}
+	var policy_blocked_attempts := 0
+	var repeated_policy_block_boundary_stays_light := true
+	var repeated_policy_block_boundary_checks := 0
+	var saw_hard_stall := false
+	var saw_repath_recovery_key_population := false
 	for i in range(300):
 		ctx["dist"] = owner.global_position.distance_to(blocked_target)
 		var result := pursuit.execute_intent(1.0 / 60.0, intent, ctx) as Dictionary
 		if i == 0:
 			first_result = result.duplicate(true)
+		if result.has("repath_recovery_reason") and result.has("repath_recovery_request_next_search_node"):
+			saw_repath_recovery_key_population = true
+		if String(result.get("repath_recovery_reason", "")) == "hard_stall":
+			saw_hard_stall = true
 		var state := String(result.get("shadow_unreachable_fsm_state", ""))
 		if transitions.is_empty() or transitions[transitions.size() - 1] != state:
 			transitions.append(state)
+		var loop_snap := pursuit.debug_get_navigation_policy_snapshot() as Dictionary
+		if String(loop_snap.get("path_plan_reason", "")) == "policy_blocked":
+			policy_blocked_attempts += 1
+			if policy_blocked_attempts >= 2 and bool(loop_snap.get("shadow_scan_boundary_valid", false)):
+				repeated_policy_block_boundary_checks += 1
+				var boundary_point := loop_snap.get("shadow_scan_boundary_point", Vector2.ZERO) as Vector2
+				if nav.is_point_in_shadow(boundary_point):
+					repeated_policy_block_boundary_stays_light = false
 		if owner.global_position.x >= nav.shadow_edge_x:
 			escaped_to_light = true
 		if escaped_to_light and transitions.has("search"):
@@ -150,7 +167,23 @@ func _test_shadow_stall_uses_scan_search_canon() -> void:
 	_t.run_test("first failure enters phase2 shadow unreachable fsm", String(first_result.get("shadow_unreachable_fsm_state", "")) == "shadow_boundary_scan")
 	_t.run_test("runtime reaches search in canonical sequence", transitions.has("shadow_boundary_scan") and transitions.has("search"))
 	_t.run_test("enemy exits shadow to light via boundary movement", escaped_to_light)
+	_t.run_test(
+		"repeated policy-blocked attempts keep shadow boundary target on light side",
+		policy_blocked_attempts >= 2 and repeated_policy_block_boundary_checks >= 1 and repeated_policy_block_boundary_stays_light
+	)
+	_t.run_test(
+		"phase17 execute_intent result carries repath recovery keys during shadow-stall harness",
+		saw_repath_recovery_key_population
+	)
+	_t.run_test(
+		"phase17 hard-stall feedback does not break canon recovery (optional path)",
+		(not saw_hard_stall) or (escaped_to_light and transitions.has("search"))
+	)
 	_t.run_test("snapshot omits removed legacy keys", not snap.has(k1) and not snap.has(k2) and not snap.has(k3))
+	_t.run_test(
+		"snapshot exposes phase17 repath recovery debug keys",
+		snap.has("repath_recovery_reason") and snap.has("repath_recovery_request_next_search_node")
+	)
 
 	world.queue_free()
 	await get_tree().process_frame

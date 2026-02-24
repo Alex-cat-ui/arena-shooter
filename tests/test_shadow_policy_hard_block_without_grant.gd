@@ -133,6 +133,8 @@ func _test_shadow_policy_enters_phase2_fsm() -> void:
 	var first_result: Dictionary = {}
 	var first_snapshot: Dictionary = {}
 	var saw_search := false
+	var repeated_unreachable_policy_count := 0
+	var repeated_unreachable_policy_reason_stable := true
 	for i in range(240):
 		ctx["dist"] = owner.global_position.distance_to(blocked_target)
 		var result := pursuit.execute_intent(1.0 / 60.0, intent, ctx) as Dictionary
@@ -143,6 +145,10 @@ func _test_shadow_policy_enters_phase2_fsm() -> void:
 		var state := String(result.get("shadow_unreachable_fsm_state", ""))
 		if transitions.is_empty() or transitions[transitions.size() - 1] != state:
 			transitions.append(state)
+		if String(snapshot.get("path_plan_status", "")) == "unreachable_policy":
+			repeated_unreachable_policy_count += 1
+			if String(snapshot.get("path_plan_reason", "")) != "policy_blocked":
+				repeated_unreachable_policy_reason_stable = false
 		if state == "search":
 			saw_search = true
 			break
@@ -158,6 +164,10 @@ func _test_shadow_policy_enters_phase2_fsm() -> void:
 	_t.run_test("phase2 fsm reaches search state", saw_search and transitions.has("shadow_boundary_scan") and transitions.has("search"))
 	_t.run_test("execute_intent returns plan contract keys", first_result.has("plan_id") and first_result.has("intent_target") and first_result.has("plan_target"))
 	_t.run_test("debug snapshot has phase2 keys", first_snapshot.has("plan_id") and first_snapshot.has("intent_target") and first_snapshot.has("plan_target") and first_snapshot.has("shadow_unreachable_fsm_state"))
+	_t.run_test(
+		"repeated blocked attempts keep path_plan_reason == policy_blocked",
+		repeated_unreachable_policy_count >= 2 and repeated_unreachable_policy_reason_stable
+	)
 	_t.run_test("debug snapshot omits legacy keys", not first_snapshot.has(k1) and not first_snapshot.has(k2) and not first_snapshot.has(k3) and not first_snapshot.has(k4))
 
 	world.queue_free()

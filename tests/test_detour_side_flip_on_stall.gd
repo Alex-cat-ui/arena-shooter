@@ -58,13 +58,30 @@ func _test_detour_side_flip_on_stall() -> void:
 	_t.run_test("setup: blocker exists", blocker != null)
 	await get_tree().physics_frame
 
+	var prev_pos := enemy.global_position
+	var max_step := 0.0
 	for _i in range(18):
 		enemy.runtime_budget_tick(0.25)
+		var step := enemy.global_position.distance_to(prev_pos)
+		max_step = maxf(max_step, step)
+		prev_pos = enemy.global_position
 
 	var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test("stall: setup keeps no-LOS", not bool(snapshot.get("has_los", true)))
 	# L1 detour was removed in navmesh migration — obstacle avoidance now handled by NavigationAgent2D
 	_t.run_test("stall: enemy stays in COMBAT with no-LOS (hostile_contact persists)", true)
+	_t.run_test(
+		"phase17 recovery debug keys exist in runtime snapshot",
+		snapshot.has("combat_search_recovery_applied")
+			and snapshot.has("combat_search_recovery_reason")
+			and snapshot.has("combat_search_recovery_blocked_point")
+			and snapshot.has("combat_search_recovery_blocked_point_valid")
+			and snapshot.has("combat_search_recovery_skipped_node_key")
+	)
+	_t.run_test(
+		"no teleport spike introduced while stalled runtime updates run",
+		max_step <= 96.0
+	)
 
 	world.queue_free()
 	await get_tree().process_frame

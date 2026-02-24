@@ -65,6 +65,11 @@ const COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE := "res://tests/test_com
 const COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE := "res://tests/test_combat_search_per_room_budget_and_total_cap.tscn"
 const COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE := "res://tests/test_combat_next_room_scoring_no_loops.tscn"
 const COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE := "res://tests/test_combat_to_alert_requires_no_contact_and_search_progress.tscn"
+const DARK_SEARCH_GRAPH_PROGRESSIVE_COVERAGE_TEST_SCENE := "res://tests/test_dark_search_graph_progressive_coverage.tscn"
+const ALERT_COMBAT_SEARCH_SESSION_COMPLETION_CONTRACT_TEST_SCENE := "res://tests/test_alert_combat_search_session_completion_contract.tscn"
+const UNREACHABLE_SHADOW_NODE_FORCES_SCAN_THEN_SEARCH_TEST_SCENE := "res://tests/test_unreachable_shadow_node_forces_scan_then_search.tscn"
+const SHADOW_STUCK_WATCHDOG_ESCALATES_TO_NEXT_NODE_TEST_SCENE := "res://tests/test_shadow_stuck_watchdog_escalates_to_next_node.tscn"
+const REPEATED_BLOCKED_POINT_TRIGGERS_SCAN_THEN_SEARCH_TEST_SCENE := "res://tests/test_repeated_blocked_point_triggers_scan_then_search.tscn"
 const FIRST_SHOT_DELAY_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE := "res://tests/test_first_shot_delay_starts_on_first_valid_firing_solution.tscn"
 const FIRST_SHOT_TIMER_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE := "res://tests/test_first_shot_timer_starts_on_first_valid_firing_solution.tscn"
 const FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE := "res://tests/test_first_shot_timer_pause_and_reset_after_2_5s.tscn"
@@ -772,6 +777,21 @@ func _run_tests() -> void:
 	_test("Combat->Alert search/no-contact gate test scene exists", func():
 		return _scene_exists(COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE)
 	)
+	_test("Dark search graph progressive coverage test scene exists", func():
+		return _scene_exists(DARK_SEARCH_GRAPH_PROGRESSIVE_COVERAGE_TEST_SCENE)
+	)
+	_test("Alert/combat search session completion contract test scene exists", func():
+		return _scene_exists(ALERT_COMBAT_SEARCH_SESSION_COMPLETION_CONTRACT_TEST_SCENE)
+	)
+	_test("Unreachable shadow node forces scan->search test scene exists", func():
+		return _scene_exists(UNREACHABLE_SHADOW_NODE_FORCES_SCAN_THEN_SEARCH_TEST_SCENE)
+	)
+	_test("Shadow stuck watchdog escalates to next node test scene exists", func():
+		return _scene_exists(SHADOW_STUCK_WATCHDOG_ESCALATES_TO_NEXT_NODE_TEST_SCENE)
+	)
+	_test("Repeated blocked-point triggers scan->search test scene exists", func():
+		return _scene_exists(REPEATED_BLOCKED_POINT_TRIGGERS_SCAN_THEN_SEARCH_TEST_SCENE)
+	)
 	_test("First-shot-delay on first valid firing solution test scene exists", func():
 		return _scene_exists(FIRST_SHOT_DELAY_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE)
 	)
@@ -1125,6 +1145,11 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Combat search per-room budget/total cap suite", COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat next-room scoring suite", COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat->Alert search/no-contact gate suite", COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE)
+	await _run_embedded_scene_suite("Dark search graph progressive coverage suite", DARK_SEARCH_GRAPH_PROGRESSIVE_COVERAGE_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert/combat search session completion contract suite", ALERT_COMBAT_SEARCH_SESSION_COMPLETION_CONTRACT_TEST_SCENE)
+	await _run_embedded_scene_suite("Unreachable shadow node forces scan->search suite", UNREACHABLE_SHADOW_NODE_FORCES_SCAN_THEN_SEARCH_TEST_SCENE)
+	await _run_embedded_scene_suite("Shadow stuck watchdog escalates to next-node suite", SHADOW_STUCK_WATCHDOG_ESCALATES_TO_NEXT_NODE_TEST_SCENE)
+	await _run_embedded_scene_suite("Repeated blocked-point triggers scan->search suite", REPEATED_BLOCKED_POINT_TRIGGERS_SCAN_THEN_SEARCH_TEST_SCENE)
 	await _run_embedded_scene_suite("First-shot-delay on first valid firing solution suite", FIRST_SHOT_DELAY_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE)
 	await _run_embedded_scene_suite("First-shot timer starts on first valid contact suite", FIRST_SHOT_TIMER_STARTS_ON_FIRST_VALID_FIRING_SOLUTION_TEST_SCENE)
 	await _run_embedded_scene_suite("First-shot timer pause/reset 2.5s suite", FIRST_SHOT_TIMER_PAUSE_AND_RESET_AFTER_2_5S_TEST_SCENE)

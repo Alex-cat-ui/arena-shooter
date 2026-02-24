@@ -8973,8 +8973,8 @@ Expected: 0 matches.
 - [ ] `rg -n "func _build_combat_dark_search_nodes\(|func _select_next_combat_dark_search_node\(|func _record_combat_search_execution_feedback\(" src/entities/enemy.gd -S` returns exactly `3 matches`.
 - [ ] `rg -n "_combat_search_room_nodes|_combat_search_room_node_visited|_combat_search_current_node_key|_combat_search_current_node_requires_shadow_scan|_combat_search_current_node_shadow_scan_done|_combat_search_node_search_dwell_sec" src/entities/enemy.gd -S` returns `>= 12 matches`.
 - [ ] `rg -n "combat_search_node_key|combat_search_node_kind|combat_search_node_requires_shadow_scan|combat_search_node_shadow_scan_done|combat_search_room_nodes_total|combat_search_room_nodes_covered|combat_search_shadow_scan_suppressed" src/entities/enemy.gd -S` returns `>= 7 matches`.
-- [ ] `rg -n "combat_dark_search_node_(sample_radius_px|boundary_radius_px|dwell_sec|uncovered_bonus|tactical_priority_weight)" src/core/game_config.gd -S` returns exactly `5 matches`.
-- [ ] `rg -n "combat_dark_search_node_(sample_radius_px|boundary_radius_px|dwell_sec|uncovered_bonus|tactical_priority_weight)" src/core/config_validator.gd -S` returns exactly `5 matches`.
+- [ ] `rg -n "combat_dark_search_(node_sample_radius_px|boundary_radius_px|node_dwell_sec|node_uncovered_bonus|node_tactical_priority_weight)" src/core/game_config.gd -S` returns exactly `5 matches`.
+- [ ] `rg -n "combat_dark_search_(node_sample_radius_px|boundary_radius_px|node_dwell_sec|node_uncovered_bonus|node_tactical_priority_weight)" src/core/config_validator.gd -S` returns exactly `5 matches`.
 - [ ] `rg -n "get_shadow_search_stage\(" src/entities/enemy.gd -S` returns `>= 1 match` (Phase 11 integration consumed in Enemy runtime).
 - [ ] `rg -n "DARK_SEARCH_GRAPH_PROGRESSIVE_COVERAGE_TEST_SCENE|ALERT_COMBAT_SEARCH_SESSION_COMPLETION_CONTRACT_TEST_SCENE|UNREACHABLE_SHADOW_NODE_FORCES_SCAN_THEN_SEARCH_TEST_SCENE" tests/test_runner_node.gd -S` returns exactly `9 matches`.
 - [ ] All new test functions listed in section 12 pass (exit `0`).
@@ -9063,7 +9063,7 @@ Expected: `>= 8 matches`.
 [G5] `rg -n "combat_search_progress|combat_search_total_elapsed_sec|combat_search_room_elapsed_sec|combat_search_room_budget_sec|combat_search_current_room_id|combat_search_target_pos|combat_search_total_cap_hit|combat_search_force_complete" src/entities/enemy.gd src/systems/enemy_awareness_system.gd -S`
 Expected: `>= 12 matches` (existing awareness contract field names remain present).
 
-[G6] `rg -n "combat_dark_search_node_(sample_radius_px|boundary_radius_px|dwell_sec|uncovered_bonus|tactical_priority_weight)" src/core/game_config.gd -S`
+[G6] `rg -n "combat_dark_search_(node_sample_radius_px|boundary_radius_px|node_dwell_sec|node_uncovered_bonus|node_tactical_priority_weight)" src/core/game_config.gd -S`
 Expected: `5 matches`.
 
 [G7] `rg -n "get_shadow_search_stage\(" src/entities/enemy.gd -S`
@@ -9072,7 +9072,7 @@ Expected: `>= 1 match`.
 [G8] `rg -n "func _select_next_combat_dark_search_node\(" src/ -S`
 Expected: exactly `1 match` and it is in `src/entities/enemy.gd`.
 
-[G9] `rg -n "combat_dark_search_node_(sample_radius_px|boundary_radius_px|dwell_sec|uncovered_bonus|tactical_priority_weight)" src/core/config_validator.gd -S`
+[G9] `rg -n "combat_dark_search_(node_sample_radius_px|boundary_radius_px|node_dwell_sec|node_uncovered_bonus|node_tactical_priority_weight)" src/core/config_validator.gd -S`
 Expected: `5 matches`.
 
 [G10] `rg -n "DARK_SEARCH_GRAPH_PROGRESSIVE_COVERAGE_TEST_SCENE|ALERT_COMBAT_SEARCH_SESSION_COMPLETION_CONTRACT_TEST_SCENE|UNREACHABLE_SHADOW_NODE_FORCES_SCAN_THEN_SEARCH_TEST_SCENE" tests/test_runner_node.gd -S`
