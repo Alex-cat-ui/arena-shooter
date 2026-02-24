@@ -171,6 +171,10 @@ const COMBAT_TRANSITION_STRESS_3ZONE_TEST_SCENE := "res://tests/test_3zone_comba
 const AI_LONG_RUN_STRESS_TEST_SCENE := "res://tests/test_ai_long_run_stress.tscn"
 const ENEMY_CROWD_AVOIDANCE_REDUCES_JAMS_TEST_SCENE := "res://tests/test_enemy_crowd_avoidance_reduces_jams.tscn"
 const REFACTOR_KPI_CONTRACT_TEST_SCENE := "res://tests/test_refactor_kpi_contract.tscn"
+const AI_PERFORMANCE_GATE_TEST_SCENE := "res://tests/test_ai_performance_gate.tscn"
+const REPLAY_BASELINE_GATE_TEST_SCENE := "res://tests/test_replay_baseline_gate.tscn"
+const LEVEL_STEALTH_CHECKLIST_TEST_SCENE := "res://tests/test_level_stealth_checklist.tscn"
+const EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE := "res://tests/test_extended_stealth_release_gate.tscn"
 const ENEMY_SCRIPT := preload("res://src/entities/enemy.gd")
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
 const ENEMY_PATROL_SYSTEM_SCRIPT := preload("res://src/systems/enemy_patrol_system.gd")
@@ -1389,6 +1393,18 @@ func _run_tests() -> void:
 	_test("Refactor KPI contract test scene exists", func():
 		return _scene_exists(REFACTOR_KPI_CONTRACT_TEST_SCENE)
 	)
+	_test("AI performance gate test scene exists", func():
+		return _scene_exists(AI_PERFORMANCE_GATE_TEST_SCENE)
+	)
+	_test("Replay baseline gate test scene exists", func():
+		return _scene_exists(REPLAY_BASELINE_GATE_TEST_SCENE)
+	)
+	_test("Level stealth checklist gate test scene exists", func():
+		return _scene_exists(LEVEL_STEALTH_CHECKLIST_TEST_SCENE)
+	)
+	_test("Extended stealth release gate test scene exists", func():
+		return _scene_exists(EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE)
+	)
 
 	await _run_embedded_scene_suite("Level runtime guard suite", LEVEL_RUNTIME_GUARD_TEST_SCENE)
 	await _run_embedded_scene_suite("Level input controller suite", LEVEL_INPUT_CONTROLLER_TEST_SCENE)
@@ -1404,6 +1420,10 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Game systems runtime suite", GAME_SYSTEMS_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Physics world runtime suite", PHYSICS_WORLD_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Refactor KPI contract suite", REFACTOR_KPI_CONTRACT_TEST_SCENE)
+	await _run_embedded_scene_suite("AI performance gate suite", AI_PERFORMANCE_GATE_TEST_SCENE)
+	await _run_embedded_scene_suite("Replay baseline gate suite", REPLAY_BASELINE_GATE_TEST_SCENE)
+	await _run_embedded_scene_suite("Level stealth checklist gate suite", LEVEL_STEALTH_CHECKLIST_TEST_SCENE)
+	await _run_embedded_scene_suite("Extended stealth release gate suite", EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE)
 
 	print("\nAll tests completed (Core + AI + Door + Alert + Decomposition suites).")
 

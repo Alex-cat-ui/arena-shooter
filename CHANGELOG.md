@@ -2,6 +2,16 @@
 
 ## 2026-02-24
 
+### 18:40 MSK - Phase 19: Extended Stealth Release Gate + KPI/Replay/Checklist Gates
+- **Added**: Phase 19 gate suites `tests/test_ai_performance_gate.gd/.tscn`, `tests/test_replay_baseline_gate.gd/.tscn`, `tests/test_level_stealth_checklist.gd/.tscn`, and `tests/test_extended_stealth_release_gate.gd/.tscn` with runner registration in `tests/test_runner_node.gd`
+- **Added**: replay gate helper + baseline artifacts (`tests/replay_gate_helpers.gd`, five JSONL baselines under `tests/baselines/replay/`) and manual checklist artifact `docs/qa/stealth_level_checklist_stealth_3zone_test.md`
+- **Changed**: `AIWatchdog` now exposes Phase 19 performance snapshot contract (totals, p95 AI tick, sample cap, test reset helper) and `EnemyPursuitSystem` emits hard-stall/collision-repath/detour instrumentation hooks
+- **Changed**: `NavigationRuntimeQueries.build_policy_valid_path(...)` now returns detour-candidate count for exact Phase 19 KPI accounting (minimal scope exception to preserve metric semantics)
+- **Changed**: `tests/test_ai_long_run_stress.gd` adds deterministic `run_benchmark_contract(config)` and emits Phase 19 derived metrics (`replans_per_enemy_per_sec`, `detour_candidates_per_replan`, `hard_stalls_per_min`)
+- **Changed**: `Stealth3ZoneTestController` adds `debug_spawn_enemy_duplicates_for_tests(target_total_count)` for fixed `enemy_count = 12` performance-gate benchmark setup
+- **Changed**: `GameConfig` adds Phase 19 `kpi_*` exports for performance, replay, and checklist thresholds
+- **Spec/Test alignment**: fixed Phase 19 spec contradictions for runner gate `G19`, current-tree detour-candidate instrumentation owner, impossible per-room shadow pocket count in `stealth_3zone_test`, and door-opening choke width interpretation using wall-thickness-aware clear-width logic
+
 ### 15:25 MSK - Phase 18: Tactical Cover Slot Scoring + Policy-Valid Squad Path Contract + FLANK Contract Gating
 - **Changed**: `EnemySquadSystem` now scores tactical slots with policy-valid path contract outputs (`path_status`, `path_reason`, `slot_path_length`, `slot_path_eta_sec`) plus deterministic cover metadata (`cover_source`, `cover_los_break_quality`, `cover_score`) and forbids returning invalid FLANK tactical slots
 - **Added**: HOLD cover-slot generation from room geometry (wall cover baseline + optional obstacle cover extraction when test layout exposes `_navigation_obstacles()`) with deterministic LOS-break scoring and tie-break ordering

@@ -1,0 +1,6 @@
+{"tick":0,"enemy_id":1503,"state":"CALM","intent_type":"PATROL","mode":"PATROL","path_status":"ok","target_context_exists":false,"position_x":900.0,"position_y":180.0}
+{"tick":15,"enemy_id":1503,"state":"SUSPICIOUS","intent_type":"INVESTIGATE","mode":"LOST_CONTACT_SEARCH","path_status":"ok","target_context_exists":true,"position_x":910.0,"position_y":200.0}
+{"tick":30,"enemy_id":1503,"state":"ALERT","intent_type":"SHADOW_BOUNDARY_SCAN","mode":"SHADOW_AWARE_SWEEP","path_status":"ok","target_context_exists":true,"position_x":920.0,"position_y":220.0}
+{"tick":31,"enemy_id":1503,"state":"ALERT","intent_type":"SEARCH","mode":"SHADOW_AWARE_SWEEP","path_status":"ok","target_context_exists":true,"position_x":922.0,"position_y":224.0}
+{"tick":60,"enemy_id":1503,"state":"COMBAT","intent_type":"SEARCH","mode":"LOST_CONTACT_SEARCH","path_status":"ok","target_context_exists":true,"position_x":950.0,"position_y":260.0}
+{"tick":90,"enemy_id":1503,"state":"COMBAT","intent_type":"MOVE_TO_SLOT","mode":"CONTAIN","path_status":"ok","target_context_exists":true,"position_x":980.0,"position_y":300.0}

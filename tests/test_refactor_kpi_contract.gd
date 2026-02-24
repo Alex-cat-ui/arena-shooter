@@ -138,6 +138,84 @@ func _test_refactor_kpi_contracts() -> void:
 			or shadow_policy_text.find("get_meta") < 0
 	)
 
+	var game_config_text := _read_text("res://src/core/game_config.gd")
+	_t.run_test(
+		"KPI: GameConfig declares Phase 19 kpi_* exports",
+		_contains_all(
+			game_config_text,
+			[
+				"@export var kpi_ai_ms_avg_max",
+				"@export var kpi_ai_ms_p95_max",
+				"@export var kpi_replans_per_enemy_per_sec_max",
+				"@export var kpi_detour_candidates_per_replan_max",
+				"@export var kpi_hard_stalls_per_min_max",
+				"@export var kpi_alert_combat_bad_patrol_count",
+				"@export var kpi_shadow_pocket_min_area_px2",
+				"@export var kpi_shadow_escape_max_len_px",
+				"@export var kpi_alt_route_max_factor",
+				"@export var kpi_shadow_scan_points_min",
+				"@export var kpi_replay_position_tolerance_px",
+				"@export var kpi_replay_drift_budget_percent",
+				"@export var kpi_replay_discrete_warmup_sec",
+			]
+		)
+	)
+
+	var phase19_gate_scenes := [
+		"res://tests/test_ai_performance_gate.tscn",
+		"res://tests/test_replay_baseline_gate.tscn",
+		"res://tests/test_level_stealth_checklist.tscn",
+		"res://tests/test_extended_stealth_release_gate.tscn",
+	]
+	var phase19_gate_scenes_exist := true
+	for scene_path_variant in phase19_gate_scenes:
+		var scene_path := String(scene_path_variant)
+		if not ResourceLoader.exists(scene_path, "PackedScene"):
+			phase19_gate_scenes_exist = false
+			break
+	_t.run_test("KPI: Phase 19 gate scenes exist", phase19_gate_scenes_exist)
+
+	_t.run_test(
+		"KPI: runner registers Phase 19 gate scenes",
+		_contains_all(
+			runner_text,
+			[
+				"const AI_PERFORMANCE_GATE_TEST_SCENE := ",
+				"const REPLAY_BASELINE_GATE_TEST_SCENE := ",
+				"const LEVEL_STEALTH_CHECKLIST_TEST_SCENE := ",
+				"const EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE := ",
+				"_scene_exists(AI_PERFORMANCE_GATE_TEST_SCENE)",
+				"_scene_exists(REPLAY_BASELINE_GATE_TEST_SCENE)",
+				"_scene_exists(LEVEL_STEALTH_CHECKLIST_TEST_SCENE)",
+				"_scene_exists(EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE)",
+				"AI performance gate suite",
+				"Replay baseline gate suite",
+				"Level stealth checklist gate suite",
+				"Extended stealth release gate suite",
+			]
+		)
+	)
+
+	var baseline_paths := [
+		"res://tests/baselines/replay/shadow_corridor_pressure.jsonl",
+		"res://tests/baselines/replay/door_choke_crowd.jsonl",
+		"res://tests/baselines/replay/lost_contact_in_shadow.jsonl",
+		"res://tests/baselines/replay/collision_integrity.jsonl",
+		"res://tests/baselines/replay/blood_evidence.jsonl",
+	]
+	var baselines_exist := true
+	for baseline_path_variant in baseline_paths:
+		var baseline_path := String(baseline_path_variant)
+		if not FileAccess.file_exists(baseline_path):
+			baselines_exist = false
+			break
+	_t.run_test("KPI: Phase 19 replay baseline artifacts exist", baselines_exist)
+
+	_t.run_test(
+		"KPI: Phase 19 manual checklist artifact exists",
+		FileAccess.file_exists("res://docs/qa/stealth_level_checklist_stealth_3zone_test.md")
+	)
+
 
 func _read_text(path: String) -> String:
 	if not FileAccess.file_exists(path):

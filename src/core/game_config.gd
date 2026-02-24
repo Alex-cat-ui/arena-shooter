@@ -400,6 +400,19 @@ const DEFAULT_NON_LAYOUT_SCALARS := {
 	"atmosphere_particle_lifetime_min": 3.0,
 	"atmosphere_particle_lifetime_max": 6.0,
 	"debug_overlay_visible": false,
+	"kpi_ai_ms_avg_max": 1.20,
+	"kpi_ai_ms_p95_max": 2.50,
+	"kpi_replans_per_enemy_per_sec_max": 1.80,
+	"kpi_detour_candidates_per_replan_max": 24.0,
+	"kpi_hard_stalls_per_min_max": 1.0,
+	"kpi_alert_combat_bad_patrol_count": 0,
+	"kpi_shadow_pocket_min_area_px2": 3072.0,
+	"kpi_shadow_escape_max_len_px": 960.0,
+	"kpi_alt_route_max_factor": 1.50,
+	"kpi_shadow_scan_points_min": 3,
+	"kpi_replay_position_tolerance_px": 6.0,
+	"kpi_replay_drift_budget_percent": 2.0,
+	"kpi_replay_discrete_warmup_sec": 0.50,
 }
 
 ## ============================================================================
@@ -519,6 +532,24 @@ const DEFAULT_NON_LAYOUT_SCALARS := {
 @export var composition_enabled: bool = true
 
 @export var layout_debug_text: bool = true
+
+## ============================================================================
+## SECTION: QA KPI Gates (Phase 19)
+## ============================================================================
+@export_group("QA KPI Gates")
+@export var kpi_ai_ms_avg_max: float = 1.20
+@export var kpi_ai_ms_p95_max: float = 2.50
+@export var kpi_replans_per_enemy_per_sec_max: float = 1.80
+@export var kpi_detour_candidates_per_replan_max: float = 24.0
+@export var kpi_hard_stalls_per_min_max: float = 1.0
+@export var kpi_alert_combat_bad_patrol_count: int = 0
+@export var kpi_shadow_pocket_min_area_px2: float = 3072.0
+@export var kpi_shadow_escape_max_len_px: float = 960.0
+@export var kpi_alt_route_max_factor: float = 1.50
+@export var kpi_shadow_scan_points_min: int = 3
+@export var kpi_replay_position_tolerance_px: float = 6.0
+@export var kpi_replay_drift_budget_percent: float = 2.0
+@export var kpi_replay_discrete_warmup_sec: float = 0.50
 
 ## ============================================================================
 ## METHODS

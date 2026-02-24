@@ -85,6 +85,7 @@ var _stall_check_timer: float = 0.0
 var _stall_samples: Array[Dictionary] = []
 var _stall_consecutive_windows: int = 0
 var _hard_stall: bool = false
+var _hard_stall_watchdog_reported: bool = false
 var _blocked_point_repeat_bucket: Vector2i = Vector2i.ZERO
 var _blocked_point_repeat_bucket_valid: bool = false
 var _blocked_point_repeat_count: int = 0
@@ -803,6 +804,9 @@ func _execute_move_to_target(
 	if _update_stall_monitor(delta, movement_target, has_target):
 		_mark_path_failed("hard_stall")
 		_repath_timer = 0.0
+		if AIWatchdog and not _hard_stall_watchdog_reported:
+			AIWatchdog.record_hard_stall_event()
+			_hard_stall_watchdog_reported = true
 		if _is_repath_recovery_search_intent(_last_intent_type):
 			_set_repath_recovery_feedback(
 				"hard_stall",
@@ -1090,6 +1094,8 @@ func _update_idle_roam(delta: float) -> void:
 func _plan_path_to(target_pos: Vector2, has_target: bool = true) -> bool:
 	var plan_contract := _request_path_plan_contract(target_pos, has_target)
 	var normalized_plan := _normalize_path_plan_contract(plan_contract, target_pos)
+	if AIWatchdog:
+		AIWatchdog.record_detour_candidates_evaluated(int(normalized_plan.get("detour_candidates_evaluated_count", 0)))
 	_record_path_plan_contract(normalized_plan)
 	var status := String(normalized_plan.get("status", PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY))
 	var planned_points := _extract_vector2_path_points(normalized_plan.get("path_points", []))
@@ -1174,6 +1180,7 @@ func _normalize_path_plan_contract(contract: Dictionary, target_pos: Vector2) ->
 		"path_points": path_points,
 		"reason": reason,
 		"segment_index": int(contract.get("segment_index", -1)),
+		"detour_candidates_evaluated_count": maxi(int(contract.get("detour_candidates_evaluated_count", 0)), 0),
 	}
 	var blocked_point_variant: Variant = contract.get("blocked_point", null)
 	if blocked_point_variant is Vector2:
@@ -1414,6 +1421,8 @@ func _handle_slide_collisions_and_repath(slide_count: int) -> Dictionary:
 		_repath_timer = 0.0
 		_path_policy_blocked = false
 		_last_policy_blocked_segment = -1
+		if AIWatchdog:
+			AIWatchdog.record_collision_repath_event()
 	_last_slide_collision_kind = "door"
 	_last_slide_collision_forced_repath = door_opened
 	_last_slide_collision_reason = "door_opened" if door_opened else "none"
@@ -1444,6 +1453,7 @@ func _reset_stall_monitor() -> void:
 	_stall_samples.clear()
 	_stall_consecutive_windows = 0
 	_hard_stall = false
+	_hard_stall_watchdog_reported = false
 	_last_stall_speed_avg = 0.0
 	_last_stall_path_progress = 0.0
 
@@ -1498,6 +1508,8 @@ func _consume_stall_window_result(stalled_window: bool) -> bool:
 	else:
 		_stall_consecutive_windows = 0
 	_hard_stall = _stall_consecutive_windows >= STALL_HARD_CONSECUTIVE_WINDOWS
+	if not _hard_stall:
+		_hard_stall_watchdog_reported = false
 	return _hard_stall
 
 

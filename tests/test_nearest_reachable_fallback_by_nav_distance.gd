@@ -86,8 +86,8 @@ func _test_missing_target_keeps_plan_lock_stable() -> void:
 	) as Dictionary
 	var missing_plan_target := missing_target_result.get("plan_target", Vector2.ZERO) as Vector2
 	var snap := pursuit.debug_get_navigation_policy_snapshot() as Dictionary
-	var legacy_k1 := "policy_" + "fallback_used"
-	var legacy_k2 := "shadow_" + "escape_target"
+	var removed_k1 := "policy_" + "fallback_used"
+	var removed_k2 := "shadow_" + "escape_target"
 
 	_t.run_test("seed move initializes plan lock", seed_plan_id > 0 and seed_plan_target.distance_to(target) <= 0.001)
 	_t.run_test("missing target movement reports no_target", String(missing_target_result.get("path_failed_reason", "")) == "no_target")
@@ -95,7 +95,7 @@ func _test_missing_target_keeps_plan_lock_stable() -> void:
 	_t.run_test("missing target movement keeps plan_id unchanged", int(missing_target_result.get("plan_id", -1)) == seed_plan_id)
 	_t.run_test("missing target movement keeps prior plan_target", missing_plan_target.distance_to(seed_plan_target) <= 0.001)
 	_t.run_test("execute output includes phase2 keys", missing_target_result.has("plan_id") and missing_target_result.has("intent_target") and missing_target_result.has("plan_target") and missing_target_result.has("shadow_unreachable_fsm_state"))
-	_t.run_test("snapshot includes phase2 keys and omits removed keys", snap.has("plan_id") and snap.has("intent_target") and snap.has("plan_target") and snap.has("shadow_unreachable_fsm_state") and not snap.has(legacy_k1) and not snap.has(legacy_k2))
+	_t.run_test("snapshot includes phase2 keys and omits removed keys", snap.has("plan_id") and snap.has("intent_target") and snap.has("plan_target") and snap.has("shadow_unreachable_fsm_state") and not snap.has(removed_k1) and not snap.has(removed_k2))
 
 	owner.queue_free()
 	nav.queue_free()

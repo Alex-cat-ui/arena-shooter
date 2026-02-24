@@ -240,6 +240,7 @@ func build_policy_valid_path(
 			"path_points": direct_pts,
 			"reason": "ok",
 			"route_type": "direct",
+			"detour_candidates_evaluated_count": 0,
 		}
 	var direct_valid := _validate_enemy_policy_path(enemy, from_pos, direct_pts)
 	if bool(direct_valid.get("valid", false)):
@@ -248,6 +249,7 @@ func build_policy_valid_path(
 			"path_points": direct_pts,
 			"reason": "ok",
 			"route_type": "direct",
+			"detour_candidates_evaluated_count": 0,
 		}
 	var from_room := room_id_at_point(from_pos)
 	var to_room := room_id_at_point(to_pos)
@@ -256,8 +258,10 @@ func build_policy_valid_path(
 			"status": "unreachable_policy",
 			"path_points": [],
 			"reason": "policy_blocked",
+			"detour_candidates_evaluated_count": 0,
 		}
 	var candidates := _build_detour_candidates(from_pos, to_pos, from_room, to_room)
+	var detour_candidate_count := maxi(candidates.size(), 0)
 	var best_valid: Dictionary = {}
 	var best_score: float = INF
 	for cand_variant in candidates:
@@ -274,11 +278,13 @@ func build_policy_valid_path(
 			"path_points": _extract_path_points(best_valid.get("path_points", [])),
 			"reason": "ok",
 			"route_type": String(best_valid.get("route_type", "")),
+			"detour_candidates_evaluated_count": detour_candidate_count,
 		}
 	return {
 		"status": "unreachable_policy",
 		"path_points": [],
 		"reason": "policy_blocked",
+		"detour_candidates_evaluated_count": detour_candidate_count,
 	}
 
 

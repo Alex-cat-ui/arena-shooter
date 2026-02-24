@@ -639,8 +639,41 @@ func _spawn_enemies() -> void:
 		if _navigation_service:
 			_navigation_service.call("_configure_enemy", enemy)
 
+			_spawned_enemies.append(enemy)
+			_enemy_id_counter += 1
+
+
+func debug_spawn_enemy_duplicates_for_tests(target_total_count: int) -> int:
+	var target_count := maxi(target_total_count, 0)
+	var current_count := 0
+	for enemy in _spawned_enemies:
+		if enemy != null and is_instance_valid(enemy):
+			current_count += 1
+	if target_count <= current_count:
+		return current_count
+	if ENEMY_SPAWNS.is_empty():
+		return current_count
+	var spawn_cursor := 0
+	while current_count < target_count:
+		var spawn := ENEMY_SPAWNS[spawn_cursor % ENEMY_SPAWNS.size()] as Dictionary
+		spawn_cursor += 1
+		var enemy := ENEMY_SCENE.instantiate() as Enemy
+		if enemy == null:
+			continue
+		enemy.position = _spawn_position(spawn)
+		enemy.initialize(_enemy_id_counter, String(spawn.get("type", "zombie")))
+		_entities_root.add_child(enemy)
+		enemy.set_runtime_budget_scheduler_enabled(false)
+		enemy.configure_stealth_test_flashlight(_flashlight_angle_deg(), _flashlight_distance_px(), _flashlight_bonus())
+		enemy.set_flashlight_hit_for_detection(false)
+		if _door_system:
+			enemy.set_meta("door_system", _door_system)
+		if _navigation_service:
+			_navigation_service.call("_configure_enemy", enemy)
 		_spawned_enemies.append(enemy)
 		_enemy_id_counter += 1
+		current_count += 1
+	return current_count
 
 
 func _spawn_position(spawn: Dictionary) -> Vector2:

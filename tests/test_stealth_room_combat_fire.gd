@@ -13,6 +13,7 @@ var _player_damaged_count: int = 0
 var _first_fire_frame: int = -1
 var _damage_amounts: Array[int] = []
 var _saved_ai_fire_profile_mode: String = "auto"
+var _primary_enemy_id: int = -1
 
 
 func _ready() -> void:
@@ -44,6 +45,7 @@ func _test_player_loadout_and_enemy_fire() -> void:
 	_player_damaged_count = 0
 	_first_fire_frame = -1
 	_damage_amounts.clear()
+	_primary_enemy_id = -1
 	if GameConfig:
 		_saved_ai_fire_profile_mode = String(GameConfig.ai_fire_profile_mode)
 		GameConfig.ai_fire_profile_mode = "production"
@@ -70,6 +72,7 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		if GameConfig:
 			GameConfig.ai_fire_profile_mode = _saved_ai_fire_profile_mode
 		return
+	_primary_enemy_id = int(enemy.entity_id)
 
 	_t.run_test("stealth fire: player ability system wired", "ability_system" in player and player.ability_system != null)
 	_t.run_test("stealth fire: player projectile fallback API removed", not ("projectile_system" in player))
@@ -105,11 +108,12 @@ func _test_player_loadout_and_enemy_fire() -> void:
 		pursuit.set("_target_facing_dir", Vector2.RIGHT)
 
 	var fired_too_early := false
-	for i in range(300):
+	var loop_start_physics_frame := Engine.get_physics_frames()
+	for _i in range(300):
 		await get_tree().physics_frame
 		await get_tree().process_frame
 		if _first_fire_frame < 0 and float(enemy.get("_shot_cooldown")) > 0.0:
-			_first_fire_frame = i + 1
+			_first_fire_frame = int(Engine.get_physics_frames() - loop_start_physics_frame)
 		if _first_fire_frame > 0 and _first_fire_frame < COMBAT_FIRST_ATTACK_AND_TELEGRAPH_MIN_FRAMES:
 			fired_too_early = true
 		if _shot_count > 0 and _player_damaged_count > 0:
@@ -154,6 +158,8 @@ func _test_player_loadout_and_enemy_fire() -> void:
 
 
 func _on_enemy_shot(_enemy_id: int, weapon: String, _position: Vector3, _direction: Vector3) -> void:
+	if _primary_enemy_id > 0 and _enemy_id != _primary_enemy_id:
+		return
 	_shot_count += 1
 	if weapon == "shotgun":
 		_shotgun_shot_count += 1
