@@ -108,39 +108,49 @@ func _spawn_enemy(world: Node2D, nav: FakeNav, pos: Vector2 = Vector2.ZERO) -> E
 	return enemy
 
 
+func _runtime(enemy: Enemy):
+	return (enemy.get_runtime_helper_refs() as Dictionary).get("combat_search_runtime", null)
+
+
 func _install_fake_stage_pursuit(enemy: Enemy, stage: int = 0) -> FakeStagePursuit:
 	var fake := FakeStagePursuit.new()
 	fake.stage = stage
-	enemy.set("_pursuit", fake)
+	var runtime: Variant = _runtime(enemy)
+	if runtime != null:
+		runtime.call("set_state_value", "_pursuit", fake)
 	return fake
 
 
-func _advance_active_node_to_searchable(enemy: Enemy, fake_pursuit: FakeStagePursuit, target_hint: Vector2) -> void:
-	if String(enemy.get("_combat_search_current_node_key")) == "":
-		enemy.call("_update_combat_search_runtime", 0.1, false, target_hint, true)
-	if not bool(enemy.get("_combat_search_current_node_requires_shadow_scan")):
+func _advance_active_node_to_searchable(runtime, fake_pursuit: FakeStagePursuit, target_hint: Vector2) -> void:
+	if runtime == null:
 		return
-	if bool(enemy.get("_combat_search_current_node_shadow_scan_done")):
+	if String(runtime.call("get_state_value", "_combat_search_current_node_key", "")) == "":
+		runtime.call("update_runtime", 0.1, false, target_hint, true)
+	if not bool(runtime.call("get_state_value", "_combat_search_current_node_requires_shadow_scan", false)):
+		return
+	if bool(runtime.call("get_state_value", "_combat_search_current_node_shadow_scan_done", false)):
 		return
 	fake_pursuit.stage = 2
-	enemy.call("_update_combat_search_runtime", 0.1, false, target_hint, true)
+	runtime.call("update_runtime", 0.1, false, target_hint, true)
 	fake_pursuit.stage = 0
-	enemy.call("_update_combat_search_runtime", 0.1, false, target_hint, true)
+	runtime.call("update_runtime", 0.1, false, target_hint, true)
 
 
-func _complete_active_node_with_search(enemy: Enemy, target_hint: Vector2) -> void:
-	var active_key := String(enemy.get("_combat_search_current_node_key"))
+func _complete_active_node_with_search(runtime, target_hint: Vector2) -> void:
+	if runtime == null:
+		return
+	var active_key := String(runtime.call("get_state_value", "_combat_search_current_node_key", ""))
 	if active_key == "":
 		return
 	var safety := 0
-	while safety < 8 and String(enemy.get("_combat_search_current_node_key")) == active_key:
+	while safety < 8 and String(runtime.call("get_state_value", "_combat_search_current_node_key", "")) == active_key:
 		safety += 1
-		var target := enemy.get("_combat_search_target_pos") as Vector2
-		enemy.call("_record_combat_search_execution_feedback", {
+		var target := runtime.call("get_state_value", "_combat_search_target_pos", Vector2.ZERO) as Vector2
+		runtime.call("record_execution_feedback", {
 			"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH,
 			"target": target,
 		}, 0.5)
-		enemy.call("_update_combat_search_runtime", 0.1, false, target_hint, true)
+		runtime.call("update_runtime", 0.1, false, target_hint, true)
 
 
 func _test_room_dark_search_coverage_monotonic_non_decreasing() -> void:
@@ -149,11 +159,17 @@ func _test_room_dark_search_coverage_monotonic_non_decreasing() -> void:
 	var nav := FakeNav.new()
 	world.add_child(nav)
 	var enemy := await _spawn_enemy(world, nav, Vector2(0.0, 0.0))
+	var runtime: Variant = _runtime(enemy)
+	_t.run_test("combat-search runtime is available", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 	var fake_pursuit := _install_fake_stage_pursuit(enemy)
 	var combat_target := Vector2(40.0, 0.0)
 
-	enemy.call("_update_combat_search_runtime", 0.1, false, combat_target, true)
-	enemy.set("_combat_search_room_budget_sec", 999.0)
+	runtime.call("update_runtime", 0.1, false, combat_target, true)
+	runtime.call("set_state_value", "_combat_search_room_budget_sec", 999.0)
 
 	var have_active_room_samples := 0
 	var monotonic_room_coverage := true
@@ -163,9 +179,9 @@ func _test_room_dark_search_coverage_monotonic_non_decreasing() -> void:
 	var prev_progress := float(enemy.get_debug_detection_snapshot().get("combat_search_progress", 0.0))
 
 	for _i in range(16):
-		enemy.set("_combat_search_room_budget_sec", 999.0)
-		_advance_active_node_to_searchable(enemy, fake_pursuit, combat_target)
-		_complete_active_node_with_search(enemy, combat_target)
+		runtime.call("set_state_value", "_combat_search_room_budget_sec", 999.0)
+		_advance_active_node_to_searchable(runtime, fake_pursuit, combat_target)
+		_complete_active_node_with_search(runtime, combat_target)
 		var snap := enemy.get_debug_detection_snapshot() as Dictionary
 		var room_id := int(snap.get("combat_search_current_room_id", -1))
 		var coverage_raw := float(snap.get("combat_search_room_coverage_raw", 0.0))
@@ -194,12 +210,18 @@ func _test_select_next_dark_node_prefers_uncovered_then_shorter_policy_path() ->
 	var nav := FakeNav.new()
 	world.add_child(nav)
 	var enemy := await _spawn_enemy(world, nav, Vector2.ZERO)
+	var runtime: Variant = _runtime(enemy)
+	_t.run_test("runtime available for selector test", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 	_install_fake_stage_pursuit(enemy)
 	nav.path_length_overrides = {
 		nav._path_key(Vector2(80.0, 0.0)): 300.0,
 		nav._path_key(Vector2(40.0, 0.0)): 10.0,
 	}
-	enemy.set("_combat_search_room_nodes", {
+	runtime.call("set_state_value", "_combat_search_room_nodes", {
 		5: [
 			{
 				"key": "r5:dark:0",
@@ -221,12 +243,12 @@ func _test_select_next_dark_node_prefers_uncovered_then_shorter_policy_path() ->
 			},
 		],
 	})
-	enemy.set("_combat_search_room_node_visited", {5: {}})
+	runtime.call("set_state_value", "_combat_search_room_node_visited", {5: {}})
 
-	var first_pick := enemy.call("_select_next_combat_dark_search_node", 5, Vector2(100.0, 0.0)) as Dictionary
+	var first_pick := runtime.call("select_next_dark_search_node", 5, Vector2(100.0, 0.0)) as Dictionary
 	var visited: Dictionary = {String(first_pick.get("node_key", "")): true}
-	enemy.set("_combat_search_room_node_visited", {5: visited})
-	var second_pick := enemy.call("_select_next_combat_dark_search_node", 5, Vector2(100.0, 0.0)) as Dictionary
+	runtime.call("set_state_value", "_combat_search_room_node_visited", {5: visited})
+	var second_pick := runtime.call("select_next_dark_search_node", 5, Vector2(100.0, 0.0)) as Dictionary
 
 	_t.run_test(
 		"selector prefers higher uncovered score (dark pocket) over shorter path boundary node",
@@ -247,8 +269,14 @@ func _test_tie_break_same_score_resolves_by_lexical_node_key() -> void:
 	var nav := FakeNav.new()
 	world.add_child(nav)
 	var enemy := await _spawn_enemy(world, nav, Vector2.ZERO)
+	var runtime: Variant = _runtime(enemy)
+	_t.run_test("runtime available for tie-break test", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 	_install_fake_stage_pursuit(enemy)
-	enemy.set("_combat_search_room_nodes", {
+	runtime.call("set_state_value", "_combat_search_room_nodes", {
 		5: [
 			{
 				"key": "r5:boundary:2",
@@ -270,8 +298,8 @@ func _test_tie_break_same_score_resolves_by_lexical_node_key() -> void:
 			},
 		],
 	})
-	enemy.set("_combat_search_room_node_visited", {5: {}})
-	var pick := enemy.call("_select_next_combat_dark_search_node", 5, Vector2(100.0, 0.0)) as Dictionary
+	runtime.call("set_state_value", "_combat_search_room_node_visited", {5: {}})
+	var pick := runtime.call("select_next_dark_search_node", 5, Vector2(100.0, 0.0)) as Dictionary
 	_t.run_test(
 		"equal-score tie resolves by lexical node_key ascending",
 		String(pick.get("node_key", "")) == "r5:boundary:1" and int(pick.get("score_tactical_priority", -1)) == 1
@@ -288,10 +316,16 @@ func _test_boundary_only_room_builds_nodes_and_completes_by_coverage() -> void:
 	nav.force_no_shadow = true
 	world.add_child(nav)
 	var enemy := await _spawn_enemy(world, nav, Vector2(0.0, 0.0))
+	var runtime: Variant = _runtime(enemy)
+	_t.run_test("runtime available for boundary-only test", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 	var fake_pursuit := _install_fake_stage_pursuit(enemy)
 	var combat_target := Vector2(60.0, 0.0)
 
-	var built_nodes := enemy.call("_build_combat_dark_search_nodes", 0, combat_target) as Array
+	var built_nodes := runtime.call("build_dark_search_nodes", 0, combat_target) as Array
 	var boundary_only := not built_nodes.is_empty()
 	for node_variant in built_nodes:
 		var node := node_variant as Dictionary
@@ -299,20 +333,20 @@ func _test_boundary_only_room_builds_nodes_and_completes_by_coverage() -> void:
 			boundary_only = false
 			break
 
-	enemy.call("_update_combat_search_runtime", 0.1, false, combat_target, true)
-	enemy.set("_combat_search_room_budget_sec", 999.0)
+	runtime.call("update_runtime", 0.1, false, combat_target, true)
+	runtime.call("set_state_value", "_combat_search_room_budget_sec", 999.0)
 	var coverage_reached := false
 	for _i in range(40):
-		enemy.set("_combat_search_room_budget_sec", 999.0)
-		_advance_active_node_to_searchable(enemy, fake_pursuit, combat_target)
-		_complete_active_node_with_search(enemy, combat_target)
+		runtime.call("set_state_value", "_combat_search_room_budget_sec", 999.0)
+		_advance_active_node_to_searchable(runtime, fake_pursuit, combat_target)
+		_complete_active_node_with_search(runtime, combat_target)
 		var snap := enemy.get_debug_detection_snapshot() as Dictionary
 		var coverage_raw := float(snap.get("combat_search_room_coverage_raw", 0.0))
 		if coverage_raw >= 0.8:
 			coverage_reached = true
 			break
 
-	var room_visited := bool((enemy.get("_combat_search_visited_rooms") as Dictionary).get(0, false))
+	var room_visited := bool((runtime.call("get_state_value", "_combat_search_visited_rooms", {}) as Dictionary).get(0, false))
 	var current_room := int(enemy.get_debug_detection_snapshot().get("combat_search_current_room_id", -1))
 	_t.run_test("boundary-only room builder emits only boundary nodes", boundary_only)
 	_t.run_test("boundary-only room reaches >= 0.8 coverage", coverage_reached)

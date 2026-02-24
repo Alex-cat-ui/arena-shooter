@@ -47,10 +47,16 @@ func _test_shotgun_fire_block_reasons_snapshot() -> void:
 
 	var player := room.get_node_or_null("Entities/Player") as CharacterBody2D
 	var enemy := _first_member_in_group_under("enemies", room) as Enemy
+	var runtime: Variant = null
 
 	_t.run_test("fire reasons: player exists", player != null)
 	_t.run_test("fire reasons: enemy exists", enemy != null)
 	if player == null or enemy == null:
+		await _cleanup(room)
+		return
+	runtime = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("fire reasons: runtime helper exists", runtime != null)
+	if runtime == null:
 		await _cleanup(room)
 		return
 	
@@ -61,7 +67,7 @@ func _test_shotgun_fire_block_reasons_snapshot() -> void:
 
 	player.global_position = enemy.global_position + Vector2(260.0, 0.0)
 	player.velocity = Vector2.ZERO
-	await _set_enemy_facing(enemy, Vector2.RIGHT)
+	await _set_enemy_facing(runtime, Vector2.RIGHT)
 	await _advance_frames(6)
 
 	var baseline_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
@@ -69,8 +75,10 @@ func _test_shotgun_fire_block_reasons_snapshot() -> void:
 
 	if enemy.has_method("debug_force_awareness_state"):
 		enemy.call("debug_force_awareness_state", "CALM")
-	enemy.set("_shot_cooldown", 0.0)
-	enemy.set("_combat_first_attack_delay_timer", 0.0)
+	runtime.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_attack_delay_timer": 0.0,
+	})
 	await _advance_frames(6)
 	_t.run_test(
 		"fire reasons: no_combat_state",
@@ -79,10 +87,12 @@ func _test_shotgun_fire_block_reasons_snapshot() -> void:
 
 	if enemy.has_method("debug_force_awareness_state"):
 		enemy.call("debug_force_awareness_state", "COMBAT")
-	enemy.set("_shot_cooldown", 0.0)
-	enemy.set("_combat_first_attack_delay_timer", 0.0)
+	runtime.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_attack_delay_timer": 0.0,
+	})
 	player.global_position = enemy.global_position + Vector2(700.0, 0.0)
-	await _set_enemy_facing(enemy, Vector2.RIGHT)
+	await _set_enemy_facing(runtime, Vector2.RIGHT)
 	await _advance_frames(6)
 	_t.run_test(
 		"fire reasons: no_los",
@@ -93,10 +103,12 @@ func _test_shotgun_fire_block_reasons_snapshot() -> void:
 		_set_enemy_fire_range_override(120.0)
 	if enemy.has_method("debug_force_awareness_state"):
 		enemy.call("debug_force_awareness_state", "COMBAT")
-	enemy.set("_shot_cooldown", 0.0)
-	enemy.set("_combat_first_attack_delay_timer", 0.0)
+	runtime.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_attack_delay_timer": 0.0,
+	})
 	player.global_position = enemy.global_position + Vector2(260.0, 0.0)
-	await _set_enemy_facing(enemy, Vector2.RIGHT)
+	await _set_enemy_facing(runtime, Vector2.RIGHT)
 	await _advance_frames(6)
 	_t.run_test(
 		"fire reasons: out_of_range",
@@ -107,10 +119,12 @@ func _test_shotgun_fire_block_reasons_snapshot() -> void:
 		_restore_ai_balance()
 	if enemy.has_method("debug_force_awareness_state"):
 		enemy.call("debug_force_awareness_state", "COMBAT")
-	enemy.set("_shot_cooldown", 0.45)
-	enemy.set("_combat_first_attack_delay_timer", 0.0)
+	runtime.call("set_state_patch", {
+		"_shot_cooldown": 0.45,
+		"_combat_first_attack_delay_timer": 0.0,
+	})
 	player.global_position = enemy.global_position + Vector2(260.0, 0.0)
-	await _set_enemy_facing(enemy, Vector2.RIGHT)
+	await _set_enemy_facing(runtime, Vector2.RIGHT)
 	await _advance_frames(4)
 	_t.run_test(
 		"fire reasons: cooldown",
@@ -119,10 +133,12 @@ func _test_shotgun_fire_block_reasons_snapshot() -> void:
 
 	if enemy.has_method("debug_force_awareness_state"):
 		enemy.call("debug_force_awareness_state", "COMBAT")
-	enemy.set("_shot_cooldown", 0.0)
-	enemy.set("_combat_first_attack_delay_timer", 0.45)
+	runtime.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_attack_delay_timer": 0.45,
+	})
 	player.global_position = enemy.global_position + Vector2(260.0, 0.0)
-	await _set_enemy_facing(enemy, Vector2.RIGHT)
+	await _set_enemy_facing(runtime, Vector2.RIGHT)
 	await _advance_frames(4)
 	_t.run_test(
 		"fire reasons: first_attack_delay",
@@ -137,18 +153,13 @@ func _reason(enemy: Enemy) -> String:
 	return String(snapshot.get("shotgun_fire_block_reason", ""))
 
 
-func _set_enemy_facing(enemy: Enemy, dir: Vector2) -> void:
-	var pursuit_variant: Variant = enemy.get("_pursuit")
-	if pursuit_variant == null:
-		return
-	var pursuit := pursuit_variant as Object
-	if pursuit == null:
+func _set_enemy_facing(runtime: Variant, dir: Vector2) -> void:
+	if runtime == null or not runtime.has_method("force_pursuit_facing_dir_for_test"):
 		return
 	var n_dir := dir.normalized()
 	if n_dir.length_squared() <= 0.0001:
 		return
-	pursuit.set("facing_dir", n_dir)
-	pursuit.set("_target_facing_dir", n_dir)
+	runtime.call("force_pursuit_facing_dir_for_test", n_dir)
 	await get_tree().physics_frame
 
 

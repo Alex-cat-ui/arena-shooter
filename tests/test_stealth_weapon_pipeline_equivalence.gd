@@ -89,8 +89,10 @@ func _test_stealth_weapon_pipeline_equivalence() -> void:
 	)
 	_t.run_test("pipeline eq: enemy type matches production spawner default", enemy.enemy_type == "zombie")
 
+	var fire_runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("pipeline eq: fire runtime helper exists", fire_runtime != null)
 	var expected_shotgun := GameConfig.weapon_stats.get("shotgun", {}) as Dictionary if GameConfig else {}
-	var actual_shotgun := enemy.call("_shotgun_stats") as Dictionary if enemy.has_method("_shotgun_stats") else {}
+	var actual_shotgun := fire_runtime.call("shotgun_stats") as Dictionary if fire_runtime != null else {}
 	var shotgun_loadout_matches := (
 		not expected_shotgun.is_empty()
 		and not actual_shotgun.is_empty()

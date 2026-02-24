@@ -46,19 +46,34 @@ func _test_friendly_excludes_cache_rebuild_once_per_physics_frame() -> void:
 	await get_tree().physics_frame
 	for i in range(enemies.size()):
 		enemies[i].initialize(7500 + i, "zombie")
+	var runtimes: Array = []
+	for enemy in enemies:
+		var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+		runtimes.append(runtime)
+	var all_runtimes_ready := true
+	for runtime in runtimes:
+		if runtime == null:
+			all_runtimes_ready = false
+			break
+	_t.run_test("trace cache: all enemy fire runtimes are available", all_runtimes_ready)
+	if not all_runtimes_ready:
+		world.queue_free()
+		await get_tree().process_frame
+		Enemy.debug_reset_fire_trace_cache_metrics()
+		return
 
 	Enemy.debug_reset_fire_trace_cache_metrics()
-	for enemy in enemies:
-		enemy.call("_build_fire_line_excludes", true)
+	for runtime in runtimes:
+		runtime.call("build_fire_line_excludes", true)
 	var frame_a := Enemy.debug_get_fire_trace_cache_metrics() as Dictionary
 
-	for enemy in enemies:
-		enemy.call("_build_fire_line_excludes", false)
+	for runtime in runtimes:
+		runtime.call("build_fire_line_excludes", false)
 	var frame_a_after_non_friendly := Enemy.debug_get_fire_trace_cache_metrics() as Dictionary
 
 	await get_tree().physics_frame
-	for enemy in enemies:
-		enemy.call("_build_fire_line_excludes", true)
+	for runtime in runtimes:
+		runtime.call("build_fire_line_excludes", true)
 	var frame_b := Enemy.debug_get_fire_trace_cache_metrics() as Dictionary
 
 	_t.run_test(

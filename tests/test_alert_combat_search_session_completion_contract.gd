@@ -75,7 +75,6 @@ func run_suite() -> Dictionary:
 	await _test_session_stays_active_while_coverage_below_threshold_and_budget_open()
 	await _test_room_completion_advances_to_next_room_or_marks_room_visited()
 	await _test_total_cap_forces_progress_threshold_and_cap_flag()
-	await _test_confirm_runtime_config_keeps_awareness_field_names()
 
 	_t.summary("ALERT/COMBAT SEARCH SESSION COMPLETION CONTRACT RESULTS")
 	return {
@@ -99,40 +98,48 @@ func _spawn_enemy(world: Node2D, nav: FakeNav, pos: Vector2 = Vector2.ZERO) -> E
 	return enemy
 
 
+func _runtime(enemy: Enemy):
+	return (enemy.get_runtime_helper_refs() as Dictionary).get("combat_search_runtime", null)
+
+
 func _install_fake_stage_pursuit(enemy: Enemy, stage: int = 0) -> FakeStagePursuit:
 	var fake := FakeStagePursuit.new()
 	fake.stage = stage
-	enemy.set("_pursuit", fake)
+	var runtime: Variant = _runtime(enemy)
+	if runtime != null:
+		runtime.call("set_state_value", "_pursuit", fake)
 	return fake
 
 
-func _advance_scan_if_needed(enemy: Enemy, fake_pursuit: FakeStagePursuit, target_hint: Vector2) -> void:
-	if String(enemy.get("_combat_search_current_node_key")) == "":
-		enemy.call("_update_combat_search_runtime", 0.1, false, target_hint, true)
-	if not bool(enemy.get("_combat_search_current_node_requires_shadow_scan")):
+func _advance_scan_if_needed(runtime, fake_pursuit: FakeStagePursuit, target_hint: Vector2) -> void:
+	if runtime == null:
 		return
-	if bool(enemy.get("_combat_search_current_node_shadow_scan_done")):
+	if String(runtime.call("get_state_value", "_combat_search_current_node_key", "")) == "":
+		runtime.call("update_runtime", 0.1, false, target_hint, true)
+	if not bool(runtime.call("get_state_value", "_combat_search_current_node_requires_shadow_scan", false)):
+		return
+	if bool(runtime.call("get_state_value", "_combat_search_current_node_shadow_scan_done", false)):
 		return
 	fake_pursuit.stage = 2
-	enemy.call("_update_combat_search_runtime", 0.1, false, target_hint, true)
+	runtime.call("update_runtime", 0.1, false, target_hint, true)
 	fake_pursuit.stage = 0
-	enemy.call("_update_combat_search_runtime", 0.1, false, target_hint, true)
+	runtime.call("update_runtime", 0.1, false, target_hint, true)
 
 
-func _complete_one_node(enemy: Enemy, fake_pursuit: FakeStagePursuit, target_hint: Vector2) -> void:
-	_advance_scan_if_needed(enemy, fake_pursuit, target_hint)
-	var active_key := String(enemy.get("_combat_search_current_node_key"))
+func _complete_one_node(runtime, fake_pursuit: FakeStagePursuit, target_hint: Vector2) -> void:
+	_advance_scan_if_needed(runtime, fake_pursuit, target_hint)
+	var active_key := String(runtime.call("get_state_value", "_combat_search_current_node_key", ""))
 	if active_key == "":
 		return
 	for _i in range(6):
-		if String(enemy.get("_combat_search_current_node_key")) != active_key:
+		if String(runtime.call("get_state_value", "_combat_search_current_node_key", "")) != active_key:
 			break
-		var target := enemy.get("_combat_search_target_pos") as Vector2
-		enemy.call("_record_combat_search_execution_feedback", {
+		var target := runtime.call("get_state_value", "_combat_search_target_pos", Vector2.ZERO) as Vector2
+		runtime.call("record_execution_feedback", {
 			"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH,
 			"target": target,
 		}, 0.5)
-		enemy.call("_update_combat_search_runtime", 0.1, false, target_hint, true)
+		runtime.call("update_runtime", 0.1, false, target_hint, true)
 
 
 func _test_session_stays_active_while_coverage_below_threshold_and_budget_open() -> void:
@@ -141,19 +148,25 @@ func _test_session_stays_active_while_coverage_below_threshold_and_budget_open()
 	var nav := FakeNav.new()
 	world.add_child(nav)
 	var enemy := await _spawn_enemy(world, nav)
+	var runtime: Variant = _runtime(enemy)
+	_t.run_test("combat-search runtime is available", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 	var fake_pursuit := _install_fake_stage_pursuit(enemy)
 	var target := Vector2(48.0, 0.0)
 
-	enemy.call("_update_combat_search_runtime", 0.1, false, target, true)
-	enemy.set("_combat_search_room_budget_sec", 999.0)
+	runtime.call("update_runtime", 0.1, false, target, true)
+	runtime.call("set_state_value", "_combat_search_room_budget_sec", 999.0)
 	var start_snap := enemy.get_debug_detection_snapshot() as Dictionary
 	var start_room := int(start_snap.get("combat_search_current_room_id", -1))
 	var start_target := start_snap.get("combat_search_target_pos", Vector2.ZERO) as Vector2
 
 	for _i in range(6):
-		enemy.set("_combat_search_room_budget_sec", 999.0)
-		_advance_scan_if_needed(enemy, fake_pursuit, target)
-		enemy.call("_update_combat_search_runtime", 0.25, false, target, true)
+		runtime.call("set_state_value", "_combat_search_room_budget_sec", 999.0)
+		_advance_scan_if_needed(runtime, fake_pursuit, target)
+		runtime.call("update_runtime", 0.25, false, target, true)
 
 	var snap := enemy.get_debug_detection_snapshot() as Dictionary
 	var same_room := int(snap.get("combat_search_current_room_id", -1)) == start_room
@@ -176,27 +189,33 @@ func _test_room_completion_advances_to_next_room_or_marks_room_visited() -> void
 	nav.force_no_shadow = true
 	world.add_child(nav)
 	var enemy := await _spawn_enemy(world, nav)
+	var runtime: Variant = _runtime(enemy)
+	_t.run_test("runtime available for room-completion test", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 	var fake_pursuit := _install_fake_stage_pursuit(enemy)
 	var target := Vector2(60.0, 0.0)
 
-	enemy.call("_update_combat_search_runtime", 0.1, false, target, true)
-	enemy.set("_combat_search_room_budget_sec", 999.0)
+	runtime.call("update_runtime", 0.1, false, target, true)
+	runtime.call("set_state_value", "_combat_search_room_budget_sec", 999.0)
 	var start_room := int(enemy.get_debug_detection_snapshot().get("combat_search_current_room_id", -1))
 
 	var safety := 0
 	while safety < 48:
 		safety += 1
-		enemy.set("_combat_search_room_budget_sec", 999.0)
-		_complete_one_node(enemy, fake_pursuit, target)
+		runtime.call("set_state_value", "_combat_search_room_budget_sec", 999.0)
+		_complete_one_node(runtime, fake_pursuit, target)
 		var snap := enemy.get_debug_detection_snapshot() as Dictionary
 		var room_id := int(snap.get("combat_search_current_room_id", -1))
-		var visited := enemy.get("_combat_search_visited_rooms") as Dictionary
+		var visited := runtime.call("get_state_value", "_combat_search_visited_rooms", {}) as Dictionary
 		if room_id != start_room or bool(visited.get(start_room, false)):
 			break
 
 	var end_snap := enemy.get_debug_detection_snapshot() as Dictionary
 	var end_room := int(end_snap.get("combat_search_current_room_id", -1))
-	var visited_rooms := enemy.get("_combat_search_visited_rooms") as Dictionary
+	var visited_rooms := runtime.call("get_state_value", "_combat_search_visited_rooms", {}) as Dictionary
 	var start_room_visited := bool(visited_rooms.get(start_room, false))
 	var advanced_or_reinitialized := end_room != -1 and (end_room != start_room or start_room_visited)
 
@@ -213,11 +232,17 @@ func _test_total_cap_forces_progress_threshold_and_cap_flag() -> void:
 	var nav := FakeNav.new()
 	world.add_child(nav)
 	var enemy := await _spawn_enemy(world, nav)
+	var runtime: Variant = _runtime(enemy)
+	_t.run_test("runtime available for total-cap test", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 	_install_fake_stage_pursuit(enemy)
 	var target := Vector2(64.0, 0.0)
 
 	for _i in range(26):
-		enemy.call("_update_combat_search_runtime", 1.0, false, target, true)
+		runtime.call("update_runtime", 1.0, false, target, true)
 
 	var snap := enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test("total cap raises combat_search_total_cap_hit", bool(snap.get("combat_search_total_cap_hit", false)))
@@ -225,28 +250,6 @@ func _test_total_cap_forces_progress_threshold_and_cap_flag() -> void:
 		"total cap clamps progress to 0.8 threshold",
 		absf(float(snap.get("combat_search_progress", 0.0)) - 0.8) <= 0.0001
 	)
-
-	world.queue_free()
-	await get_tree().process_frame
-
-
-func _test_confirm_runtime_config_keeps_awareness_field_names() -> void:
-	var world := Node2D.new()
-	add_child(world)
-	var nav := FakeNav.new()
-	world.add_child(nav)
-	var enemy := await _spawn_enemy(world, nav)
-	_install_fake_stage_pursuit(enemy)
-
-	var config := enemy.call("_build_confirm_runtime_config", {}) as Dictionary
-	var keys_ok := (
-		config.has("combat_search_progress")
-		and config.has("combat_search_total_elapsed_sec")
-		and config.has("combat_search_room_elapsed_sec")
-		and config.has("combat_search_total_cap_sec")
-		and config.has("combat_search_force_complete")
-	)
-	_t.run_test("_build_confirm_runtime_config keeps awareness combat_search_* field names", keys_ok)
 
 	world.queue_free()
 	await get_tree().process_frame

@@ -42,6 +42,14 @@ func _test_enemy_fire_cooldown_min_guard() -> void:
 	await get_tree().process_frame
 	await get_tree().physics_frame
 	enemy.initialize(7605, "zombie")
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("fire cooldown guard: runtime helper exists", runtime != null)
+	if runtime == null:
+		if GameConfig:
+			GameConfig.weapon_stats = _saved_weapon_stats.duplicate(true)
+		world.queue_free()
+		await get_tree().process_frame
+		return
 
 	if GameConfig:
 		var stats := (GameConfig.weapon_stats as Dictionary).duplicate(true)
@@ -49,7 +57,7 @@ func _test_enemy_fire_cooldown_min_guard() -> void:
 		shotgun["cooldown_sec"] = 0.05
 		stats["shotgun"] = shotgun
 		GameConfig.weapon_stats = stats
-	var guarded_low := float(enemy.call("_shotgun_cooldown_sec"))
+	var guarded_low := float(runtime.call("shotgun_cooldown_sec"))
 
 	if GameConfig:
 		var stats_high := (GameConfig.weapon_stats as Dictionary).duplicate(true)
@@ -57,7 +65,7 @@ func _test_enemy_fire_cooldown_min_guard() -> void:
 		shotgun_high["cooldown_sec"] = 0.6
 		stats_high["shotgun"] = shotgun_high
 		GameConfig.weapon_stats = stats_high
-	var guarded_high := float(enemy.call("_shotgun_cooldown_sec"))
+	var guarded_high := float(runtime.call("shotgun_cooldown_sec"))
 
 	_t.run_test("cooldown guard clamps too-low cooldown to >= 0.25s", guarded_low >= 0.25 and guarded_low <= 0.2501)
 	_t.run_test("cooldown guard keeps larger weapon cooldown unchanged", is_equal_approx(guarded_high, 0.6))

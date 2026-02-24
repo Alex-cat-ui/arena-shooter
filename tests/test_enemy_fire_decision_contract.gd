@@ -41,10 +41,18 @@ func _test_reposition_window_splits_can_vs_should_fire() -> void:
 	await get_tree().physics_frame
 	enemy.initialize(7201, "zombie")
 	enemy.debug_force_awareness_state("COMBAT")
-	enemy.set("_shot_cooldown", 0.0)
-	enemy.set("_combat_first_shot_fired", true)
-	enemy.set("_combat_fire_phase", Enemy.COMBAT_FIRE_PHASE_REPOSITION)
-	enemy.set("_combat_fire_reposition_left", 0.2)
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("fire decision: runtime helper exists", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	runtime.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_shot_fired": true,
+		"_combat_fire_phase": Enemy.COMBAT_FIRE_PHASE_REPOSITION,
+		"_combat_fire_reposition_left": 0.2,
+	})
 
 	var fire_contact := {
 		"los": true,
@@ -56,9 +64,9 @@ func _test_reposition_window_splits_can_vs_should_fire() -> void:
 		"friendly_block": false,
 		"valid_contact_for_fire": true,
 	}
-	var can_fire := bool(enemy.call("_can_fire_contact_allows_shot", fire_contact))
-	var should_fire_now := bool(enemy.call("_should_fire_now", true, can_fire))
-	var schedule_reason := String(enemy.call("_resolve_shotgun_fire_schedule_block_reason"))
+	var can_fire := bool(runtime.call("can_fire_contact_allows_shot", fire_contact))
+	var should_fire_now := bool(runtime.call("should_fire_now", true, can_fire))
+	var schedule_reason := String(runtime.call("resolve_shotgun_fire_schedule_block_reason"))
 
 	_t.run_test("reposition: can_fire remains true", can_fire)
 	_t.run_test("reposition: should_fire_now is false", not should_fire_now)
@@ -86,19 +94,32 @@ func _test_anti_sync_blocks_second_shot_same_tick() -> void:
 	enemy_b.initialize(7203, "zombie")
 	enemy_a.debug_force_awareness_state("COMBAT")
 	enemy_b.debug_force_awareness_state("COMBAT")
-	enemy_a.set("_shot_cooldown", 0.0)
-	enemy_b.set("_shot_cooldown", 0.0)
-	enemy_a.set("_combat_first_shot_fired", true)
-	enemy_b.set("_combat_first_shot_fired", true)
-	enemy_a.set("_combat_fire_phase", Enemy.COMBAT_FIRE_PHASE_FIRE)
-	enemy_b.set("_combat_fire_phase", Enemy.COMBAT_FIRE_PHASE_FIRE)
-	enemy_a.set("_combat_fire_reposition_left", 0.0)
-	enemy_b.set("_combat_fire_reposition_left", 0.0)
+	var runtime_a: Variant = (enemy_a.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	var runtime_b: Variant = (enemy_b.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("anti-sync: runtime_a exists", runtime_a != null)
+	_t.run_test("anti-sync: runtime_b exists", runtime_b != null)
+	if runtime_a == null or runtime_b == null:
+		world.queue_free()
+		await get_tree().process_frame
+		Enemy.debug_reset_fire_sync_gate()
+		return
+	runtime_a.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_shot_fired": true,
+		"_combat_fire_phase": Enemy.COMBAT_FIRE_PHASE_FIRE,
+		"_combat_fire_reposition_left": 0.0,
+	})
+	runtime_b.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_shot_fired": true,
+		"_combat_fire_phase": Enemy.COMBAT_FIRE_PHASE_FIRE,
+		"_combat_fire_reposition_left": 0.0,
+	})
 
-	enemy_a.call("_mark_enemy_shot_success")
-	var gate_same_tick := bool(enemy_b.call("_anti_sync_fire_gate_open"))
+	runtime_a.call("mark_enemy_shot_success")
+	var gate_same_tick := bool(runtime_b.call("anti_sync_fire_gate_open"))
 	await get_tree().physics_frame
-	var gate_next_tick := bool(enemy_b.call("_anti_sync_fire_gate_open"))
+	var gate_next_tick := bool(runtime_b.call("anti_sync_fire_gate_open"))
 
 	_t.run_test("anti-sync: same tick second shot is blocked", not gate_same_tick)
 	_t.run_test("anti-sync: next tick gate reopens", gate_next_tick)

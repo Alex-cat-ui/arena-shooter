@@ -71,11 +71,17 @@ func _test_search_budget_and_cap() -> void:
 	enemy.initialize(6201, "zombie")
 	enemy.set_room_navigation(nav, 0)
 	enemy.debug_force_awareness_state("COMBAT")
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("combat_search_runtime", null)
+	_t.run_test("combat-search runtime is available", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 
 	var seen_budgets: Array[float] = []
 	var prev_room := int(enemy.get_debug_detection_snapshot().get("combat_search_current_room_id", -1))
 	for _i in range(60): # 30s total with 0.5 step
-		enemy.call("_update_combat_search_runtime", 0.5, false, Vector2(420.0, 0.0), true)
+		runtime.call("update_runtime", 0.5, false, Vector2(420.0, 0.0), true)
 		var snap := enemy.get_debug_detection_snapshot() as Dictionary
 		var room_id := int(snap.get("combat_search_current_room_id", -1))
 		var budget := float(snap.get("combat_search_room_budget_sec", 0.0))

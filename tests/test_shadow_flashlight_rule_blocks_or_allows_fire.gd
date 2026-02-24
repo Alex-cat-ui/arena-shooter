@@ -40,8 +40,16 @@ func _test_shadow_flashlight_rule_blocks_or_allows_fire() -> void:
 
 	enemy.initialize(7607, "zombie")
 	enemy.debug_force_awareness_state("COMBAT")
-	enemy.set("_shot_cooldown", 0.0)
-	enemy.set("_combat_first_shot_fired", true)
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("shadow flashlight rule: runtime helper exists", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	runtime.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_shot_fired": true,
+	})
 
 	var blocked_contact := {
 		"los": true,
@@ -61,8 +69,8 @@ func _test_shadow_flashlight_rule_blocks_or_allows_fire() -> void:
 		"weapon_ready": true,
 		"friendly_block": false,
 	}
-	var blocked_reason := String(enemy.call("_resolve_shotgun_fire_block_reason", blocked_contact))
-	var allowed_reason := String(enemy.call("_resolve_shotgun_fire_block_reason", allowed_contact))
+	var blocked_reason := String(runtime.call("resolve_shotgun_fire_block_reason", blocked_contact))
+	var allowed_reason := String(runtime.call("resolve_shotgun_fire_block_reason", allowed_contact))
 
 	_t.run_test(
 		"in shadow without flashlight_active: fire is blocked by shadow rule",

@@ -40,12 +40,18 @@ func _test_first_shot_timer_starts_on_first_valid_firing_solution() -> void:
 
 	enemy.initialize(7601, "zombie")
 	enemy.debug_force_awareness_state("COMBAT")
-	enemy.call("_reset_first_shot_delay_state")
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("first-shot timer start: runtime helper exists", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	runtime.call("reset_first_shot_delay_state")
 
-	enemy.call("_update_first_shot_delay_runtime", 0.4, false, "ctx_a")
+	runtime.call("update_first_shot_delay_runtime", 0.4, false, "ctx_a")
 	var before_valid := enemy.get_debug_detection_snapshot() as Dictionary
 
-	enemy.call("_update_first_shot_delay_runtime", 0.1, true, "ctx_a")
+	runtime.call("update_first_shot_delay_runtime", 0.1, true, "ctx_a")
 	var after_first_valid := enemy.get_debug_detection_snapshot() as Dictionary
 	var armed_delay := float(after_first_valid.get("shotgun_first_attack_delay_left", 0.0))
 

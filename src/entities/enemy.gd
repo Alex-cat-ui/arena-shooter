@@ -6,6 +6,12 @@ extends CharacterBody2D
 
 const SHOTGUN_SPREAD_SCRIPT := preload("res://src/systems/shotgun_spread.gd")
 const ENEMY_DAMAGE_RUNTIME_SCRIPT := preload("res://src/entities/enemy_damage_runtime.gd")
+const ENEMY_COMBAT_SEARCH_RUNTIME_SCRIPT := preload("res://src/entities/enemy_combat_search_runtime.gd")
+const ENEMY_FIRE_CONTROL_RUNTIME_SCRIPT := preload("res://src/entities/enemy_fire_control_runtime.gd")
+const ENEMY_COMBAT_ROLE_RUNTIME_SCRIPT := preload("res://src/entities/enemy_combat_role_runtime.gd")
+const ENEMY_ALERT_LATCH_RUNTIME_SCRIPT := preload("res://src/entities/enemy_alert_latch_runtime.gd")
+const ENEMY_DETECTION_RUNTIME_SCRIPT := preload("res://src/entities/enemy_detection_runtime.gd")
+const ENEMY_DEBUG_SNAPSHOT_RUNTIME_SCRIPT := preload("res://src/entities/enemy_debug_snapshot_runtime.gd")
 const ENEMY_PERCEPTION_SYSTEM_SCRIPT := preload("res://src/systems/enemy_perception_system.gd")
 const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
@@ -94,10 +100,6 @@ const COMBAT_FIRE_PHASE_FIRE := 1
 const COMBAT_FIRE_PHASE_REPOSITION := 2
 const COMBAT_FIRE_REPOSITION_SEC := 0.35
 const REASON_TEAMMATE_CALL := "teammate_call"
-static var _global_enemy_shot_tick: int = -1
-static var _friendly_fire_excludes_physics_frame: int = -1
-static var _friendly_fire_excludes_cache: Array[RID] = []
-static var _friendly_fire_excludes_rebuild_count: int = 0
 
 ## Enemy stats fallback (canonical values live in GameConfig.enemy_stats).
 const DEFAULT_ENEMY_STATS := {
@@ -224,6 +226,12 @@ var _pursuit = null
 var _awareness = null
 var _utility_brain = null
 var _alert_marker_presenter = null
+var _combat_search_runtime = null
+var _fire_control_runtime = null
+var _combat_role_runtime = null
+var _alert_latch_runtime = null
+var _detection_runtime = null
+var _debug_snapshot_runtime = null
 var _flashlight_cone: Node2D = null
 var _suspicion_ring: Node = null
 var _vision_fill_poly: Polygon2D = null
@@ -316,6 +324,7 @@ func _ready() -> void:
 	_utility_brain = ENEMY_UTILITY_BRAIN_SCRIPT.new()
 	_alert_marker_presenter = ENEMY_ALERT_MARKER_PRESENTER_SCRIPT.new()
 	_alert_marker_presenter.setup(alert_marker)
+	_ensure_runtime_helpers_initialized()
 	_awareness.reset()
 	_utility_brain.reset()
 	set_meta("awareness_state", _awareness.get_state_name())
@@ -328,8 +337,42 @@ func _ready() -> void:
 	_play_spawn_animation()
 
 
+func _setup_runtime_helpers() -> void:
+	_combat_search_runtime = ENEMY_COMBAT_SEARCH_RUNTIME_SCRIPT.new(self)
+	_fire_control_runtime = ENEMY_FIRE_CONTROL_RUNTIME_SCRIPT.new(self)
+	_combat_role_runtime = ENEMY_COMBAT_ROLE_RUNTIME_SCRIPT.new(self)
+	_alert_latch_runtime = ENEMY_ALERT_LATCH_RUNTIME_SCRIPT.new(self)
+	_detection_runtime = ENEMY_DETECTION_RUNTIME_SCRIPT.new(self)
+	_debug_snapshot_runtime = ENEMY_DEBUG_SNAPSHOT_RUNTIME_SCRIPT.new(self)
+
+
+func _ensure_runtime_helpers_initialized() -> void:
+	if (
+		_combat_search_runtime != null
+		and _fire_control_runtime != null
+		and _combat_role_runtime != null
+		and _alert_latch_runtime != null
+		and _detection_runtime != null
+		and _debug_snapshot_runtime != null
+	):
+		return
+	_setup_runtime_helpers()
+
+
+func get_runtime_helper_refs() -> Dictionary:
+	return {
+		"combat_search_runtime": _combat_search_runtime,
+		"fire_control_runtime": _fire_control_runtime,
+		"combat_role_runtime": _combat_role_runtime,
+		"alert_latch_runtime": _alert_latch_runtime,
+		"detection_runtime": _detection_runtime,
+		"debug_snapshot_runtime": _debug_snapshot_runtime,
+	}
+
+
 ## Initialize enemy with ID and type.
 func initialize(id: int, type: String) -> void:
+	_ensure_runtime_helpers_initialized()
 	entity_id = id
 	enemy_type = type
 
@@ -411,30 +454,10 @@ func initialize(id: int, type: String) -> void:
 	_debug_last_fire_friendly_block = false
 	_combat_latched = false
 	_combat_latched_room_id = -1
-	_combat_first_attack_delay_timer = 0.0
-	_combat_first_shot_delay_armed = false
-	_combat_first_shot_fired = false
-	_combat_first_shot_target_context_key = ""
-	_combat_first_shot_pause_elapsed = 0.0
-	_combat_telegraph_active = false
-	_combat_telegraph_timer = 0.0
-	_combat_telegraph_pause_elapsed = 0.0
-	_reset_combat_fire_cycle_state()
+	_reset_combat_runtime_state_bundles()
 	_friendly_block_streak = 0
 	_friendly_block_reposition_cooldown_left = 0.0
 	_friendly_block_force_reposition = false
-	_combat_role_current = SQUAD_ROLE_PRESSURE
-	_combat_role_lock_timer = 0.0
-	_combat_role_lost_los_sec = 0.0
-	_combat_role_stuck_sec = 0.0
-	_combat_role_path_failed_streak = 0
-	_combat_role_last_target_room = -1
-	_combat_role_lost_los_trigger_latched = false
-	_combat_role_stuck_trigger_latched = false
-	_combat_role_path_failed_trigger_latched = false
-	_combat_role_last_reassign_reason = ""
-	_combat_last_runtime_pos = global_position
-	_reset_combat_search_state()
 	set_meta("flashlight_active", false)
 	_reset_combat_migration_candidate()
 	_update_suspicion_ring(0.0)
@@ -450,10 +473,7 @@ func _physics_process(delta: float) -> void:
 	if RuntimeState and RuntimeState.is_frozen:
 		return
 
-	if _shot_cooldown > 0.0:
-		_shot_cooldown = maxf(0.0, _shot_cooldown - delta)
-	if _friendly_block_reposition_cooldown_left > 0.0:
-		_friendly_block_reposition_cooldown_left = maxf(0.0, _friendly_block_reposition_cooldown_left - delta)
+	_tick_fire_runtime_cooldowns(delta)
 	if _flashlight_activation_delay_timer > 0.0:
 		_flashlight_activation_delay_timer = maxf(0.0, _flashlight_activation_delay_timer - delta)
 	if _shadow_linger_flashlight and not _is_current_position_in_shadow():
@@ -671,13 +691,11 @@ func runtime_budget_tick(delta: float) -> void:
 	if _utility_brain and _utility_brain.has_method("consume_shadow_scan_handoff_selected"):
 		consumed_shadow_scan_handoff = bool(_utility_brain.call("consume_shadow_scan_handoff_selected"))
 	if consumed_shadow_scan_handoff:
-		var keep_shadow_scan_handoff_for_dark_node_dwell := (
-			_combat_search_current_node_key != ""
-			and _combat_search_current_node_requires_shadow_scan
-			and _combat_search_current_node_shadow_scan_done
-			and int(intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
-			and ((intent.get("target", Vector2.ZERO) as Vector2).distance_to(_combat_search_target_pos) <= 0.5)
-		)
+		var keep_shadow_scan_handoff_for_dark_node_dwell := false
+		if _combat_search_runtime and _combat_search_runtime.has_method("should_keep_shadow_scan_handoff_for_dark_node_dwell"):
+			keep_shadow_scan_handoff_for_dark_node_dwell = bool(
+				_combat_search_runtime.call("should_keep_shadow_scan_handoff_for_dark_node_dwell", intent)
+			)
 		if not keep_shadow_scan_handoff_for_dark_node_dwell:
 			_shadow_scan_completed = false
 			_shadow_scan_completed_reason = "none"
@@ -860,25 +878,50 @@ func set_zone_director(director: Node) -> void:
 	_zone_director = director
 
 
-func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
-	if _awareness:
-		_apply_awareness_transitions(_awareness.register_noise(), "heard_shot")
-		var tile_size: int = GameConfig.tile_size if GameConfig else 32
-		var walk_speed := speed_tiles * float(tile_size)
-		var walk_time := global_position.distance_to(shot_pos) / maxf(walk_speed, 0.001)
-		var dynamic_hold := walk_time + randf_range(3.0, 10.0)
-		if _awareness.has_method("override_alert_hold_timer"):
-			_awareness.override_alert_hold_timer(dynamic_hold)
-	_investigate_anchor = shot_pos
+func _set_investigate_anchor_from_event(target_pos: Vector2) -> void:
+	_investigate_anchor = target_pos
 	_investigate_anchor_valid = true
 	_investigate_target_in_shadow = false
 	if nav_system and nav_system.has_method("is_point_in_shadow"):
-		_investigate_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shot_pos))
-	var dist_to_shot := global_position.distance_to(shot_pos)
-	if dist_to_shot < FLASHLIGHT_NEAR_THRESHOLD_PX:
-		_flashlight_activation_delay_timer = randf_range(0.5, 1.2)
+		_investigate_target_in_shadow = bool(nav_system.call("is_point_in_shadow", target_pos))
+
+
+func _override_alert_hold_from_travel_time(target_pos: Vector2, extra_min_sec: float, extra_max_sec: float) -> void:
+	if not _awareness or not _awareness.has_method("override_alert_hold_timer"):
+		return
+	var tile_size: int = GameConfig.tile_size if GameConfig else 32
+	var walk_speed := speed_tiles * float(tile_size)
+	var walk_time := global_position.distance_to(target_pos) / maxf(walk_speed, 0.001)
+	var dynamic_hold := walk_time + randf_range(extra_min_sec, extra_max_sec)
+	_awareness.override_alert_hold_timer(dynamic_hold)
+
+
+func _override_alert_hold_random(min_sec: float, max_sec: float) -> void:
+	if not _awareness or not _awareness.has_method("override_alert_hold_timer"):
+		return
+	_awareness.override_alert_hold_timer(randf_range(min_sec, max_sec))
+
+
+func _set_flashlight_activation_delay_for_event(
+	target_pos: Vector2,
+	near_min_sec: float,
+	near_max_sec: float,
+	far_min_sec: float,
+	far_max_sec: float
+) -> void:
+	var dist_to_target := global_position.distance_to(target_pos)
+	if dist_to_target < FLASHLIGHT_NEAR_THRESHOLD_PX:
+		_flashlight_activation_delay_timer = randf_range(near_min_sec, near_max_sec)
 	else:
-		_flashlight_activation_delay_timer = randf_range(1.0, 1.8)
+		_flashlight_activation_delay_timer = randf_range(far_min_sec, far_max_sec)
+
+
+func on_heard_shot(shot_room_id: int, shot_pos: Vector2) -> void:
+	if _awareness:
+		_apply_awareness_transitions(_awareness.register_noise(), "heard_shot")
+		_override_alert_hold_from_travel_time(shot_pos, 3.0, 10.0)
+	_set_investigate_anchor_from_event(shot_pos)
+	_set_flashlight_activation_delay_for_event(shot_pos, 0.5, 1.2, 1.0, 1.8)
 	if _pursuit:
 		_pursuit.on_heard_shot(shot_room_id, shot_pos)
 
@@ -896,25 +939,11 @@ func apply_teammate_call(_source_enemy_id: int, _source_room_id: int, _call_id: 
 		return false
 	_apply_awareness_transitions(transitions, REASON_TEAMMATE_CALL)
 	if shot_pos != Vector2.ZERO:
-		_investigate_anchor = shot_pos
-		_investigate_anchor_valid = true
-		_investigate_target_in_shadow = false
-		if nav_system and nav_system.has_method("is_point_in_shadow"):
-			_investigate_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shot_pos))
-		var tile_size: int = GameConfig.tile_size if GameConfig else 32
-		var walk_speed := speed_tiles * float(tile_size)
-		var walk_time := global_position.distance_to(shot_pos) / maxf(walk_speed, 0.001)
-		var dynamic_hold := walk_time + randf_range(3.0, 10.0)
-		if _awareness.has_method("override_alert_hold_timer"):
-			_awareness.override_alert_hold_timer(dynamic_hold)
-		var dist_to_shot := global_position.distance_to(shot_pos)
-		if dist_to_shot < FLASHLIGHT_NEAR_THRESHOLD_PX:
-			_flashlight_activation_delay_timer = randf_range(0.3, 0.8)
-		else:
-			_flashlight_activation_delay_timer = randf_range(1.0, 1.8)
+		_set_investigate_anchor_from_event(shot_pos)
+		_override_alert_hold_from_travel_time(shot_pos, 3.0, 10.0)
+		_set_flashlight_activation_delay_for_event(shot_pos, 0.3, 0.8, 1.0, 1.8)
 	else:
-		if _awareness.has_method("override_alert_hold_timer"):
-			_awareness.override_alert_hold_timer(randf_range(8.0, 15.0))
+		_override_alert_hold_random(8.0, 15.0)
 	return true
 
 
@@ -1158,18 +1187,20 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 		if has_shadow_scan_target and nav_system and nav_system.has_method("is_point_in_shadow"):
 			shadow_scan_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shadow_scan_target))
 	var shadow_scan_suppressed := false
-	if (
-		_combat_search_current_node_key != ""
-		and _combat_search_current_node_requires_shadow_scan
-		and _combat_search_current_node_shadow_scan_done
-		and has_known_target
-		and known_target_pos.distance_to(_combat_search_target_pos) <= 0.5
-		and has_shadow_scan_target
-		and shadow_scan_target.distance_to(_combat_search_target_pos) <= 0.5
-	):
-		shadow_scan_suppressed = true
+	if _combat_search_runtime and _combat_search_runtime.has_method("compute_shadow_scan_suppressed_for_context"):
+		shadow_scan_suppressed = bool(
+			_combat_search_runtime.call(
+				"compute_shadow_scan_suppressed_for_context",
+				has_known_target,
+				known_target_pos,
+				has_shadow_scan_target,
+				shadow_scan_target
+			)
+		)
+	else:
+		_combat_search_shadow_scan_suppressed_last_tick = false
+	if shadow_scan_suppressed:
 		shadow_scan_target_in_shadow = false
-	_combat_search_shadow_scan_suppressed_last_tick = shadow_scan_suppressed
 	var home_pos := global_position
 	if nav_system and nav_system.has_method("get_room_center") and home_room_id >= 0:
 		var nav_home := nav_system.get_room_center(home_room_id) as Vector2
@@ -1306,14 +1337,18 @@ func get_ui_awareness_snapshot() -> Dictionary:
 	return snap
 
 
-func _get_zone_state() -> int:
+func _resolve_zone_state_for_room(room_id: int) -> int:
 	if not _zone_director:
 		return -1
 	if not _zone_director.has_method("get_zone_for_room") or not _zone_director.has_method("get_zone_state"):
 		return -1
-	var room_id := int(get_meta("room_id", -1))
 	var zone_id := int(_zone_director.get_zone_for_room(room_id))
 	return int(_zone_director.get_zone_state(zone_id))
+
+
+func _get_zone_state() -> int:
+	var room_id := int(get_meta("room_id", -1))
+	return _resolve_zone_state_for_room(room_id)
 
 
 func configure_stealth_test_flashlight(angle_deg: float, distance_px: float, bonus: float) -> void:
@@ -1651,13 +1686,8 @@ func _is_current_position_in_shadow() -> bool:
 
 
 func _is_zone_lockdown() -> bool:
-	if not _zone_director:
-		return false
-	if not _zone_director.has_method("get_zone_for_room") or not _zone_director.has_method("get_zone_state"):
-		return false
 	var room_id := int(get_meta("room_id", -1))
-	var zone_id := int(_zone_director.get_zone_for_room(room_id))
-	return int(_zone_director.get_zone_state(zone_id)) == ZONE_STATE_LOCKDOWN
+	return _resolve_zone_state_for_room(room_id) == ZONE_STATE_LOCKDOWN
 
 
 func _effective_squad_role_for_context(role: int) -> int:
@@ -1733,146 +1763,103 @@ func _register_to_squad_system() -> void:
 	squad_system.register_enemy(entity_id, self)
 
 
-func _try_fire_at_player(player_pos: Vector2) -> bool:
+func _tick_fire_runtime_cooldowns(delta: float) -> void:
+	if _fire_control_runtime and _fire_control_runtime.has_method("tick_cooldowns"):
+		_fire_control_runtime.call("tick_cooldowns", delta)
+		return
 	if _shot_cooldown > 0.0:
-		return false
-	if not _is_combat_awareness_active():
-		return false
-	if not _is_first_shot_gate_ready():
-		return false
+		_shot_cooldown = maxf(0.0, _shot_cooldown - maxf(delta, 0.0))
+	if _friendly_block_reposition_cooldown_left > 0.0:
+		_friendly_block_reposition_cooldown_left = maxf(0.0, _friendly_block_reposition_cooldown_left - maxf(delta, 0.0))
 
-	var aim_dir := (player_pos - global_position).normalized()
-	if aim_dir.length_squared() <= 0.0001:
-		return false
-	if _pursuit:
-		_pursuit.face_towards(player_pos)
 
-	var muzzle := global_position + aim_dir * _enemy_vision_cfg_float("fire_spawn_offset_px", DEFAULT_FIRE_SPAWN_OFFSET_PX)
-	_fire_enemy_shotgun(muzzle, aim_dir)
-	_shot_cooldown = _shotgun_cooldown_sec()
-
-	if EventBus:
-		EventBus.emit_enemy_shot(
-			entity_id,
-			WEAPON_SHOTGUN,
-			Vector3(muzzle.x, muzzle.y, 0),
-			Vector3(aim_dir.x, aim_dir.y, 0)
-		)
-	return true
+func _try_fire_at_player(player_pos: Vector2) -> bool:
+	if _fire_control_runtime and _fire_control_runtime.has_method("try_fire_at_player"):
+		return bool(_fire_control_runtime.call("try_fire_at_player", player_pos))
+	return false
 
 
 func _resolve_shotgun_fire_block_reason(fire_contact: Dictionary) -> String:
-	if not _is_combat_awareness_active():
-		return SHOTGUN_FIRE_BLOCK_NO_COMBAT_STATE
-	if not bool(fire_contact.get("los", false)):
-		return SHOTGUN_FIRE_BLOCK_NO_LOS
-	if not bool(fire_contact.get("inside_fov", false)):
-		return SHOTGUN_FIRE_BLOCK_NO_LOS
-	if not bool(fire_contact.get("in_fire_range", false)):
-		return SHOTGUN_FIRE_BLOCK_OUT_OF_RANGE
-	if not bool(fire_contact.get("not_occluded_by_world", false)):
-		return SHOTGUN_FIRE_BLOCK_NO_LOS
-	if not bool(fire_contact.get("shadow_rule_passed", false)):
-		return SHOTGUN_FIRE_BLOCK_SHADOW_BLOCKED
-	if not bool(fire_contact.get("weapon_ready", false)):
-		return SHOTGUN_FIRE_BLOCK_COOLDOWN
-	if not _is_first_shot_gate_ready():
-		if _combat_telegraph_active:
-			return SHOTGUN_FIRE_BLOCK_TELEGRAPH
-		return SHOTGUN_FIRE_BLOCK_FIRST_ATTACK_DELAY
-	if bool(fire_contact.get("friendly_block", false)):
-		return SHOTGUN_FIRE_BLOCK_FRIENDLY_BLOCK
+	if _fire_control_runtime and _fire_control_runtime.has_method("resolve_shotgun_fire_block_reason"):
+		return String(_fire_control_runtime.call("resolve_shotgun_fire_block_reason", fire_contact))
 	return ""
 
 
 func _can_fire_contact_allows_shot(fire_contact: Dictionary) -> bool:
-	return (
-		bool(fire_contact.get("valid_contact_for_fire", false))
-		and _is_first_shot_gate_ready()
-		and not bool(fire_contact.get("friendly_block", false))
-	)
+	if _fire_control_runtime and _fire_control_runtime.has_method("can_fire_contact_allows_shot"):
+		return bool(_fire_control_runtime.call("can_fire_contact_allows_shot", fire_contact))
+	return false
 
 
 func _resolve_shotgun_fire_schedule_block_reason() -> String:
-	if _is_combat_reposition_phase_active():
-		return SHOTGUN_FIRE_BLOCK_REPOSITION
-	if not _anti_sync_fire_gate_open():
-		return SHOTGUN_FIRE_BLOCK_SYNC_WINDOW
+	if _fire_control_runtime and _fire_control_runtime.has_method("resolve_shotgun_fire_schedule_block_reason"):
+		return String(_fire_control_runtime.call("resolve_shotgun_fire_schedule_block_reason"))
 	return ""
 
 
 func _should_fire_now(tactical_request: bool, can_fire_contact: bool) -> bool:
-	if not tactical_request or not can_fire_contact:
-		return false
-	return _resolve_shotgun_fire_schedule_block_reason() == ""
+	if _fire_control_runtime and _fire_control_runtime.has_method("should_fire_now"):
+		return bool(_fire_control_runtime.call("should_fire_now", tactical_request, can_fire_contact))
+	return false
 
 
 func _update_combat_fire_cycle_runtime(delta: float, can_fire_contact: bool) -> void:
-	if not _is_combat_awareness_active():
-		_reset_combat_fire_cycle_state()
-		return
-	if _combat_fire_phase == COMBAT_FIRE_PHASE_REPOSITION:
-		_combat_fire_reposition_left = maxf(0.0, _combat_fire_reposition_left - maxf(delta, 0.0))
-		if _combat_fire_reposition_left <= 0.0:
-			_combat_fire_phase = COMBAT_FIRE_PHASE_PEEK
-		return
-	_combat_fire_phase = COMBAT_FIRE_PHASE_FIRE if can_fire_contact else COMBAT_FIRE_PHASE_PEEK
+	if _fire_control_runtime and _fire_control_runtime.has_method("update_combat_fire_cycle_runtime"):
+		_fire_control_runtime.call("update_combat_fire_cycle_runtime", delta, can_fire_contact)
 
 
 func _begin_combat_reposition_phase() -> void:
-	_combat_fire_phase = COMBAT_FIRE_PHASE_REPOSITION
-	_combat_fire_reposition_left = COMBAT_FIRE_REPOSITION_SEC
+	if _fire_control_runtime and _fire_control_runtime.has_method("begin_combat_reposition_phase"):
+		_fire_control_runtime.call("begin_combat_reposition_phase")
 
 
 func _is_combat_reposition_phase_active() -> bool:
+	if _fire_control_runtime and _fire_control_runtime.has_method("is_combat_reposition_phase_active"):
+		return bool(_fire_control_runtime.call("is_combat_reposition_phase_active"))
 	return _combat_fire_phase == COMBAT_FIRE_PHASE_REPOSITION and _combat_fire_reposition_left > 0.0
 
 
 func _inject_combat_cycle_reposition_intent(intent: Dictionary, assignment: Dictionary, target_context: Dictionary) -> Dictionary:
-	return _inject_friendly_block_reposition_intent(intent, assignment, target_context)
+	if _fire_control_runtime and _fire_control_runtime.has_method("inject_friendly_block_reposition_intent"):
+		return _fire_control_runtime.call("inject_friendly_block_reposition_intent", intent, assignment, target_context) as Dictionary
+	return intent.duplicate(true)
 
 
 func _reset_combat_fire_cycle_state() -> void:
+	if _fire_control_runtime and _fire_control_runtime.has_method("reset_combat_fire_cycle_state"):
+		_fire_control_runtime.call("reset_combat_fire_cycle_state")
+		return
 	_combat_fire_phase = COMBAT_FIRE_PHASE_PEEK
 	_combat_fire_reposition_left = 0.0
 
 
 func _combat_fire_phase_name(phase: int) -> String:
-	match phase:
-		COMBAT_FIRE_PHASE_PEEK:
-			return "peek"
-		COMBAT_FIRE_PHASE_FIRE:
-			return "fire"
-		COMBAT_FIRE_PHASE_REPOSITION:
-			return "reposition"
-		_:
-			return "unknown"
+	if _fire_control_runtime and _fire_control_runtime.has_method("combat_fire_phase_name"):
+		return String(_fire_control_runtime.call("combat_fire_phase_name", phase))
+	return "unknown"
 
 
 func _anti_sync_fire_gate_open() -> bool:
-	return Engine.get_physics_frames() != Enemy._global_enemy_shot_tick
+	if _fire_control_runtime and _fire_control_runtime.has_method("anti_sync_fire_gate_open"):
+		return bool(_fire_control_runtime.call("anti_sync_fire_gate_open"))
+	return true
 
 
 func _record_enemy_shot_tick() -> void:
-	Enemy._global_enemy_shot_tick = Engine.get_physics_frames()
+	if _fire_control_runtime and _fire_control_runtime.has_method("record_enemy_shot_tick"):
+		_fire_control_runtime.call("record_enemy_shot_tick")
 
 
 static func debug_reset_fire_sync_gate() -> void:
-	Enemy._global_enemy_shot_tick = -1
+	ENEMY_FIRE_CONTROL_RUNTIME_SCRIPT.debug_reset_fire_sync_gate()
 
 
 static func debug_reset_fire_trace_cache_metrics() -> void:
-	Enemy._friendly_fire_excludes_physics_frame = -1
-	Enemy._friendly_fire_excludes_cache = []
-	Enemy._friendly_fire_excludes_rebuild_count = 0
+	ENEMY_FIRE_CONTROL_RUNTIME_SCRIPT.debug_reset_fire_trace_cache_metrics()
 
 
 static func debug_get_fire_trace_cache_metrics() -> Dictionary:
-	return {
-		"physics_frame": Enemy._friendly_fire_excludes_physics_frame,
-		"cache_size": Enemy._friendly_fire_excludes_cache.size(),
-		"rebuild_count": Enemy._friendly_fire_excludes_rebuild_count,
-	}
+	return ENEMY_FIRE_CONTROL_RUNTIME_SCRIPT.debug_get_fire_trace_cache_metrics()
 
 
 func _evaluate_fire_contact(
@@ -1884,181 +1871,63 @@ func _evaluate_fire_contact(
 	in_shadow: bool,
 	flashlight_active: bool
 ) -> Dictionary:
-	var out := {
-		"los": false,
-		"inside_fov": false,
-		"in_fire_range": false,
-		"not_occluded_by_world": false,
-		"shadow_rule_passed": false,
-		"weapon_ready": false,
-		"friendly_block": false,
-		"valid_contact_for_fire": false,
-		"occlusion_kind": "none",
-	}
-	if not player_valid:
-		return out
-
-	var to_player := player_pos - global_position
-	var dist := to_player.length()
-	if dist <= 0.001:
-		return out
-	var dir_to_player := to_player / dist
-	var facing := facing_dir.normalized()
-	if facing.length_squared() <= 0.0001:
-		facing = dir_to_player
-	var min_dot := cos(deg_to_rad(sight_fov_deg) * 0.5)
-	var inside_fov := facing.dot(dir_to_player) >= min_dot
-	var in_fire_range := dist <= _enemy_vision_cfg_float("fire_attack_range_max_px", DEFAULT_FIRE_ATTACK_RANGE_MAX_PX)
-	var trace_with_friendlies := _trace_fire_line(player_pos, false)
-	var friendly_block := bool(trace_with_friendlies.get("hit_friendly", false))
-	var trace_ignore_friendlies := trace_with_friendlies
-	if friendly_block:
-		trace_ignore_friendlies = _trace_fire_line(player_pos, true)
-	var not_occluded_by_world := bool(trace_ignore_friendlies.get("hit_player", false))
-	var los := not_occluded_by_world and dist <= sight_max_distance_px
-	var shadow_rule_passed := (not in_shadow) or flashlight_active
-	var weapon_ready := _shot_cooldown <= 0.0
-	var valid_contact_for_fire := (
-		los
-		and inside_fov
-		and in_fire_range
-		and not_occluded_by_world
-		and shadow_rule_passed
-		and weapon_ready
-	)
-
-	out["los"] = los
-	out["inside_fov"] = inside_fov
-	out["in_fire_range"] = in_fire_range
-	out["not_occluded_by_world"] = not_occluded_by_world
-	out["shadow_rule_passed"] = shadow_rule_passed
-	out["weapon_ready"] = weapon_ready
-	out["friendly_block"] = friendly_block
-	out["valid_contact_for_fire"] = valid_contact_for_fire
-	out["occlusion_kind"] = String(trace_ignore_friendlies.get("hit_kind", "none"))
-	return out
+	if _fire_control_runtime and _fire_control_runtime.has_method("evaluate_fire_contact"):
+		return _fire_control_runtime.call(
+			"evaluate_fire_contact",
+			player_valid,
+			player_pos,
+			facing_dir,
+			sight_fov_deg,
+			sight_max_distance_px,
+			in_shadow,
+			flashlight_active
+		) as Dictionary
+	return {}
 
 
 func _trace_fire_line(player_pos: Vector2, ignore_friendlies: bool) -> Dictionary:
-	var out := {
-		"hit_player": false,
-		"hit_friendly": false,
-		"hit_world": false,
-		"hit_kind": "none",
-	}
-	var to_player := player_pos - global_position
-	if to_player.length_squared() <= 0.0001:
-		return out
-	var dir_to_player := to_player.normalized()
-	var spawn_offset := _enemy_vision_cfg_float("fire_spawn_offset_px", DEFAULT_FIRE_SPAWN_OFFSET_PX)
-	var start_offset := minf(spawn_offset, maxf(to_player.length() - 1.0, 0.0))
-	var ray_start := global_position + dir_to_player * start_offset
-	var query := PhysicsRayQueryParameters2D.create(ray_start, player_pos)
-	query.collide_with_areas = true
-	query.collide_with_bodies = true
-	query.exclude = _build_fire_line_excludes(ignore_friendlies)
-	var hit := get_world_2d().direct_space_state.intersect_ray(query)
-	if hit.is_empty():
-		return out
-	var collider: Variant = hit.get("collider", null)
-	if _is_player_collider_for_fire(collider):
-		out["hit_player"] = true
-		out["hit_kind"] = "player"
-	elif _is_friendly_collider_for_fire(collider):
-		out["hit_friendly"] = true
-		out["hit_kind"] = "friendly"
-	else:
-		out["hit_world"] = true
-		out["hit_kind"] = "world"
-	return out
+	if _fire_control_runtime and _fire_control_runtime.has_method("trace_fire_line"):
+		return _fire_control_runtime.call("trace_fire_line", player_pos, ignore_friendlies) as Dictionary
+	return {}
 
 
 func _build_fire_line_excludes(ignore_friendlies: bool) -> Array[RID]:
-	var excludes := _ray_excludes()
-	if not ignore_friendlies:
-		return excludes
-	var tree := get_tree()
-	if tree == null:
-		return excludes
-	var frame_id := Engine.get_physics_frames()
-	if Enemy._friendly_fire_excludes_physics_frame != frame_id:
-		_rebuild_friendly_fire_excludes_cache(tree)
-		Enemy._friendly_fire_excludes_physics_frame = frame_id
-	return Enemy._friendly_fire_excludes_cache
+	if _fire_control_runtime and _fire_control_runtime.has_method("build_fire_line_excludes"):
+		return _fire_control_runtime.call("build_fire_line_excludes", ignore_friendlies)
+	return _ray_excludes()
 
 
 static func _rebuild_friendly_fire_excludes_cache(tree: SceneTree) -> void:
-	var rebuilt: Array[RID] = []
-	for enemy_variant in tree.get_nodes_in_group("enemies"):
-		var enemy_node := enemy_variant as Node2D
-		if enemy_node == null:
-			continue
-		rebuilt.append(enemy_node.get_rid())
-	Enemy._friendly_fire_excludes_cache = rebuilt
-	Enemy._friendly_fire_excludes_rebuild_count += 1
+	ENEMY_FIRE_CONTROL_RUNTIME_SCRIPT._rebuild_friendly_fire_excludes_cache(tree)
 
 
 func _is_player_collider_for_fire(collider: Variant) -> bool:
-	if collider == null:
-		return false
-	var node := collider as Node
-	if node == null:
-		return false
-	if node.is_in_group("player"):
-		return true
-	var parent := node.get_parent()
-	return parent != null and parent.is_in_group("player")
+	if _fire_control_runtime and _fire_control_runtime.has_method("is_player_collider_for_fire"):
+		return bool(_fire_control_runtime.call("is_player_collider_for_fire", collider))
+	return false
 
 
 func _is_friendly_collider_for_fire(collider: Variant) -> bool:
-	if collider == null:
-		return false
-	var node := collider as Node
-	if node == null:
-		return false
-	return node != self and node.is_in_group("enemies")
+	if _fire_control_runtime and _fire_control_runtime.has_method("is_friendly_collider_for_fire"):
+		return bool(_fire_control_runtime.call("is_friendly_collider_for_fire", collider))
+	return false
 
 
 func _register_friendly_block_and_reposition() -> void:
-	_friendly_block_streak += 1
-	if _friendly_block_streak < FRIENDLY_BLOCK_STREAK_TRIGGER:
-		return
-	if _friendly_block_reposition_cooldown_left > 0.0:
-		return
-	_friendly_block_force_reposition = true
-	_friendly_block_reposition_cooldown_left = FRIENDLY_BLOCK_REPOSITION_COOLDOWN_SEC
+	if _fire_control_runtime and _fire_control_runtime.has_method("register_friendly_block_and_reposition"):
+		_fire_control_runtime.call("register_friendly_block_and_reposition")
 
 
 func _inject_friendly_block_reposition_intent(intent: Dictionary, assignment: Dictionary, target_context: Dictionary) -> Dictionary:
-	var out := intent.duplicate(true)
-	var slot_pos := assignment.get("slot_position", Vector2.ZERO) as Vector2
-	var has_slot := bool(assignment.get("has_slot", false))
-	var path_ok := bool(assignment.get("path_ok", false))
-	if has_slot and path_ok and slot_pos != Vector2.ZERO:
-		out["type"] = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT
-		out["target"] = slot_pos
-		return out
-
-	var known_target := target_context.get("known_target_pos", Vector2.ZERO) as Vector2
-	if known_target == Vector2.ZERO:
-		known_target = global_position + Vector2.RIGHT
-	var to_target := (known_target - global_position).normalized()
-	if to_target.length_squared() <= 0.0001:
-		to_target = Vector2.RIGHT
-	var side := Vector2(-to_target.y, to_target.x)
-	if side.length_squared() <= 0.0001:
-		side = Vector2.RIGHT
-	var side_sign := 1.0 if (_shot_rng.randi() % 2) == 0 else -1.0
-	out["type"] = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
-	out["target"] = global_position + side.normalized() * FRIENDLY_BLOCK_SIDESTEP_DISTANCE_PX * side_sign
-	return out
+	if _fire_control_runtime and _fire_control_runtime.has_method("inject_friendly_block_reposition_intent"):
+		return _fire_control_runtime.call("inject_friendly_block_reposition_intent", intent, assignment, target_context) as Dictionary
+	return intent.duplicate(true)
 
 
 func _intent_supports_fire(intent_type: int) -> bool:
-	return (
-		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
-	)
+	if _fire_control_runtime and _fire_control_runtime.has_method("intent_supports_fire"):
+		return bool(_fire_control_runtime.call("intent_supports_fire", intent_type))
+	return false
 
 
 func _is_combat_awareness_active() -> bool:
@@ -2093,6 +1962,12 @@ func _resolve_room_alert_snapshot() -> Dictionary:
 	}
 
 
+func _reset_combat_runtime_state_bundles() -> void:
+	_reset_first_shot_delay_state()
+	_reset_combat_role_runtime()
+	_reset_combat_search_state()
+
+
 func _sync_combat_latch_with_awareness_state(state_name: String) -> void:
 	if is_dead:
 		_unregister_combat_latch()
@@ -2101,9 +1976,7 @@ func _sync_combat_latch_with_awareness_state(state_name: String) -> void:
 	if normalized == AWARENESS_COMBAT:
 		_ensure_combat_latch_registered()
 		return
-	_reset_first_shot_delay_state()
-	_reset_combat_role_runtime()
-	_reset_combat_search_state()
+	_reset_combat_runtime_state_bundles()
 	if _combat_latched:
 		_unregister_combat_latch()
 	else:
@@ -2135,9 +2008,7 @@ func _ensure_combat_latch_registered() -> void:
 
 func _unregister_combat_latch() -> void:
 	_reset_combat_migration_candidate()
-	_reset_first_shot_delay_state()
-	_reset_combat_role_runtime()
-	_reset_combat_search_state()
+	_reset_combat_runtime_state_bundles()
 	if entity_id > 0 and alert_system and alert_system.has_method("unregister_enemy_combat") and _combat_latched:
 		alert_system.unregister_enemy_combat(entity_id)
 	_combat_latched = false
@@ -2189,34 +2060,24 @@ func _combat_last_seen_grace_sec() -> float:
 
 
 func _arm_first_combat_attack_delay() -> void:
-	var min_delay := COMBAT_FIRST_ATTACK_DELAY_MIN_SEC
-	var max_delay := COMBAT_FIRST_ATTACK_DELAY_MAX_SEC
-	if max_delay < min_delay:
-		var tmp := min_delay
-		min_delay = max_delay
-		max_delay = tmp
-	_combat_first_attack_delay_timer = _shot_rng.randf_range(min_delay, max_delay)
+	if _fire_control_runtime and _fire_control_runtime.has_method("arm_first_combat_attack_delay"):
+		_fire_control_runtime.call("arm_first_combat_attack_delay")
 
 
 func _arm_first_shot_telegraph() -> void:
-	_combat_telegraph_active = true
-	_combat_telegraph_timer = _roll_telegraph_duration_sec()
-	_combat_telegraph_pause_elapsed = 0.0
+	if _fire_control_runtime and _fire_control_runtime.has_method("arm_first_shot_telegraph"):
+		_fire_control_runtime.call("arm_first_shot_telegraph")
 
 
 func _cancel_first_shot_telegraph() -> void:
-	_combat_telegraph_active = false
-	_combat_telegraph_timer = 0.0
-	_combat_telegraph_pause_elapsed = 0.0
+	if _fire_control_runtime and _fire_control_runtime.has_method("cancel_first_shot_telegraph"):
+		_fire_control_runtime.call("cancel_first_shot_telegraph")
 
 
 func _resolve_ai_fire_profile_mode() -> String:
-	var mode := "auto"
-	if GameConfig and "ai_fire_profile_mode" in GameConfig:
-		mode = String(GameConfig.ai_fire_profile_mode).strip_edges().to_lower()
-	if mode == "production" or mode == "debug_test":
-		return mode
-	return "debug_test" if _is_test_scene_context() else "production"
+	if _fire_control_runtime and _fire_control_runtime.has_method("resolve_ai_fire_profile_mode"):
+		return String(_fire_control_runtime.call("resolve_ai_fire_profile_mode"))
+	return "production"
 
 
 func _is_test_scene_context() -> bool:
@@ -2230,99 +2091,36 @@ func _is_test_scene_context() -> bool:
 
 
 func _roll_telegraph_duration_sec() -> float:
-	var mode := _resolve_ai_fire_profile_mode()
-	var min_sec := COMBAT_TELEGRAPH_PRODUCTION_MIN_SEC
-	var max_sec := COMBAT_TELEGRAPH_PRODUCTION_MAX_SEC
-	if mode == "debug_test":
-		min_sec = COMBAT_TELEGRAPH_DEBUG_MIN_SEC
-		max_sec = COMBAT_TELEGRAPH_DEBUG_MAX_SEC
-	if GameConfig and "ai_fire_profiles" in GameConfig and GameConfig.ai_fire_profiles is Dictionary:
-		var profiles := GameConfig.ai_fire_profiles as Dictionary
-		var selected_profile := profiles.get(mode, {}) as Dictionary
-		min_sec = float(selected_profile.get("telegraph_min_sec", min_sec))
-		max_sec = float(selected_profile.get("telegraph_max_sec", max_sec))
-	if max_sec < min_sec:
-		var tmp := min_sec
-		min_sec = max_sec
-		max_sec = tmp
-	return _shot_rng.randf_range(min_sec, max_sec)
+	if _fire_control_runtime and _fire_control_runtime.has_method("roll_telegraph_duration_sec"):
+		return float(_fire_control_runtime.call("roll_telegraph_duration_sec"))
+	return COMBAT_TELEGRAPH_PRODUCTION_MIN_SEC
 
 
 func _is_first_shot_gate_ready() -> bool:
-	if _combat_first_shot_fired:
-		return true
-	if not _combat_first_shot_delay_armed:
-		return false
-	if _combat_first_attack_delay_timer > 0.0:
-		return false
-	if not _combat_telegraph_active:
-		return false
-	return _combat_telegraph_timer <= 0.0
+	if _fire_control_runtime and _fire_control_runtime.has_method("is_first_shot_gate_ready"):
+		return bool(_fire_control_runtime.call("is_first_shot_gate_ready"))
+	return false
 
 
 func _mark_enemy_shot_success() -> void:
-	_combat_first_shot_fired = true
-	_combat_first_attack_delay_timer = 0.0
-	_combat_first_shot_pause_elapsed = 0.0
-	_cancel_first_shot_telegraph()
-	_begin_combat_reposition_phase()
-	_record_enemy_shot_tick()
-	_friendly_block_streak = 0
+	if _fire_control_runtime and _fire_control_runtime.has_method("mark_enemy_shot_success"):
+		_fire_control_runtime.call("mark_enemy_shot_success")
 
 
 func _reset_first_shot_delay_state() -> void:
+	if _fire_control_runtime and _fire_control_runtime.has_method("reset_first_shot_delay_state"):
+		_fire_control_runtime.call("reset_first_shot_delay_state")
+		return
 	_combat_first_attack_delay_timer = 0.0
 	_combat_first_shot_delay_armed = false
 	_combat_first_shot_fired = false
 	_combat_first_shot_target_context_key = ""
 	_combat_first_shot_pause_elapsed = 0.0
-	_cancel_first_shot_telegraph()
-	_reset_combat_fire_cycle_state()
 
 
 func _update_first_shot_delay_runtime(delta: float, has_valid_solution: bool, target_context_key: String) -> void:
-	if not _is_combat_awareness_active():
-		_reset_first_shot_delay_state()
-		return
-	if _combat_first_shot_fired:
-		return
-	var min_rearm_delay := -1.0
-	var has_context_change := (
-		_combat_first_shot_delay_armed
-		and _combat_first_shot_target_context_key != ""
-		and target_context_key != ""
-		and target_context_key != _combat_first_shot_target_context_key
-	)
-	if has_context_change:
-		min_rearm_delay = _combat_first_attack_delay_timer
-		_reset_first_shot_delay_state()
-	if not _combat_first_shot_delay_armed:
-		if has_valid_solution:
-			_arm_first_combat_attack_delay()
-			if min_rearm_delay > 0.0:
-				var rearm_floor := minf(COMBAT_FIRST_ATTACK_DELAY_MAX_SEC, min_rearm_delay + 0.001)
-				_combat_first_attack_delay_timer = maxf(_combat_first_attack_delay_timer, rearm_floor)
-			_combat_first_shot_delay_armed = true
-			_combat_first_shot_target_context_key = target_context_key
-		return
-	if _combat_telegraph_active:
-		if has_valid_solution:
-			_combat_telegraph_pause_elapsed = 0.0
-			_combat_telegraph_timer = maxf(0.0, _combat_telegraph_timer - maxf(delta, 0.0))
-			return
-		_combat_telegraph_pause_elapsed += maxf(delta, 0.0)
-		if _combat_telegraph_pause_elapsed > COMBAT_TELEGRAPH_MAX_PAUSE_SEC:
-			_cancel_first_shot_telegraph()
-		return
-	if has_valid_solution:
-		_combat_first_shot_pause_elapsed = 0.0
-		_combat_first_attack_delay_timer = maxf(0.0, _combat_first_attack_delay_timer - maxf(delta, 0.0))
-		if _combat_first_attack_delay_timer <= 0.0:
-			_arm_first_shot_telegraph()
-		return
-	_combat_first_shot_pause_elapsed += maxf(delta, 0.0)
-	if _combat_first_shot_pause_elapsed > COMBAT_FIRST_SHOT_MAX_PAUSE_SEC:
-		_reset_first_shot_delay_state()
+	if _fire_control_runtime and _fire_control_runtime.has_method("update_first_shot_delay_runtime"):
+		_fire_control_runtime.call("update_first_shot_delay_runtime", delta, has_valid_solution, target_context_key)
 
 
 func _combat_target_context_key(target_context: Dictionary) -> String:
@@ -2506,130 +2304,34 @@ func _resolve_contextual_combat_role(
 
 
 func _record_combat_search_execution_feedback(intent: Dictionary, delta: float) -> void:
-	_combat_search_feedback_intent_type = int(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
-	_combat_search_feedback_intent_target = intent.get("target", Vector2.ZERO) as Vector2
-	_combat_search_feedback_delta = maxf(delta, 0.0)
+	if _combat_search_runtime and _combat_search_runtime.has_method("record_execution_feedback"):
+		_combat_search_runtime.call("record_execution_feedback", intent, delta)
 
 
 func _apply_combat_search_repath_recovery_feedback(intent: Dictionary, exec_result: Dictionary) -> void:
-	_combat_search_recovery_applied_last_tick = false
-	_combat_search_recovery_reason_last_tick = "none"
-	_combat_search_recovery_blocked_point_last = Vector2.ZERO
-	_combat_search_recovery_blocked_point_valid_last = false
-	_combat_search_recovery_skipped_node_key_last = ""
-
-	var required_keys := [
-		"repath_recovery_request_next_search_node",
-		"repath_recovery_reason",
-		"repath_recovery_blocked_point",
-		"repath_recovery_blocked_point_valid",
-		"repath_recovery_repeat_count",
-		"repath_recovery_preserve_intent",
-		"repath_recovery_intent_target",
-	]
-	for key_variant in required_keys:
-		var key := String(key_variant)
-		if not exec_result.has(key):
-			return
-
-	var request_next := bool(exec_result.get("repath_recovery_request_next_search_node", false))
-	var preserve_intent := bool(exec_result.get("repath_recovery_preserve_intent", false))
-	if not request_next or not preserve_intent:
-		return
-	if _combat_search_current_room_id < 0:
-		return
-	if _combat_search_current_node_key == "":
-		return
-
-	var intent_type := int(intent.get("type", -1))
-	if (
-		intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
-		and intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
-	):
-		return
-
-	var intent_target_variant: Variant = exec_result.get("repath_recovery_intent_target", Vector2.ZERO)
-	if not (intent_target_variant is Vector2):
-		return
-	var intent_target := intent_target_variant as Vector2
-	if not is_finite(intent_target.x) or not is_finite(intent_target.y):
-		return
-	var target_match_radius := maxf(_pursuit_cfg_float("repath_recovery_intent_target_match_radius_px", 28.0), 0.0)
-	if intent_target.distance_to(_combat_search_target_pos) > target_match_radius:
-		return
-
-	var blocked_point_valid := bool(exec_result.get("repath_recovery_blocked_point_valid", false))
-	var blocked_point := exec_result.get("repath_recovery_blocked_point", Vector2.ZERO) as Vector2
-	if blocked_point_valid and (not is_finite(blocked_point.x) or not is_finite(blocked_point.y)):
-		return
-
-	var skipped_key := _combat_search_current_node_key
-	_mark_combat_search_current_node_covered()
-	_combat_search_current_node_key = ""
-	_combat_search_current_node_kind = ""
-	_combat_search_current_node_requires_shadow_scan = false
-	_combat_search_current_node_shadow_scan_done = false
-	_combat_search_node_search_dwell_sec = 0.0
-	_combat_search_shadow_scan_suppressed_last_tick = false
-
-	var select_result := _select_next_combat_dark_search_node(_combat_search_current_room_id, _combat_search_target_pos)
-	var select_status := String(select_result.get("status", "room_invalid"))
-	if select_status == "ok":
-		_combat_search_current_node_key = String(select_result.get("node_key", ""))
-		_combat_search_current_node_kind = String(select_result.get("node_kind", ""))
-		_combat_search_target_pos = select_result.get("target_pos", Vector2.ZERO) as Vector2
-		_combat_search_current_node_requires_shadow_scan = bool(select_result.get("requires_shadow_boundary_scan", false))
-		_combat_search_current_node_shadow_scan_done = false
-		_combat_search_node_search_dwell_sec = 0.0
-		_combat_search_shadow_scan_suppressed_last_tick = false
-	elif select_status == "no_nodes" or select_status == "all_blocked":
-		_combat_search_visited_rooms[_combat_search_current_room_id] = true
-		var next_room := _select_next_combat_search_room(_combat_search_current_room_id, _combat_search_target_pos)
-		_ensure_combat_search_room(next_room, _combat_search_target_pos)
-
-	_update_combat_search_progress()
-	_combat_search_recovery_applied_last_tick = true
-	_combat_search_recovery_reason_last_tick = String(exec_result.get("repath_recovery_reason", "none"))
-	_combat_search_recovery_blocked_point_last = blocked_point if blocked_point_valid else Vector2.ZERO
-	_combat_search_recovery_blocked_point_valid_last = blocked_point_valid
-	_combat_search_recovery_skipped_node_key_last = skipped_key
+	if _combat_search_runtime and _combat_search_runtime.has_method("apply_repath_recovery_feedback"):
+		_combat_search_runtime.call("apply_repath_recovery_feedback", intent, exec_result)
 
 
 func _current_pursuit_shadow_search_stage() -> int:
-	if _pursuit == null:
-		return -1
-	if not _pursuit.has_method("get_shadow_search_stage"):
-		return -1
-	return int(_pursuit.get_shadow_search_stage())
+	if _combat_search_runtime and _combat_search_runtime.has_method("current_pursuit_shadow_search_stage"):
+		return int(_combat_search_runtime.call("current_pursuit_shadow_search_stage"))
+	return -1
+
+
+func _clear_combat_search_current_node(reset_shadow_scan_suppressed: bool = true) -> void:
+	if _combat_search_runtime and _combat_search_runtime.has_method("clear_current_node"):
+		_combat_search_runtime.call("clear_current_node", reset_shadow_scan_suppressed)
+
+
+func _apply_combat_search_node_pick(pick: Dictionary) -> void:
+	if _combat_search_runtime and _combat_search_runtime.has_method("apply_node_pick"):
+		_combat_search_runtime.call("apply_node_pick", pick)
 
 
 func _reset_combat_search_state() -> void:
-	_combat_search_total_elapsed_sec = 0.0
-	_combat_search_room_elapsed_sec = 0.0
-	_combat_search_room_budget_sec = 0.0
-	_combat_search_current_room_id = -1
-	_combat_search_target_pos = Vector2.ZERO
-	_combat_search_room_nodes.clear()
-	_combat_search_room_node_visited.clear()
-	_combat_search_current_node_key = ""
-	_combat_search_current_node_kind = ""
-	_combat_search_current_node_requires_shadow_scan = false
-	_combat_search_current_node_shadow_scan_done = false
-	_combat_search_node_search_dwell_sec = 0.0
-	_combat_search_last_pursuit_shadow_stage = -1
-	_combat_search_feedback_intent_type = -1
-	_combat_search_feedback_intent_target = Vector2.ZERO
-	_combat_search_feedback_delta = 0.0
-	_combat_search_shadow_scan_suppressed_last_tick = false
-	_combat_search_recovery_applied_last_tick = false
-	_combat_search_recovery_reason_last_tick = "none"
-	_combat_search_recovery_blocked_point_last = Vector2.ZERO
-	_combat_search_recovery_blocked_point_valid_last = false
-	_combat_search_recovery_skipped_node_key_last = ""
-	_combat_search_room_coverage.clear()
-	_combat_search_visited_rooms.clear()
-	_combat_search_progress = 0.0
-	_combat_search_total_cap_hit = false
+	if _combat_search_runtime and _combat_search_runtime.has_method("reset_state"):
+		_combat_search_runtime.call("reset_state")
 
 
 func _update_combat_search_runtime(
@@ -2638,438 +2340,62 @@ func _update_combat_search_runtime(
 	combat_target_pos: Vector2,
 	was_combat_before_confirm: bool
 ) -> void:
-	if not was_combat_before_confirm:
-		_reset_combat_search_state()
-		return
-	if has_valid_contact:
-		return
-	if _combat_search_current_room_id < 0:
-		var start_room := _resolve_room_id_for_events()
-		_ensure_combat_search_room(start_room, combat_target_pos)
-
-	var clamped_delta := maxf(delta, 0.0)
-	_combat_search_total_elapsed_sec += clamped_delta
-	_combat_search_room_elapsed_sec += clamped_delta
-	if _combat_search_total_elapsed_sec >= COMBAT_SEARCH_TOTAL_CAP_SEC:
-		_combat_search_total_cap_hit = true
-
-	var stage_now := _current_pursuit_shadow_search_stage()
-	if (
-		_combat_search_current_node_requires_shadow_scan
-		and not _combat_search_current_node_shadow_scan_done
-		and _combat_search_current_node_key != ""
-	):
-		if _combat_search_last_pursuit_shadow_stage >= 0 and _combat_search_last_pursuit_shadow_stage != 0 and stage_now == 0:
-			_combat_search_current_node_shadow_scan_done = true
-			_combat_search_node_search_dwell_sec = 0.0
-	_combat_search_last_pursuit_shadow_stage = stage_now
-
-	var can_accumulate_dwell := (
-		_combat_search_current_node_key != ""
-		and _combat_search_feedback_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
-		and _combat_search_feedback_intent_target.distance_to(_combat_search_target_pos) <= 0.5
-		and (not _combat_search_current_node_requires_shadow_scan or _combat_search_current_node_shadow_scan_done)
-	)
-	if can_accumulate_dwell:
-		_combat_search_node_search_dwell_sec += _combat_search_feedback_delta
-	else:
-		_combat_search_node_search_dwell_sec = 0.0
-
-	if (
-		_combat_search_current_node_key != ""
-		and _combat_search_node_search_dwell_sec >= _pursuit_cfg_float("combat_dark_search_node_dwell_sec", 1.25)
-	):
-		_mark_combat_search_current_node_covered()
-		_shadow_scan_completed = false
-		_shadow_scan_completed_reason = "none"
-		_combat_search_current_node_key = ""
-		_combat_search_current_node_kind = ""
-		_combat_search_current_node_requires_shadow_scan = false
-		_combat_search_current_node_shadow_scan_done = false
-		_combat_search_node_search_dwell_sec = 0.0
-		_combat_search_shadow_scan_suppressed_last_tick = false
-
-	var current_coverage := _compute_combat_search_room_coverage(_combat_search_current_room_id)
-	if _combat_search_current_room_id >= 0:
-		_combat_search_room_coverage[_combat_search_current_room_id] = current_coverage
-	var room_done_by_coverage := current_coverage >= COMBAT_SEARCH_PROGRESS_THRESHOLD
-	var room_done_by_timeout := _combat_search_room_elapsed_sec >= _combat_search_room_budget_sec
-	if _combat_search_current_room_id >= 0 and (room_done_by_coverage or room_done_by_timeout):
-		_combat_search_visited_rooms[_combat_search_current_room_id] = true
-		var next_room := _select_next_combat_search_room(_combat_search_current_room_id, combat_target_pos)
-		_ensure_combat_search_room(next_room, combat_target_pos)
-
-	if _combat_search_current_node_key == "" and _combat_search_current_room_id >= 0:
-		var pick := _select_next_combat_dark_search_node(_combat_search_current_room_id, combat_target_pos)
-		var pick_status := String(pick.get("status", "room_invalid"))
-		if pick_status == "ok":
-			_combat_search_current_node_key = String(pick.get("node_key", ""))
-			_combat_search_current_node_kind = String(pick.get("node_kind", ""))
-			_combat_search_target_pos = pick.get("target_pos", Vector2.ZERO) as Vector2
-			_combat_search_current_node_requires_shadow_scan = bool(pick.get("requires_shadow_boundary_scan", false))
-			_combat_search_current_node_shadow_scan_done = false
-			_combat_search_node_search_dwell_sec = 0.0
-			_combat_search_shadow_scan_suppressed_last_tick = false
-		elif pick_status == "no_nodes" or pick_status == "all_blocked":
-			_combat_search_visited_rooms[_combat_search_current_room_id] = true
-			var next_room_after_empty := _select_next_combat_search_room(_combat_search_current_room_id, combat_target_pos)
-			_ensure_combat_search_room(next_room_after_empty, combat_target_pos)
-
-	_update_combat_search_progress()
+	if _combat_search_runtime and _combat_search_runtime.has_method("update_runtime"):
+		_combat_search_runtime.call(
+			"update_runtime",
+			delta,
+			has_valid_contact,
+			combat_target_pos,
+			was_combat_before_confirm
+		)
 
 
 func _ensure_combat_search_room(room_id: int, combat_target_pos: Vector2) -> void:
-	var valid_room := room_id
-	if valid_room < 0:
-		valid_room = _resolve_room_id_for_events()
-	if valid_room < 0:
-		return
-	_combat_search_current_room_id = valid_room
-	_combat_search_room_elapsed_sec = 0.0
-	_combat_search_room_budget_sec = _shot_rng.randf_range(COMBAT_SEARCH_ROOM_BUDGET_MIN_SEC, COMBAT_SEARCH_ROOM_BUDGET_MAX_SEC)
-	_combat_search_room_nodes[valid_room] = _build_combat_dark_search_nodes(valid_room, combat_target_pos)
-	if not _combat_search_room_node_visited.has(valid_room):
-		_combat_search_room_node_visited[valid_room] = {}
-	_combat_search_current_node_key = ""
-	_combat_search_current_node_kind = ""
-	_combat_search_current_node_requires_shadow_scan = false
-	_combat_search_current_node_shadow_scan_done = false
-	_combat_search_node_search_dwell_sec = 0.0
-	_combat_search_shadow_scan_suppressed_last_tick = false
-	var first_pick := _select_next_combat_dark_search_node(valid_room, combat_target_pos)
-	if String(first_pick.get("status", "room_invalid")) == "ok":
-		_combat_search_current_node_key = String(first_pick.get("node_key", ""))
-		_combat_search_current_node_kind = String(first_pick.get("node_kind", ""))
-		_combat_search_target_pos = first_pick.get("target_pos", Vector2.ZERO) as Vector2
-		_combat_search_current_node_requires_shadow_scan = bool(first_pick.get("requires_shadow_boundary_scan", false))
-		_combat_search_current_node_shadow_scan_done = false
-		_combat_search_node_search_dwell_sec = 0.0
-	else:
-		_combat_search_target_pos = global_position
-	_combat_search_room_coverage[valid_room] = _compute_combat_search_room_coverage(valid_room)
+	if _combat_search_runtime and _combat_search_runtime.has_method("ensure_room"):
+		_combat_search_runtime.call("ensure_room", room_id, combat_target_pos)
 
 
 func _build_combat_dark_search_nodes(room_id: int, combat_target_pos: Vector2) -> Array[Dictionary]:
-	var _unused_target := combat_target_pos
-	var nodes: Array[Dictionary] = []
-	var room_center := global_position
-	if nav_system and nav_system.has_method("get_room_center"):
-		var center := nav_system.get_room_center(room_id) as Vector2
-		if center != Vector2.ZERO:
-			room_center = center
-	var room_rect := Rect2()
-	if nav_system and nav_system.has_method("get_room_rect"):
-		room_rect = nav_system.get_room_rect(room_id) as Rect2
-	var sample_radius := _pursuit_cfg_float("combat_dark_search_node_sample_radius_px", 64.0)
-	var boundary_radius := _pursuit_cfg_float("combat_dark_search_boundary_radius_px", 96.0)
-	var sample_index := 0
-	for offset_variant in COMBAT_DARK_SEARCH_NODE_SAMPLE_OFFSETS:
-		var offset := offset_variant as Vector2
-		var sample := room_center if offset == Vector2.ZERO else room_center + offset * sample_radius
-		if room_rect.size.x > 0.0 and room_rect.size.y > 0.0:
-			var clamp_rect := room_rect.grow(-4.0)
-			if clamp_rect.size.x <= 0.0 or clamp_rect.size.y <= 0.0:
-				clamp_rect = room_rect
-			sample.x = clampf(sample.x, clamp_rect.position.x, clamp_rect.position.x + clamp_rect.size.x)
-			sample.y = clampf(sample.y, clamp_rect.position.y, clamp_rect.position.y + clamp_rect.size.y)
-
-		var sample_in_shadow := false
-		if nav_system and nav_system.has_method("is_point_in_shadow"):
-			sample_in_shadow = bool(nav_system.call("is_point_in_shadow", sample))
-
-		var boundary_candidate := {
-			"key": "r%d:boundary:%d" % [room_id, sample_index],
-			"kind": "boundary_point",
-			"target_pos": sample,
-			"approach_pos": sample,
-			"target_in_shadow": sample_in_shadow,
-			"requires_shadow_boundary_scan": false,
-			"coverage_weight": COMBAT_DARK_SEARCH_BOUNDARY_COVERAGE_WEIGHT,
-		}
-		var boundary_drop := false
-		for existing_variant in nodes:
-			var existing := existing_variant as Dictionary
-			if String(existing.get("kind", "")) != "boundary_point":
-				continue
-			var existing_target := existing.get("target_pos", Vector2.ZERO) as Vector2
-			if existing_target.distance_to(sample) <= COMBAT_DARK_SEARCH_NODE_DEDUP_PX:
-				boundary_drop = true
-				break
-		if not boundary_drop:
-			nodes.append(boundary_candidate)
-
-		if sample_in_shadow and nav_system and nav_system.has_method("get_nearest_non_shadow_point"):
-			var boundary := nav_system.get_nearest_non_shadow_point(sample, boundary_radius) as Vector2
-			if boundary != Vector2.ZERO:
-				var dark_candidate := {
-					"key": "r%d:dark:%d" % [room_id, sample_index],
-					"kind": "dark_pocket",
-					"target_pos": sample,
-					"approach_pos": boundary,
-					"target_in_shadow": true,
-					"requires_shadow_boundary_scan": true,
-					"coverage_weight": COMBAT_DARK_SEARCH_POCKET_COVERAGE_WEIGHT,
-				}
-				var dark_drop := false
-				for existing_variant in nodes:
-					var existing := existing_variant as Dictionary
-					if String(existing.get("kind", "")) != "dark_pocket":
-						continue
-					var existing_target := existing.get("target_pos", Vector2.ZERO) as Vector2
-					if existing_target.distance_to(sample) <= COMBAT_DARK_SEARCH_NODE_DEDUP_PX:
-						dark_drop = true
-						break
-				if not dark_drop:
-					nodes.append(dark_candidate)
-		sample_index += 1
-
-	if nodes.is_empty():
-		var fallback_in_shadow := false
-		if nav_system and nav_system.has_method("is_point_in_shadow"):
-			fallback_in_shadow = bool(nav_system.call("is_point_in_shadow", room_center))
-		nodes.append({
-			"key": "r%d:boundary:fallback" % room_id,
-			"kind": "boundary_point",
-			"target_pos": room_center,
-			"approach_pos": room_center,
-			"target_in_shadow": fallback_in_shadow,
-			"requires_shadow_boundary_scan": false,
-			"coverage_weight": 1.0,
-		})
-	return nodes
+	if _combat_search_runtime and _combat_search_runtime.has_method("build_dark_search_nodes"):
+		return _combat_search_runtime.call("build_dark_search_nodes", room_id, combat_target_pos)
+	return []
 
 
 func _select_next_combat_dark_search_node(room_id: int, combat_target_pos: Vector2) -> Dictionary:
-	var invalid_out := {
+	if _combat_search_runtime and _combat_search_runtime.has_method("select_next_dark_search_node"):
+		return _combat_search_runtime.call("select_next_dark_search_node", room_id, combat_target_pos) as Dictionary
+	return {
 		"status": "room_invalid",
-		"reason": "room_invalid",
+		"reason": "runtime_missing",
 		"room_id": room_id,
-		"node_key": "",
-		"node_kind": "",
-		"target_pos": Vector2.ZERO,
-		"approach_pos": Vector2.ZERO,
-		"target_in_shadow": false,
-		"requires_shadow_boundary_scan": false,
-		"score_uncovered": 0.0,
-		"score_path_len_px": INF,
-		"score_tactical_priority": -1,
-		"score_total": INF,
 	}
-	if room_id < 0 or not is_finite(combat_target_pos.x) or not is_finite(combat_target_pos.y):
-		return invalid_out
-
-	var node_list_variant: Variant = _combat_search_room_nodes.get(room_id, [])
-	var node_list := node_list_variant as Array
-	if node_list.is_empty():
-		var no_nodes_out := invalid_out.duplicate(true)
-		no_nodes_out["status"] = "no_nodes"
-		no_nodes_out["reason"] = "node_list_empty"
-		return no_nodes_out
-
-	var visited := _combat_search_room_node_visited.get(room_id, {}) as Dictionary
-	var best_found := false
-	var best_score_total := INF
-	var best_score_path := INF
-	var best_score_tactical := 999999
-	var best_key := ""
-	var best_node: Dictionary = {}
-	var best_score_uncovered := 0.0
-
-	var uncovered_bonus := _pursuit_cfg_float("combat_dark_search_node_uncovered_bonus", 1000.0)
-	var tactical_priority_weight := _pursuit_cfg_float("combat_dark_search_node_tactical_priority_weight", 80.0)
-
-	for node_variant in node_list:
-		var node := node_variant as Dictionary
-		var node_key := String(node.get("key", ""))
-		if node_key == "":
-			continue
-		if bool(visited.get(node_key, false)):
-			continue
-
-		var approach_pos := node.get("approach_pos", Vector2.ZERO) as Vector2
-		if not is_finite(approach_pos.x) or not is_finite(approach_pos.y):
-			continue
-		var path_len := INF
-		if nav_system and nav_system.has_method("nav_path_length"):
-			path_len = float(nav_system.call("nav_path_length", global_position, approach_pos, self))
-		else:
-			path_len = global_position.distance_to(approach_pos)
-		if not is_finite(path_len):
-			continue
-
-		var score_uncovered := float(node.get("coverage_weight", 0.0))
-		if not is_finite(score_uncovered):
-			continue
-		var node_kind := String(node.get("kind", "boundary_point"))
-		var score_tactical_priority := 0 if node_kind == "dark_pocket" else 1
-		var score_total := (
-			(uncovered_bonus - score_uncovered * uncovered_bonus)
-			+ path_len
-			+ float(score_tactical_priority) * tactical_priority_weight
-		)
-
-		var better := false
-		if not best_found:
-			better = true
-		elif score_total < best_score_total:
-			better = true
-		elif is_equal_approx(score_total, best_score_total) and path_len < best_score_path:
-			better = true
-		elif is_equal_approx(score_total, best_score_total) and is_equal_approx(path_len, best_score_path) and score_tactical_priority < best_score_tactical:
-			better = true
-		elif (
-			is_equal_approx(score_total, best_score_total)
-			and is_equal_approx(path_len, best_score_path)
-			and score_tactical_priority == best_score_tactical
-			and (best_key == "" or node_key < best_key)
-		):
-			better = true
-
-		if better:
-			best_found = true
-			best_score_total = score_total
-			best_score_path = path_len
-			best_score_tactical = score_tactical_priority
-			best_key = node_key
-			best_node = node.duplicate(true)
-			best_score_uncovered = score_uncovered
-
-	if not best_found:
-		var blocked_out := invalid_out.duplicate(true)
-		blocked_out["status"] = "all_blocked"
-		blocked_out["reason"] = "all_candidates_blocked"
-		return blocked_out
-
-	var selected_kind := String(best_node.get("kind", ""))
-	var out := {
-		"status": "ok",
-		"reason": "selected_dark_pocket" if selected_kind == "dark_pocket" else "selected_boundary_point",
-		"room_id": room_id,
-		"node_key": String(best_node.get("key", "")),
-		"node_kind": selected_kind,
-		"target_pos": best_node.get("target_pos", Vector2.ZERO) as Vector2,
-		"approach_pos": best_node.get("approach_pos", Vector2.ZERO) as Vector2,
-		"target_in_shadow": bool(best_node.get("target_in_shadow", false)),
-		"requires_shadow_boundary_scan": bool(best_node.get("requires_shadow_boundary_scan", false)),
-		"score_uncovered": best_score_uncovered,
-		"score_path_len_px": best_score_path,
-		"score_tactical_priority": best_score_tactical,
-		"score_total": best_score_total,
-	}
-	return out
 
 
 func _compute_combat_search_room_coverage(room_id: int) -> float:
-	if room_id < 0:
-		return 0.0
-	var node_list_variant: Variant = _combat_search_room_nodes.get(room_id, [])
-	var node_list := node_list_variant as Array
-	if node_list.is_empty():
-		return 0.0
-	var visited := _combat_search_room_node_visited.get(room_id, {}) as Dictionary
-	var total_weight := 0.0
-	var covered_weight := 0.0
-	for node_variant in node_list:
-		var node := node_variant as Dictionary
-		var node_key := String(node.get("key", ""))
-		var weight := float(node.get("coverage_weight", 0.0))
-		if node_key == "" or not is_finite(weight) or weight <= 0.0:
-			continue
-		total_weight += weight
-		if bool(visited.get(node_key, false)):
-			covered_weight += weight
-	if total_weight <= 0.0:
-		return 0.0
-	return clampf(covered_weight / total_weight, 0.0, 1.0)
+	if _combat_search_runtime and _combat_search_runtime.has_method("compute_room_coverage"):
+		return float(_combat_search_runtime.call("compute_room_coverage", room_id))
+	return 0.0
 
 
 func _mark_combat_search_current_node_covered() -> void:
-	if _combat_search_current_room_id < 0:
-		return
-	if _combat_search_current_node_key == "":
-		return
-	if not _combat_search_room_node_visited.has(_combat_search_current_room_id):
-		_combat_search_room_node_visited[_combat_search_current_room_id] = {}
-	var visited := _combat_search_room_node_visited[_combat_search_current_room_id] as Dictionary
-	visited[_combat_search_current_node_key] = true
-	_combat_search_room_node_visited[_combat_search_current_room_id] = visited
-	_combat_search_room_coverage[_combat_search_current_room_id] = _compute_combat_search_room_coverage(_combat_search_current_room_id)
+	if _combat_search_runtime and _combat_search_runtime.has_method("mark_current_node_covered"):
+		_combat_search_runtime.call("mark_current_node_covered")
 
 
 func _update_combat_search_progress() -> void:
-	if _combat_search_current_room_id < 0:
-		_combat_search_progress = 0.0
-		return
-	var current_coverage := clampf(float(_combat_search_room_coverage.get(_combat_search_current_room_id, 0.0)), 0.0, 1.0)
-	var neighbor_max := 0.0
-	var neighbors: Array = nav_system.get_neighbors(_combat_search_current_room_id) if nav_system and nav_system.has_method("get_neighbors") else []
-	for rid_variant in neighbors:
-		var rid := int(rid_variant)
-		neighbor_max = maxf(neighbor_max, clampf(float(_combat_search_room_coverage.get(rid, 0.0)), 0.0, 1.0))
-	if _combat_search_total_cap_hit:
-		_combat_search_progress = COMBAT_SEARCH_PROGRESS_THRESHOLD
-		return
-	if current_coverage >= COMBAT_SEARCH_PROGRESS_THRESHOLD and neighbor_max >= COMBAT_SEARCH_PROGRESS_THRESHOLD:
-		_combat_search_progress = maxf(
-			COMBAT_SEARCH_PROGRESS_THRESHOLD,
-			clampf((current_coverage + neighbor_max) * 0.5, 0.0, 1.0)
-		)
-		return
-	_combat_search_progress = minf(current_coverage, COMBAT_SEARCH_PROGRESS_THRESHOLD - 0.01)
+	if _combat_search_runtime and _combat_search_runtime.has_method("update_progress"):
+		_combat_search_runtime.call("update_progress")
 
 
 func _select_next_combat_search_room(current_room: int, combat_target_pos: Vector2) -> int:
-	if current_room < 0:
-		return _resolve_room_id_for_events()
-	if not nav_system or not nav_system.has_method("get_neighbors"):
-		return current_room
-	var neighbors := nav_system.get_neighbors(current_room) as Array
-	if neighbors.is_empty():
-		return current_room
-	var best_room := current_room
-	var best_score := INF
-	for rid_variant in neighbors:
-		var room_id := int(rid_variant)
-		if room_id < 0:
-			continue
-		var room_center := combat_target_pos
-		if nav_system.has_method("get_room_center"):
-			room_center = nav_system.get_room_center(room_id) as Vector2
-		var dist_to_target := room_center.distance_to(combat_target_pos)
-		var unvisited_penalty := 0.0 if not _combat_search_visited_rooms.has(room_id) else COMBAT_SEARCH_UNVISITED_PENALTY
-		var door_hops := _door_hops_between(current_room, room_id)
-		var door_cost := COMBAT_SEARCH_DOOR_COST_PER_HOP * float(door_hops)
-		var score := dist_to_target + unvisited_penalty + door_cost
-		if score < best_score or (is_equal_approx(score, best_score) and room_id < best_room):
-			best_score = score
-			best_room = room_id
-	return best_room
+	if _combat_search_runtime and _combat_search_runtime.has_method("select_next_room"):
+		return int(_combat_search_runtime.call("select_next_room", current_room, combat_target_pos))
+	return current_room
 
 
 func _door_hops_between(from_room: int, to_room: int) -> int:
-	if from_room < 0 or to_room < 0:
-		return 999
-	if from_room == to_room:
-		return 0
-	if not nav_system or not nav_system.has_method("get_neighbors"):
-		return 999
-	var visited: Dictionary = {from_room: true}
-	var frontier: Array[int] = [from_room]
-	var hops := 0
-	while not frontier.is_empty() and hops < 64:
-		hops += 1
-		var next_frontier: Array[int] = []
-		for room_id in frontier:
-			var neighbors := nav_system.get_neighbors(room_id) as Array
-			for neighbor_variant in neighbors:
-				var neighbor := int(neighbor_variant)
-				if visited.has(neighbor):
-					continue
-				if neighbor == to_room:
-					return hops
-				visited[neighbor] = true
-				next_frontier.append(neighbor)
-		frontier = next_frontier
+	if _combat_search_runtime and _combat_search_runtime.has_method("door_hops_between"):
+		return int(_combat_search_runtime.call("door_hops_between", from_room, to_room))
 	return 999
 
 
@@ -3316,23 +2642,17 @@ func _enemy_vision_cfg_float(key: String, fallback: float) -> float:
 
 
 func _shotgun_stats() -> Dictionary:
+	if _fire_control_runtime and _fire_control_runtime.has_method("shotgun_stats"):
+		return _fire_control_runtime.call("shotgun_stats") as Dictionary
 	if GameConfig and GameConfig.weapon_stats.has(WEAPON_SHOTGUN):
 		return GameConfig.weapon_stats[WEAPON_SHOTGUN] as Dictionary
-	return {
-		"cooldown_sec": 1.2,
-		"rpm": 50.0,
-		"pellets": 16,
-		"cone_deg": 8.0,
-	}
+	return {}
 
 
 func _shotgun_cooldown_sec() -> float:
-	var stats := _shotgun_stats()
-	var cooldown_sec := float(stats.get("cooldown_sec", -1.0))
-	if cooldown_sec > 0.0:
-		return maxf(cooldown_sec, ENEMY_FIRE_MIN_COOLDOWN_SEC)
-	var rpm := maxf(float(stats.get("rpm", 60.0)), 1.0)
-	return maxf(60.0 / rpm, ENEMY_FIRE_MIN_COOLDOWN_SEC)
+	if _fire_control_runtime and _fire_control_runtime.has_method("shotgun_cooldown_sec"):
+		return float(_fire_control_runtime.call("shotgun_cooldown_sec"))
+	return ENEMY_FIRE_MIN_COOLDOWN_SEC
 
 
 ## Apply damage from any source (projectile, explosion, etc.)

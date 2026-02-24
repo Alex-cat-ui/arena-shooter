@@ -54,10 +54,18 @@ func _test_enemy_damage_is_exactly_1hp_per_successful_shot() -> void:
 	await get_tree().physics_frame
 	enemy.initialize(7604, "zombie")
 	enemy.set_physics_process(false)
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("enemy damage 1hp: runtime helper exists", runtime != null)
+	if runtime == null:
+		if EventBus and EventBus.has_signal("enemy_contact") and EventBus.enemy_contact.is_connected(_on_enemy_contact):
+			EventBus.enemy_contact.disconnect(_on_enemy_contact)
+		world.queue_free()
+		await get_tree().process_frame
+		return
 
 	var fake_perception := FakePerception.new()
-	enemy.set("_perception", fake_perception)
-	enemy.call("_fire_enemy_shotgun", Vector2.ZERO, Vector2.RIGHT)
+	runtime.call("set_state_value", "_perception", fake_perception)
+	runtime.call("fire_enemy_shotgun", Vector2.ZERO, Vector2.RIGHT)
 	await get_tree().process_frame
 	if EventBus and EventBus.has_method("_process"):
 		EventBus.call("_process", 0.016)

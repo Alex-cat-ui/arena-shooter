@@ -55,6 +55,12 @@ func _test_scoring_and_loop_avoidance() -> void:
 	enemy.initialize(6301, "zombie")
 	enemy.debug_force_awareness_state("COMBAT")
 	enemy.nav_system = nav
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("combat_search_runtime", null)
+	_t.run_test("combat-search runtime is available", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 
 	nav.neighbors = {10: [11, 12, 13], 11: [10], 12: [10], 13: [10]}
 	nav.room_centers = {
@@ -63,11 +69,11 @@ func _test_scoring_and_loop_avoidance() -> void:
 		12: Vector2(170.0, 0.0),
 		13: Vector2(90.0, 0.0),
 	}
-	enemy.set("_combat_search_visited_rooms", {13: true})
-	var first_pick := int(enemy.call("_select_next_combat_search_room", 10, Vector2(100.0, 0.0)))
+	runtime.call("set_state_value", "_combat_search_visited_rooms", {13: true})
+	var first_pick := int(runtime.call("select_next_room", 10, Vector2(100.0, 0.0)))
 
-	enemy.set("_combat_search_visited_rooms", {13: true, 11: true})
-	var second_pick := int(enemy.call("_select_next_combat_search_room", 10, Vector2(100.0, 0.0)))
+	runtime.call("set_state_value", "_combat_search_visited_rooms", {13: true, 11: true})
+	var second_pick := int(runtime.call("select_next_room", 10, Vector2(100.0, 0.0)))
 
 	nav.neighbors = {20: [21, 22], 21: [20], 22: [20]}
 	nav.room_centers = {
@@ -75,8 +81,8 @@ func _test_scoring_and_loop_avoidance() -> void:
 		21: Vector2(100.0, 0.0),
 		22: Vector2(100.0, 0.0),
 	}
-	enemy.set("_combat_search_visited_rooms", {})
-	var tie_pick := int(enemy.call("_select_next_combat_search_room", 20, Vector2(100.0, 0.0)))
+	runtime.call("set_state_value", "_combat_search_visited_rooms", {})
+	var tie_pick := int(runtime.call("select_next_room", 20, Vector2(100.0, 0.0)))
 
 	_t.run_test("visited room penalty prevents immediate loop to visited room", first_pick == 11)
 	_t.run_test("after marking first pick visited, next unvisited room is chosen", second_pick == 12)

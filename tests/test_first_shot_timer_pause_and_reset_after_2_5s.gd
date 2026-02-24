@@ -40,16 +40,22 @@ func _test_first_shot_timer_pause_and_reset_after_2_5s() -> void:
 
 	enemy.initialize(7602, "zombie")
 	enemy.debug_force_awareness_state("COMBAT")
-	enemy.call("_reset_first_shot_delay_state")
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("first-shot timer pause/reset: runtime helper exists", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	runtime.call("reset_first_shot_delay_state")
 
-	enemy.call("_update_first_shot_delay_runtime", 0.1, true, "ctx_a")
+	runtime.call("update_first_shot_delay_runtime", 0.1, true, "ctx_a")
 	var armed := enemy.get_debug_detection_snapshot() as Dictionary
 	var armed_left := float(armed.get("shotgun_first_attack_delay_left", 0.0))
 
-	enemy.call("_update_first_shot_delay_runtime", 2.6, false, "ctx_a")
+	runtime.call("update_first_shot_delay_runtime", 2.6, false, "ctx_a")
 	var after_long_pause := enemy.get_debug_detection_snapshot() as Dictionary
 
-	enemy.call("_update_first_shot_delay_runtime", 0.1, true, "ctx_a")
+	runtime.call("update_first_shot_delay_runtime", 0.1, true, "ctx_a")
 	var rearmed := enemy.get_debug_detection_snapshot() as Dictionary
 	var rearmed_left := float(rearmed.get("shotgun_first_attack_delay_left", 0.0))
 

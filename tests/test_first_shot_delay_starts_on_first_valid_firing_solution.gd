@@ -39,24 +39,30 @@ func _test_first_shot_delay_runtime_contract() -> void:
 	await get_tree().physics_frame
 	enemy.initialize(6501, "zombie")
 	enemy.debug_force_awareness_state("COMBAT")
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("first-shot delay: runtime helper exists", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
 
-	enemy.call("_reset_first_shot_delay_state")
-	enemy.call("_update_first_shot_delay_runtime", 0.4, false, "ctx_a")
+	runtime.call("reset_first_shot_delay_state")
+	runtime.call("update_first_shot_delay_runtime", 0.4, false, "ctx_a")
 	var before_valid := enemy.get_debug_detection_snapshot() as Dictionary
 
-	enemy.call("_update_first_shot_delay_runtime", 0.1, true, "ctx_a")
+	runtime.call("update_first_shot_delay_runtime", 0.1, true, "ctx_a")
 	var after_arm := enemy.get_debug_detection_snapshot() as Dictionary
 	var armed_delay := float(after_arm.get("shotgun_first_attack_delay_left", 0.0))
 
-	enemy.call("_update_first_shot_delay_runtime", 0.6, false, "ctx_a")
+	runtime.call("update_first_shot_delay_runtime", 0.6, false, "ctx_a")
 	var after_pause := enemy.get_debug_detection_snapshot() as Dictionary
 	var paused_delay := float(after_pause.get("shotgun_first_attack_delay_left", 0.0))
 
-	enemy.call("_update_first_shot_delay_runtime", 0.4, true, "ctx_a")
+	runtime.call("update_first_shot_delay_runtime", 0.4, true, "ctx_a")
 	var after_resume := enemy.get_debug_detection_snapshot() as Dictionary
 	var resumed_delay := float(after_resume.get("shotgun_first_attack_delay_left", 0.0))
 
-	enemy.call("_update_first_shot_delay_runtime", 0.1, true, "ctx_b")
+	runtime.call("update_first_shot_delay_runtime", 0.1, true, "ctx_b")
 	var after_context_switch := enemy.get_debug_detection_snapshot() as Dictionary
 	var switched_delay := float(after_context_switch.get("shotgun_first_attack_delay_left", 0.0))
 

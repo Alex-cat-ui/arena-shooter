@@ -40,8 +40,16 @@ func _test_friendly_block_prevents_fire_and_triggers_reposition() -> void:
 
 	enemy.initialize(7606, "zombie")
 	enemy.debug_force_awareness_state("COMBAT")
-	enemy.set("_shot_cooldown", 0.0)
-	enemy.set("_combat_first_shot_fired", true)
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("friendly-block: runtime helper exists", runtime != null)
+	if runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	runtime.call("set_state_patch", {
+		"_shot_cooldown": 0.0,
+		"_combat_first_shot_fired": true,
+	})
 
 	var fire_contact := {
 		"los": true,
@@ -52,11 +60,11 @@ func _test_friendly_block_prevents_fire_and_triggers_reposition() -> void:
 		"weapon_ready": true,
 		"friendly_block": true,
 	}
-	var reason := String(enemy.call("_resolve_shotgun_fire_block_reason", fire_contact))
-	enemy.call("_register_friendly_block_and_reposition")
-	enemy.call("_register_friendly_block_and_reposition")
+	var reason := String(runtime.call("resolve_shotgun_fire_block_reason", fire_contact))
+	runtime.call("register_friendly_block_and_reposition")
+	runtime.call("register_friendly_block_and_reposition")
 	var snapshot_after_blocks := enemy.get_debug_detection_snapshot() as Dictionary
-	enemy.call("_mark_enemy_shot_success")
+	runtime.call("mark_enemy_shot_success")
 	var snapshot_after_success := enemy.get_debug_detection_snapshot() as Dictionary
 
 	_t.run_test("friendly in line of fire blocks shot", reason == "friendly_block")

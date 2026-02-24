@@ -62,6 +62,10 @@ const ALERT_DEGRADE_HOLD_GRACE_DECAY_TEST_SCENE := "res://tests/test_alert_degra
 const SUSPICION_CHANNELS_VS_CONFIRM_CHANNEL_TEST_SCENE := "res://tests/test_suspicion_channels_vs_confirm_channel.tscn"
 const TEAMMATE_CALL_ROOM_GRAPH_GATE_TEST_SCENE := "res://tests/test_teammate_call_room_graph_gate_no_telepathy.tscn"
 const COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE := "res://tests/test_combat_role_lock_and_reassign_triggers.tscn"
+const ENEMY_COMBAT_SEARCH_RUNTIME_UNIT_TEST_SCENE := "res://tests/test_enemy_combat_search_runtime_unit.tscn"
+const ENEMY_COMBAT_SEARCH_RECOVERY_UNIT_TEST_SCENE := "res://tests/test_enemy_combat_search_recovery_unit.tscn"
+const ENEMY_FIRE_CONTROL_RUNTIME_UNIT_TEST_SCENE := "res://tests/test_enemy_fire_control_runtime_unit.tscn"
+const ENEMY_FIRE_FIRST_SHOT_GATE_UNIT_TEST_SCENE := "res://tests/test_enemy_fire_first_shot_gate_unit.tscn"
 const COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE := "res://tests/test_combat_search_per_room_budget_and_total_cap.tscn"
 const COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE := "res://tests/test_combat_next_room_scoring_no_loops.tscn"
 const COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE := "res://tests/test_combat_to_alert_requires_no_contact_and_search_progress.tscn"
@@ -775,6 +779,12 @@ func _run_tests() -> void:
 	_test("Combat role lock/reassign triggers test scene exists", func():
 		return _scene_exists(COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE)
 	)
+	_test("Enemy combat-search runtime unit test scene exists", func():
+		return _scene_exists(ENEMY_COMBAT_SEARCH_RUNTIME_UNIT_TEST_SCENE)
+	)
+	_test("Enemy combat-search recovery unit test scene exists", func():
+		return _scene_exists(ENEMY_COMBAT_SEARCH_RECOVERY_UNIT_TEST_SCENE)
+	)
 	_test("Combat search per-room budget/total cap test scene exists", func():
 		return _scene_exists(COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE)
 	)
@@ -1149,6 +1159,10 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Suspicion channels vs confirm channel suite", SUSPICION_CHANNELS_VS_CONFIRM_CHANNEL_TEST_SCENE)
 	await _run_embedded_scene_suite("Teammate call room-graph gate suite", TEAMMATE_CALL_ROOM_GRAPH_GATE_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat role lock/reassign triggers suite", COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy combat-search runtime unit suite", ENEMY_COMBAT_SEARCH_RUNTIME_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy combat-search recovery unit suite", ENEMY_COMBAT_SEARCH_RECOVERY_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy fire-control runtime unit suite", ENEMY_FIRE_CONTROL_RUNTIME_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy fire first-shot gate unit suite", ENEMY_FIRE_FIRST_SHOT_GATE_UNIT_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat search per-room budget/total cap suite", COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat next-room scoring suite", COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat->Alert search/no-contact gate suite", COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE)

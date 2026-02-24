@@ -62,7 +62,6 @@ class FakeDarkNav:
 		return Rect2(Vector2(0.0, -64.0), Vector2(192.0, 192.0))
 
 	func is_point_in_shadow(point: Vector2) -> bool:
-		# Only the dark-node target is shadowed.
 		return point.x >= 96.0
 
 	func get_nearest_non_shadow_point(target: Vector2, radius_px: float) -> Vector2:
@@ -82,14 +81,14 @@ func _ready() -> void:
 func run_suite() -> Dictionary:
 	print("")
 	print("============================================================")
-	print("REPEATED BLOCKED POINT TRIGGERS SCAN THEN SEARCH TEST")
+	print("ENEMY COMBAT SEARCH RECOVERY UNIT TEST")
 	print("============================================================")
 
 	await _test_repeated_same_blocked_point_requests_next_search_node()
-	await _test_enemy_applies_recovery_feedback_and_skips_current_dark_node()
-	await _test_next_dark_node_in_shadow_runs_shadow_boundary_scan_then_search()
+	await _test_runtime_recovery_marks_skipped_node_visited_and_selects_next()
+	await _test_recovered_dark_node_transitions_scan_then_search()
 
-	_t.summary("REPEATED BLOCKED POINT TRIGGERS SCAN THEN SEARCH RESULTS")
+	_t.summary("ENEMY COMBAT SEARCH RECOVERY UNIT RESULTS")
 	return {
 		"ok": _t.quit_code() == 0,
 		"run": _t.tests_run,
@@ -97,28 +96,24 @@ func run_suite() -> Dictionary:
 	}
 
 
-func _spawn_enemy(world: Node2D, nav: Node, pos: Vector2 = Vector2(72.0, 32.0)) -> Enemy:
+func _spawn_enemy(world: Node2D, nav: Node, pos: Vector2 = Vector2(72.0, 32.0)) -> Dictionary:
 	var enemy := ENEMY_SCENE.instantiate() as Enemy
 	enemy.global_position = pos
 	world.add_child(enemy)
 	await get_tree().process_frame
 	await get_tree().physics_frame
-	enemy.initialize(17101, "zombie")
+	enemy.initialize(56012, "zombie")
 	enemy.set_room_navigation(nav, 0)
 	enemy.debug_force_awareness_state("COMBAT")
 	enemy.set_process(false)
 	enemy.set_physics_process(false)
-	return enemy
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("combat_search_runtime", null)
+	return {"enemy": enemy, "runtime": runtime}
 
 
-func _runtime(enemy: Enemy):
-	return (enemy.get_runtime_helper_refs() as Dictionary).get("combat_search_runtime", null)
-
-
-func _install_fake_stage_pursuit(enemy: Enemy, stage: int = 0) -> FakeStagePursuit:
+func _install_fake_stage_pursuit(runtime, stage: int = 0) -> FakeStagePursuit:
 	var fake := FakeStagePursuit.new()
 	fake.stage = stage
-	var runtime: Variant = _runtime(enemy)
 	if runtime != null:
 		runtime.call("set_state_value", "_pursuit", fake)
 	return fake
@@ -288,14 +283,14 @@ func _test_repeated_same_blocked_point_requests_next_search_node() -> void:
 			break
 
 	_t.run_test(
-		"repeated same blocked_point bucket triggers next-node recovery request",
+		"repeated blocked-point bucket triggers recovery request for next node",
 		threshold_hit
 			and bool(threshold_result.get("repath_recovery_request_next_search_node", false))
 			and bool(threshold_result.get("repath_recovery_preserve_intent", false))
 			and int(threshold_result.get("repath_recovery_repeat_count", 0)) >= 2
 	)
 	_t.run_test(
-		"threshold tick returns gameplay intent target while tracker can reset internally",
+		"recovery payload preserves gameplay intent target",
 		threshold_hit
 			and ((threshold_result.get("repath_recovery_intent_target", Vector2.ZERO) as Vector2).distance_to(target) <= 0.001)
 	)
@@ -304,19 +299,22 @@ func _test_repeated_same_blocked_point_requests_next_search_node() -> void:
 	await get_tree().process_frame
 
 
-func _test_enemy_applies_recovery_feedback_and_skips_current_dark_node() -> void:
+func _test_runtime_recovery_marks_skipped_node_visited_and_selects_next() -> void:
 	var world := Node2D.new()
 	add_child(world)
 	var nav := FakeDarkNav.new()
 	world.add_child(nav)
-	var enemy := await _spawn_enemy(world, nav)
-	var runtime: Variant = _runtime(enemy)
+	var refs: Dictionary = await _spawn_enemy(world, nav)
+	var enemy := refs.get("enemy", null) as Enemy
+	var runtime: Variant = refs.get("runtime", null)
+
 	_t.run_test("combat-search runtime is available", runtime != null)
-	if runtime == null:
+	if runtime == null or enemy == null:
 		world.queue_free()
 		await get_tree().process_frame
 		return
-	_install_fake_stage_pursuit(enemy)
+
+	_install_fake_stage_pursuit(runtime)
 	var seeded := _seed_dark_search_session(runtime)
 	var before_target := runtime.call("get_state_value", "_combat_search_target_pos", Vector2.ZERO) as Vector2
 	var before_key := String(runtime.call("get_state_value", "_combat_search_current_node_key", ""))
@@ -325,8 +323,11 @@ func _test_enemy_applies_recovery_feedback_and_skips_current_dark_node() -> void
 		"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH,
 		"target": before_target,
 	}
-	var exec_result := _build_matching_recovery_exec_result(before_target, "hard_stall")
-	runtime.call("apply_repath_recovery_feedback", intent, exec_result)
+	runtime.call(
+		"apply_repath_recovery_feedback",
+		intent,
+		_build_matching_recovery_exec_result(before_target, "hard_stall")
+	)
 
 	var snap := enemy.get_debug_detection_snapshot() as Dictionary
 	var after_key := String(runtime.call("get_state_value", "_combat_search_current_node_key", ""))
@@ -334,20 +335,20 @@ func _test_enemy_applies_recovery_feedback_and_skips_current_dark_node() -> void
 	var visited := ((runtime.call("get_state_value", "_combat_search_room_node_visited", {}) as Dictionary).get(0, {}) as Dictionary)
 
 	_t.run_test(
-		"enemy applies recovery and reports skipped node key",
+		"runtime reports recovery applied and records skipped node key",
 		bool(snap.get("combat_search_recovery_applied", false))
 			and String(snap.get("combat_search_recovery_reason", "")) == "hard_stall"
 			and String(snap.get("combat_search_recovery_skipped_node_key", "")) == before_key
 	)
 	_t.run_test(
-		"skipped node is marked visited and next node selected",
+		"skipped node is marked visited and replaced with next node",
 		bool(visited.get(before_key, false))
 			and after_key != ""
 			and after_key != before_key
 			and after_target.distance_to(before_target) > 0.5
 	)
 	_t.run_test(
-		"next selected node is the dark pocket",
+		"next node selected after recovery is expected dark pocket",
 		after_key == "r0:dark:0"
 			and after_target.distance_to(seeded.get("next_dark_target", Vector2.ZERO) as Vector2) <= 0.001
 	)
@@ -356,33 +357,32 @@ func _test_enemy_applies_recovery_feedback_and_skips_current_dark_node() -> void
 	await get_tree().process_frame
 
 
-func _test_next_dark_node_in_shadow_runs_shadow_boundary_scan_then_search() -> void:
+func _test_recovered_dark_node_transitions_scan_then_search() -> void:
 	var world := Node2D.new()
 	add_child(world)
 	var nav := FakeDarkNav.new()
 	world.add_child(nav)
-	var enemy := await _spawn_enemy(world, nav)
-	var runtime: Variant = _runtime(enemy)
-	_t.run_test("runtime available for scan->search test", runtime != null)
-	if runtime == null:
+	var refs: Dictionary = await _spawn_enemy(world, nav)
+	var enemy := refs.get("enemy", null) as Enemy
+	var runtime: Variant = refs.get("runtime", null)
+
+	_t.run_test("runtime available for scan->search transition test", runtime != null)
+	if runtime == null or enemy == null:
 		world.queue_free()
 		await get_tree().process_frame
 		return
-	var fake_pursuit := _install_fake_stage_pursuit(enemy)
+
+	var fake_pursuit := _install_fake_stage_pursuit(runtime)
 	var brain = ENEMY_UTILITY_BRAIN_SCRIPT.new()
 	var seeded := _seed_dark_search_session(runtime)
 	var current_target := seeded.get("current_target", Vector2.ZERO) as Vector2
 	var next_dark_target := seeded.get("next_dark_target", Vector2.ZERO) as Vector2
-
-	var apply_intent := {
-		"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH,
-		"target": current_target,
-	}
 	runtime.call(
 		"apply_repath_recovery_feedback",
-		apply_intent,
+		{"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH, "target": current_target},
 		_build_matching_recovery_exec_result(current_target, "blocked_point_repeat")
 	)
+
 	var first_intent := _build_no_contact_intent(brain, enemy, runtime)
 	var first_target := first_intent.get("target", Vector2.ZERO) as Vector2
 	_complete_shadow_stage_edge(runtime, fake_pursuit, next_dark_target)
@@ -391,17 +391,17 @@ func _test_next_dark_node_in_shadow_runs_shadow_boundary_scan_then_search() -> v
 	var snap := enemy.get_debug_detection_snapshot() as Dictionary
 
 	_t.run_test(
-		"after recovery skip next dark node emits SHADOW_BOUNDARY_SCAN",
+		"recovered dark node first emits SHADOW_BOUNDARY_SCAN",
 		int(first_intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
 			and first_target.distance_to(next_dark_target) <= 0.001
 	)
 	_t.run_test(
-		"same next dark node flips to SEARCH after shadow stage completion",
+		"after shadow stage completion recovered node emits SEARCH",
 		int(second_intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
 			and ((second_intent.get("target", Vector2.ZERO) as Vector2).distance_to(next_dark_target) <= 0.001)
 	)
 	_t.run_test(
-		"no repeated SHADOW_BOUNDARY_SCAN loop after completion on recovered next node",
+		"no repeated SHADOW_BOUNDARY_SCAN after completion on same recovered node",
 		int(third_intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
 			and bool(snap.get("combat_search_shadow_scan_suppressed", false))
 	)

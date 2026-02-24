@@ -45,19 +45,28 @@ func _test_telegraph_profile_production_vs_debug() -> void:
 	await get_tree().physics_frame
 
 	enemy.initialize(7603, "zombie")
+	var runtime: Variant = (enemy.get_runtime_helper_refs() as Dictionary).get("fire_control_runtime", null)
+	_t.run_test("telegraph profile: runtime helper exists", runtime != null)
+	if runtime == null:
+		if GameConfig:
+			GameConfig.ai_fire_profile_mode = _saved_mode
+			GameConfig.ai_fire_profiles = _saved_profiles.duplicate(true)
+		world.queue_free()
+		await get_tree().process_frame
+		return
 
 	if GameConfig:
 		GameConfig.ai_fire_profile_mode = "production"
-	var production_roll := float(enemy.call("_roll_telegraph_duration_sec"))
+	var production_roll := float(runtime.call("roll_telegraph_duration_sec"))
 
 	if GameConfig:
 		GameConfig.ai_fire_profile_mode = "debug_test"
-	var debug_roll := float(enemy.call("_roll_telegraph_duration_sec"))
+	var debug_roll := float(runtime.call("roll_telegraph_duration_sec"))
 
 	if GameConfig:
 		GameConfig.ai_fire_profile_mode = "auto"
-	var auto_roll := float(enemy.call("_roll_telegraph_duration_sec"))
-	var auto_mode := String(enemy.call("_resolve_ai_fire_profile_mode"))
+	var auto_roll := float(runtime.call("roll_telegraph_duration_sec"))
+	var auto_mode := String(runtime.call("resolve_ai_fire_profile_mode"))
 
 	_t.run_test("production profile telegraph is 0.10..0.18s", production_roll >= 0.10 and production_roll <= 0.18)
 	_t.run_test("debug_test profile telegraph is 0.35..0.60s", debug_roll >= 0.35 and debug_roll <= 0.60)
