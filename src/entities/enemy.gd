@@ -1102,9 +1102,14 @@ func _resolve_squad_assignment() -> Dictionary:
 	if squad_system and squad_system.has_method("get_assignment") and entity_id > 0:
 		return squad_system.get_assignment(entity_id) as Dictionary
 	return {
-		"role": 0,
+		"role": SQUAD_ROLE_PRESSURE,
+		"slot_role": SQUAD_ROLE_PRESSURE,
 		"slot_position": Vector2.ZERO,
 		"path_ok": false,
+		"path_status": "unreachable_geometry",
+		"path_reason": "nav_service_missing",
+		"slot_path_length": INF,
+		"slot_path_eta_sec": INF,
 		"has_slot": false,
 	}
 
@@ -1129,6 +1134,11 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 	var base_role := int(assignment.get("role", SQUAD_ROLE_PRESSURE))
 	var raw_role := _resolve_runtime_combat_role(base_role)
 	var effective_role := _effective_squad_role_for_context(raw_role)
+	var assignment_path_ok := bool(assignment.get("path_ok", false))
+	var assignment_slot_role := int(assignment.get("slot_role", base_role))
+	var slot_path_status := String(assignment.get("path_status", "ok" if assignment_path_ok else "unreachable_geometry"))
+	var slot_path_eta_sec := float(assignment.get("slot_path_eta_sec", INF))
+	var flank_slot_contract_ok := _assignment_supports_flank_role(assignment)
 	var effective_alert_level := _resolve_effective_alert_level_for_utility()
 	var shadow_scan_target := Vector2.ZERO
 	var shadow_scan_source := "none"
@@ -1178,10 +1188,14 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 		"has_investigate_anchor": has_investigate_anchor,
 		"dist_to_investigate_anchor": global_position.distance_to(_investigate_anchor) if has_investigate_anchor else INF,
 		"role": effective_role,
+		"slot_role": assignment_slot_role,
 		"slot_position": slot_pos,
 		"dist_to_slot": global_position.distance_to(slot_pos) if slot_pos != Vector2.ZERO else INF,
 		"hp_ratio": hp_ratio,
-		"path_ok": bool(assignment.get("path_ok", false)),
+		"path_ok": assignment_path_ok,
+		"slot_path_status": slot_path_status,
+		"slot_path_eta_sec": slot_path_eta_sec,
+		"flank_slot_contract_ok": flank_slot_contract_ok,
 		"has_slot": bool(assignment.get("has_slot", false)),
 		"player_pos": known_target_pos,
 		"known_target_pos": known_target_pos,
@@ -2442,17 +2456,27 @@ func _reassign_combat_role(
 
 
 func _assignment_supports_flank_role(assignment: Dictionary) -> bool:
-	if int(assignment.get("role", -1)) != SQUAD_ROLE_FLANK:
+	var effective_role := int(assignment.get("role", SQUAD_ROLE_PRESSURE))
+	var effective_slot_role := int(assignment.get("slot_role", effective_role))
+	if effective_slot_role != SQUAD_ROLE_FLANK:
 		return false
 	if not bool(assignment.get("has_slot", false)):
 		return false
 	if not bool(assignment.get("path_ok", false)):
 		return false
+	var path_status := String(
+		assignment.get("path_status", "ok" if bool(assignment.get("path_ok", false)) else "unreachable_geometry")
+	)
+	if path_status != "ok":
+		return false
 	var path_length := float(assignment.get("slot_path_length", INF))
+	var eta_sec := float(assignment.get("slot_path_eta_sec", INF))
+	var assumed_speed := _squad_cfg_float("flank_walk_speed_assumed_px_per_sec", 150.0)
+	if not is_finite(eta_sec):
+		eta_sec = path_length / maxf(assumed_speed, 0.001)
 	if path_length > _squad_cfg_float("flank_max_path_px", 900.0):
 		return false
-	var assumed_speed := _squad_cfg_float("flank_walk_speed_assumed_px_per_sec", 150.0)
-	if path_length / maxf(assumed_speed, 0.001) > _squad_cfg_float("flank_max_time_sec", 3.5):
+	if eta_sec > _squad_cfg_float("flank_max_time_sec", 3.5):
 		return false
 	return true
 
@@ -2473,6 +2497,8 @@ func _resolve_contextual_combat_role(
 			return SQUAD_ROLE_PRESSURE
 		if target_distance < hold_range_min and not flank_available:
 			return SQUAD_ROLE_HOLD
+	if candidate_role == SQUAD_ROLE_FLANK and not flank_available:
+		return SQUAD_ROLE_PRESSURE
 	if flank_available and is_finite(target_distance):
 		if target_distance >= hold_range_min and target_distance <= hold_range_max:
 			return SQUAD_ROLE_FLANK

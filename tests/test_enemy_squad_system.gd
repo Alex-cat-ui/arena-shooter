@@ -9,10 +9,18 @@ class FakeNav extends Node:
 	func room_id_at_point(_p: Vector2) -> int:
 		return 0
 
-	func build_path_points(from_pos: Vector2, to_pos: Vector2) -> Array[Vector2]:
+	func build_policy_valid_path(from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> Dictionary:
 		if from_pos.distance_to(to_pos) > max_reachable_dist:
-			return []
-		return [to_pos]
+			return {
+				"status": "unreachable_geometry",
+				"reason": "navmesh_no_path",
+				"path_points": [],
+			}
+		return {
+			"status": "ok",
+			"reason": "ok",
+			"path_points": [to_pos],
+		}
 
 	func nav_path_length(from_pos: Vector2, to_pos: Vector2, _enemy: Node = null) -> float:
 		if from_pos.distance_to(to_pos) > max_reachable_dist:
@@ -50,6 +58,7 @@ func run_suite() -> Dictionary:
 	_test_unique_slot_reservations()
 	_test_role_stability()
 	_test_path_fallback()
+	_test_assignment_includes_tactical_contract_fields()
 	_test_slot_path_length_in_assignment()
 	_cleanup()
 
@@ -141,6 +150,8 @@ func _test_path_fallback() -> void:
 
 	var has_path_ok := false
 	var has_path_bad := false
+	var ok_status_reason_consistent := true
+	var bad_status_reason_consistent := true
 	for child_variant in _entities.get_children():
 		var enemy := child_variant as FakeEnemy
 		var assignment := _squad.get_assignment(enemy.entity_id) as Dictionary
@@ -148,11 +159,55 @@ func _test_path_fallback() -> void:
 			continue
 		if bool(assignment.get("path_ok", false)):
 			has_path_ok = true
+			ok_status_reason_consistent = ok_status_reason_consistent \
+				and String(assignment.get("path_status", "")) == "ok" \
+				and String(assignment.get("path_reason", "")) == "ok"
 		else:
 			has_path_bad = true
+			bad_status_reason_consistent = bad_status_reason_consistent \
+				and String(assignment.get("path_status", "")) != "ok" \
+				and String(assignment.get("path_reason", "")) != ""
 
 	_t.run_test("Path-aware assignment keeps reachable slots", has_path_ok)
 	_t.run_test("Fallback keeps assignment even when some slots unreachable", has_path_bad or has_path_ok)
+	_t.run_test("Reachable assignments publish path_status/path_reason=ok", ok_status_reason_consistent)
+	_t.run_test("Unreachable assignments publish non-ok path_status/path_reason", bad_status_reason_consistent)
+
+
+func _test_assignment_includes_tactical_contract_fields() -> void:
+	var has_assigned := false
+	var assigned_fields_ok := true
+	for child_variant in _entities.get_children():
+		var enemy := child_variant as FakeEnemy
+		var assignment := _squad.get_assignment(enemy.entity_id) as Dictionary
+		if not bool(assignment.get("has_slot", false)):
+			continue
+		has_assigned = true
+		assigned_fields_ok = assigned_fields_ok \
+			and assignment.has("slot_role") \
+			and assignment.has("path_status") \
+			and assignment.has("path_reason") \
+			and assignment.has("slot_path_length") \
+			and assignment.has("slot_path_eta_sec") \
+			and assignment.has("cover_source") \
+			and assignment.has("cover_los_break_quality") \
+			and assignment.has("cover_score") \
+			and typeof(assignment.get("slot_role", null)) == TYPE_INT \
+			and typeof(assignment.get("slot_path_eta_sec", null)) == TYPE_FLOAT
+	if not has_assigned:
+		assigned_fields_ok = false
+
+	var default_assignment := _squad._default_assignment(_squad.Role.HOLD) as Dictionary
+	var default_fields_ok: bool = (
+		default_assignment.has("slot_role")
+		and int(default_assignment.get("slot_role", -1)) == _squad.Role.HOLD
+		and default_assignment.has("slot_path_eta_sec")
+		and is_inf(float(default_assignment.get("slot_path_eta_sec", 0.0)))
+		and default_assignment.has("path_status")
+		and default_assignment.has("path_reason")
+	)
+	_t.run_test("Assignments publish Phase 18 tactical contract fields", assigned_fields_ok)
+	_t.run_test("Default assignment includes Phase 18 tactical defaults", default_fields_ok)
 
 
 func _test_slot_path_length_in_assignment() -> void:

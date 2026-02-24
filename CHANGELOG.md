@@ -2,6 +2,16 @@
 
 ## 2026-02-24
 
+### 15:25 MSK - Phase 18: Tactical Cover Slot Scoring + Policy-Valid Squad Path Contract + FLANK Contract Gating
+- **Changed**: `EnemySquadSystem` now scores tactical slots with policy-valid path contract outputs (`path_status`, `path_reason`, `slot_path_length`, `slot_path_eta_sec`) plus deterministic cover metadata (`cover_source`, `cover_los_break_quality`, `cover_score`) and forbids returning invalid FLANK tactical slots
+- **Added**: HOLD cover-slot generation from room geometry (wall cover baseline + optional obstacle cover extraction when test layout exposes `_navigation_obstacles()`) with deterministic LOS-break scoring and tie-break ordering
+- **Changed**: squad assignments now persist Phase 18 tactical contract fields (`slot_role`, `path_status`, `path_reason`, `slot_path_eta_sec`, `blocked_point(_valid)`, cover metadata) while preserving stable member `role`
+- **Changed**: `Enemy._assignment_supports_flank_role(...)` upgraded to require `slot_role == FLANK`, `path_status == "ok"`, and ETA/path budget validity; `Enemy._build_utility_context(...)` now publishes `flank_slot_contract_ok`
+- **Changed**: `EnemyUtilityBrain._choose_intent(...)` blocks LOS `MOVE_TO_SLOT` FLANK branches when `flank_slot_contract_ok == false`; `Enemy._resolve_contextual_combat_role(...)` now applies the approved valid-contact invalid-FLANK fallback to `PRESSURE`
+- **Removed**: legacy squad slot validation via direct `build_path_points(...)` and deleted `ai_balance.squad.slot_path_tail_tolerance_px` (config + validator)
+- **Added tests**: `tests/test_combat_cover_selection_prefers_valid_cover.gd/.tscn`, `tests/test_combat_flank_requires_eta_and_path_ok.gd/.tscn`, `tests/test_combat_role_distribution_not_all_pressure.gd/.tscn`
+- **Updated tests**: `tests/test_enemy_squad_system.gd`, `tests/test_combat_role_lock_and_reassign_triggers.gd`, and `tests/test_runner_node.gd` (Phase 18 scene registration)
+
 ### 14:35 MSK - Phase 17: Pursuit Repath Recovery Feedback + Dark-Search Node Skip Recovery
 - **Changed**: `EnemyPursuitSystem.execute_intent(...)` now emits deterministic Phase 17 `repath_recovery_*` feedback (collision-blocked / hard-stall / repeated blocked-point watchdog) while preserving PMB boundaries and policy-path planner ownership
 - **Added**: blocked-point repeat tracker + thresholds in `src/systems/enemy_pursuit_system.gd` and pursuit config keys/validator checks (`repath_recovery_blocked_point_bucket_px`, `repath_recovery_blocked_point_repeat_threshold`, `repath_recovery_intent_target_match_radius_px`)

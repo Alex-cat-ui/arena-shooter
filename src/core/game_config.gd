@@ -201,7 +201,6 @@ const DEFAULT_AI_BALANCE := {
 		"hold_slot_count": 8,
 		"flank_slot_count": 8,
 		"invalid_path_score_penalty": 100000.0,
-		"slot_path_tail_tolerance_px": 24.0,
 		"flank_max_path_px": 900.0,
 		"flank_max_time_sec": 3.5,
 		"flank_walk_speed_assumed_px_per_sec": 150.0,

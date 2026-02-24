@@ -70,12 +70,33 @@ func _test_role_lock_and_triggered_reassign() -> void:
 	enemy.call("_reset_combat_role_runtime")
 	var flank_assignment := {
 		"role": Enemy.SQUAD_ROLE_FLANK,
+		"slot_role": Enemy.SQUAD_ROLE_FLANK,
 		"has_slot": true,
 		"path_ok": true,
+		"path_status": "ok",
+		"path_reason": "ok",
 		"slot_path_length": 420.0,
+		"slot_path_eta_sec": 2.8,
 	}
 	enemy.call("_update_combat_role_runtime", 0.1, false, false, 4.0, false, 0, 420.0, flank_assignment)
 	var snap_context_flank := enemy.get_debug_detection_snapshot() as Dictionary
+
+	enemy.call("_reset_combat_role_runtime")
+	var invalid_flank_assignment := {
+		"role": Enemy.SQUAD_ROLE_FLANK,
+		"slot_role": Enemy.SQUAD_ROLE_FLANK,
+		"has_slot": true,
+		"path_ok": true,
+		"path_status": "unreachable_policy",
+		"path_reason": "policy_blocked",
+		"slot_path_length": 420.0,
+		"slot_path_eta_sec": 2.8,
+	}
+	enemy.call("_update_combat_role_runtime", 0.1, false, false, 4.0, false, 0, 420.0, invalid_flank_assignment)
+	var snap_context_invalid_flank := enemy.get_debug_detection_snapshot() as Dictionary
+	var valid_contact_invalid_flank_role := int(
+		enemy.call("_resolve_contextual_combat_role", Enemy.SQUAD_ROLE_FLANK, true, 500.0, invalid_flank_assignment)
+	)
 
 	enemy.call("_reset_combat_role_runtime")
 	enemy.call("_update_combat_role_runtime", 0.1, true, false, 4.0, false, 0, 900.0, assignment)
@@ -94,6 +115,14 @@ func _test_role_lock_and_triggered_reassign() -> void:
 	_t.run_test(
 		"context role: no contact + flank availability picks FLANK",
 		int(snap_context_flank.get("combat_role_current", -1)) == Enemy.SQUAD_ROLE_FLANK
+	)
+	_t.run_test(
+		"context role: no contact + invalid flank contract does not keep FLANK",
+		int(snap_context_invalid_flank.get("combat_role_current", -1)) != Enemy.SQUAD_ROLE_FLANK
+	)
+	_t.run_test(
+		"context role: valid contact + invalid FLANK falls back to PRESSURE",
+		valid_contact_invalid_flank_role == Enemy.SQUAD_ROLE_PRESSURE
 	)
 	_t.run_test(
 		"context role: far contact distance picks PRESSURE",

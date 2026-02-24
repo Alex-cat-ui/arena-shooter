@@ -270,7 +270,6 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_int_key(result, squad, "hold_slot_count", "ai_balance.squad", 1, 64)
 		_validate_int_key(result, squad, "flank_slot_count", "ai_balance.squad", 1, 64)
 		_validate_number_key(result, squad, "invalid_path_score_penalty", "ai_balance.squad", 0.0, 10000000.0)
-		_validate_number_key(result, squad, "slot_path_tail_tolerance_px", "ai_balance.squad", 0.0, 1000.0)
 		_validate_number_key(result, squad, "flank_max_path_px", "ai_balance.squad", 1.0, 10000.0)
 		_validate_number_key(result, squad, "flank_max_time_sec", "ai_balance.squad", 0.1, 60.0)
 		_validate_number_key(result, squad, "flank_walk_speed_assumed_px_per_sec", "ai_balance.squad", 1.0, 10000.0)

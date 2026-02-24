@@ -105,6 +105,7 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var path_ok := bool(ctx.get("path_ok", false))
 	var slot_pos := ctx.get("slot_position", Vector2.ZERO) as Vector2
 	var has_slot := bool(ctx.get("has_slot", false))
+	var flank_slot_contract_ok := bool(ctx.get("flank_slot_contract_ok", true))
 	var known_target_pos := ctx.get("known_target_pos", ctx.get("player_pos", Vector2.ZERO)) as Vector2
 	var last_seen_pos := ctx.get("last_seen_pos", Vector2.ZERO) as Vector2
 	var target_is_last_seen := bool(ctx.get("target_is_last_seen", false))
@@ -211,7 +212,8 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	if has_los:
 		if has_slot and path_ok and slot_pos != Vector2.ZERO:
 			var dist_to_slot := float(ctx.get("dist_to_slot", INF))
-			if dist_to_slot > slot_reposition_threshold:
+			var flank_reposition_allowed := (role != ENEMY_SQUAD_SYSTEM_SCRIPT.Role.FLANK) or flank_slot_contract_ok
+			if dist_to_slot > slot_reposition_threshold and flank_reposition_allowed:
 				return {
 					"type": IntentType.MOVE_TO_SLOT,
 					"target": slot_pos,
@@ -228,7 +230,12 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 				"target": known_target_pos,
 			}
 
-		if role == ENEMY_SQUAD_SYSTEM_SCRIPT.Role.FLANK and has_slot and slot_pos != Vector2.ZERO:
+		if (
+			role == ENEMY_SQUAD_SYSTEM_SCRIPT.Role.FLANK
+			and has_slot
+			and slot_pos != Vector2.ZERO
+			and flank_slot_contract_ok
+		):
 			return {
 				"type": IntentType.MOVE_TO_SLOT,
 				"target": slot_pos,

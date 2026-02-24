@@ -98,6 +98,9 @@ const NAVIGATION_SHADOW_COST_PUSH_MODE_SHORTCUT_TEST_SCENE := "res://tests/test_
 const TACTIC_CONTAIN_EXIT_SLOTS_TEST_SCENE := "res://tests/test_tactic_contain_assigns_exit_slots.tscn"
 const TACTIC_FLANK_BUDGET_GUARD_TEST_SCENE := "res://tests/test_tactic_flank_requires_path_and_time_budget.tscn"
 const MULTI_ENEMY_PRESSURE_NO_PATROL_REGRESSION_TEST_SCENE := "res://tests/test_multi_enemy_pressure_no_patrol_regression.tscn"
+const COMBAT_COVER_SELECTION_PREFERS_VALID_COVER_TEST_SCENE := "res://tests/test_combat_cover_selection_prefers_valid_cover.tscn"
+const COMBAT_FLANK_REQUIRES_ETA_AND_PATH_OK_TEST_SCENE := "res://tests/test_combat_flank_requires_eta_and_path_ok.tscn"
+const COMBAT_ROLE_DISTRIBUTION_NOT_ALL_PRESSURE_TEST_SCENE := "res://tests/test_combat_role_distribution_not_all_pressure.tscn"
 const SHADOW_SEARCH_STAGE_TRANSITION_TEST_SCENE := "res://tests/test_shadow_search_stage_transition_contract.tscn"
 const SHADOW_SEARCH_PROGRESSIVE_COVERAGE_TEST_SCENE := "res://tests/test_shadow_search_choreography_progressive_coverage.tscn"
 const FLASHLIGHT_SCANNER_ROLE_ASSIGNMENT_TEST_SCENE := "res://tests/test_flashlight_single_scanner_role_assignment.tscn"
@@ -1231,12 +1234,33 @@ func _run_tests() -> void:
 	_test("Multi-enemy pressure no-patrol regression test scene exists", func():
 		return _scene_exists(MULTI_ENEMY_PRESSURE_NO_PATROL_REGRESSION_TEST_SCENE)
 	)
+	_test("Combat cover selection prefers valid cover test scene exists", func():
+		return _scene_exists(COMBAT_COVER_SELECTION_PREFERS_VALID_COVER_TEST_SCENE)
+	)
+	_test("Combat flank requires ETA/path-ok test scene exists", func():
+		return _scene_exists(COMBAT_FLANK_REQUIRES_ETA_AND_PATH_OK_TEST_SCENE)
+	)
+	_test("Combat role distribution not-all-pressure test scene exists", func():
+		return _scene_exists(COMBAT_ROLE_DISTRIBUTION_NOT_ALL_PRESSURE_TEST_SCENE)
+	)
 
 	await _run_embedded_scene_suite("Tactic contain exit slots suite", TACTIC_CONTAIN_EXIT_SLOTS_TEST_SCENE)
 	await _run_embedded_scene_suite("Tactic flank budget guard suite", TACTIC_FLANK_BUDGET_GUARD_TEST_SCENE)
 	await _run_embedded_scene_suite(
 		"Multi-enemy pressure no-patrol regression suite",
 		MULTI_ENEMY_PRESSURE_NO_PATROL_REGRESSION_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Combat cover selection prefers valid cover suite",
+		COMBAT_COVER_SELECTION_PREFERS_VALID_COVER_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Combat flank requires ETA and path-ok suite",
+		COMBAT_FLANK_REQUIRES_ETA_AND_PATH_OK_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Combat role distribution not-all-pressure suite",
+		COMBAT_ROLE_DISTRIBUTION_NOT_ALL_PRESSURE_TEST_SCENE
 	)
 
 	print("\n--- SECTION 18e: Shadow search choreography unit tests ---")
