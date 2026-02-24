@@ -65,7 +65,8 @@ func _test_combat_no_los_never_hold_range() -> void:
 	_t.run_test(
 		"during grace: no HOLD_RANGE in COMBAT no-LOS",
 		type_during_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
-		and type_during_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+			and type_during_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+			and type_during_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME
 	)
 
 	enemy.runtime_budget_tick(0.90)
@@ -76,6 +77,8 @@ func _test_combat_no_los_never_hold_range() -> void:
 	_t.run_test(
 		"after grace: still no HOLD_RANGE in COMBAT no-LOS",
 		type_after_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
+			and type_after_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+			and type_after_grace != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME
 	)
 
 	world.queue_free()

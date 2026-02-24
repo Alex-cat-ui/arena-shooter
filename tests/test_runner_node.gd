@@ -143,6 +143,9 @@ const PATROL_ROUTE_TRAVERSABILITY_FILTER_TEST_SCENE := "res://tests/test_patrol_
 const ALERT_INVESTIGATE_ANCHOR_TEST_SCENE := "res://tests/test_alert_investigate_anchor.tscn"
 const ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE := "res://tests/test_alert_combat_shadow_boundary_scan_intent.tscn"
 const SUSPICIOUS_SHADOW_SCAN_TEST_SCENE := "res://tests/test_suspicious_shadow_scan.tscn"
+const STATE_DOCTRINE_MATRIX_CONTRACT_TEST_SCENE := "res://tests/test_state_doctrine_matrix_contract.tscn"
+const SUSPICIOUS_FLASHLIGHT_30_PERCENT_SEEDED_TEST_SCENE := "res://tests/test_suspicious_flashlight_30_percent_seeded.tscn"
+const ALERT_NO_LOS_SEARCHES_DARK_POCKETS_NOT_PATROL_TEST_SCENE := "res://tests/test_alert_no_los_searches_dark_pockets_not_patrol.tscn"
 const SHADOW_ROUTE_FILTER_TEST_SCENE := "res://tests/test_shadow_route_filter.tscn"
 const LEVEL_RUNTIME_GUARD_TEST_SCENE := "res://tests/test_level_runtime_guard.tscn"
 const LEVEL_INPUT_CONTROLLER_TEST_SCENE := "res://tests/test_level_input_controller.tscn"
@@ -847,6 +850,15 @@ func _run_tests() -> void:
 	_test("Suspicious shadow scan test scene exists", func():
 		return _scene_exists(SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
 	)
+	_test("State doctrine matrix contract test scene exists", func():
+		return _scene_exists(STATE_DOCTRINE_MATRIX_CONTRACT_TEST_SCENE)
+	)
+	_test("Suspicious flashlight 30 percent seeded test scene exists", func():
+		return _scene_exists(SUSPICIOUS_FLASHLIGHT_30_PERCENT_SEEDED_TEST_SCENE)
+	)
+	_test("Alert no LOS searches dark pockets not patrol test scene exists", func():
+		return _scene_exists(ALERT_NO_LOS_SEARCHES_DARK_POCKETS_NOT_PATROL_TEST_SCENE)
+	)
 	_test("Shadow route filter test scene exists", func():
 		return _scene_exists(SHADOW_ROUTE_FILTER_TEST_SCENE)
 	)
@@ -1139,6 +1151,9 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Alert investigate anchor suite", ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert/combat shadow boundary scan intent suite", ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE)
 	await _run_embedded_scene_suite("Suspicious shadow scan suite", SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
+	await _run_embedded_scene_suite("State doctrine matrix contract suite", STATE_DOCTRINE_MATRIX_CONTRACT_TEST_SCENE)
+	await _run_embedded_scene_suite("Suspicious flashlight 30 percent seeded suite", SUSPICIOUS_FLASHLIGHT_30_PERCENT_SEEDED_TEST_SCENE)
+	await _run_embedded_scene_suite("Alert no LOS searches dark pockets not patrol suite", ALERT_NO_LOS_SEARCHES_DARK_POCKETS_NOT_PATROL_TEST_SCENE)
 	await _run_embedded_scene_suite("Shadow route filter suite", SHADOW_ROUTE_FILTER_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit intent-only runtime suite", PURSUIT_INTENT_ONLY_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Pursuit stall/fallback invariants suite", PURSUIT_STALL_FALLBACK_INVARIANTS_TEST_SCENE)

@@ -50,21 +50,36 @@ func _test_suspicious_shadow_scan_intent_and_flashlight() -> void:
 	})) as Dictionary
 
 	_t.run_test(
-		"SUSPICIOUS + shadow target no longer chooses SHADOW_BOUNDARY_SCAN",
-		int(intent.get("type", -1)) != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
-			and int(intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
+		"SUSPICIOUS + dark shadow target chooses SHADOW_BOUNDARY_SCAN",
+		int(intent.get("type", -1)) == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
 	)
 	_t.run_test(
-		"shadow scan target equals last seen position",
+		"shadow boundary scan target equals last seen position",
 		(intent.get("target", Vector2.ZERO) as Vector2).distance_to(shadow_target) <= 0.001
 	)
 
+	GameConfig.reset_to_defaults()
+	if GameConfig and GameConfig.stealth_canon is Dictionary:
+		var canon := GameConfig.stealth_canon as Dictionary
+		canon["flashlight_works_in_alert"] = true
 	var enemy := ENEMY_SCRIPT.new()
+	enemy.entity_id = 1501
 	enemy.set("_flashlight_activation_delay_timer", 0.0)
 	enemy.set_shadow_scan_active(true)
-	var flashlight_active := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
-	_t.run_test("SUSPICIOUS shadow scan activates flashlight", flashlight_active)
+	enemy.set("_debug_tick_id", 0)
+	var flashlight_active_bucket_pass := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
+	enemy.set("_debug_tick_id", 2)
+	var flashlight_active_bucket_fail := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
+	_t.run_test(
+		"SUSPICIOUS shadow scan flashlight active on deterministic pass bucket (tick 0)",
+		flashlight_active_bucket_pass
+	)
+	_t.run_test(
+		"SUSPICIOUS shadow scan flashlight inactive on deterministic fail bucket (tick 2)",
+		not flashlight_active_bucket_fail
+	)
 	enemy.free()
+	GameConfig.reset_to_defaults()
 
 
 func _ctx(override: Dictionary) -> Dictionary:

@@ -2,6 +2,15 @@
 
 ## 2026-02-23
 
+### 00:24 MSK - Phase 15: State Doctrine Matrix (seeded suspicious flashlight 30%, alert/combat dark-pocket search)
+- **Changed**: `Enemy._build_utility_context(...)` now builds `shadow_scan_target` only for `alert_level >= SUSPICIOUS` with strict priority `known_target_pos -> _last_seen_pos -> _investigate_anchor` and one gated `is_point_in_shadow(...)` query
+- **Added**: deterministic suspicious shadow-scan flashlight gate in `src/entities/enemy.gd` (`entity_id + _debug_tick_id mod 10`, active buckets `< 3`) with local constants and helper methods; preserves exact `30/100` active ticks for `entity_id=1501` over tick window `0..99`
+- **Changed**: `EnemyUtilityBrain._choose_intent(...)` now uses explicit CALM / SUSPICIOUS / ALERT-COMBAT no-LOS doctrine branches, restores SUSPICIOUS dark-target `SHADOW_BOUNDARY_SCAN`, and enforces no `PATROL`/`RETURN_HOME` degrade in ALERT/COMBAT target-context flows
+- **Compatibility note**: preserved existing `SHADOW_BOUNDARY_SCAN -> SEARCH` handoff and ALERT/COMBAT dark-target shadow-scan precedence above `combat_lock` no-LOS grace to match current integrated shadow-scan canon in this branch
+- **Added tests**: `tests/test_state_doctrine_matrix_contract.gd/.tscn`, `tests/test_suspicious_flashlight_30_percent_seeded.gd/.tscn`, `tests/test_alert_no_los_searches_dark_pockets_not_patrol.gd/.tscn`
+- **Updated tests**: `tests/test_suspicious_shadow_scan.gd`, `tests/test_combat_no_los_never_hold_range.gd`, and `tests/test_runner_node.gd` (new scene registration)
+- **Verification**: Phase 15 smoke suites passed; full Tier 2 regression `test_runner.tscn` passed (`383/383`) after resolving branch-priority conflict with existing shadow-scan handoff tests
+
 ### 23:33 MSK - Phase 14: Blood Evidence System (SUSPICIOUS-only investigation, TTL expiry)
 - **Added**: `BloodEvidenceSystem` (`src/systems/blood_evidence_system.gd`) — subscribes to `EventBus.blood_spawned`, stores TTL-limited blood evidence entries, notifies nearby CALM enemies, deduplicates per-entry by `entity_id`
 - **Added**: `EnemyAwarenessSystem.register_blood_evidence()` (CALM -> SUSPICIOUS only, reason `blood_evidence`; never ALERT/COMBAT)

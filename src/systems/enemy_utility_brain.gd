@@ -93,6 +93,7 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 	var dist := float(ctx.get("dist", INF))
 	var has_los := bool(ctx.get("los", false))
 	var alert_level := int(ctx.get("alert_level", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
+	var combat_lock := bool(ctx.get("combat_lock", false))
 	var last_seen_age := float(ctx.get("last_seen_age", INF))
 	var role := int(ctx.get("role", ENEMY_SQUAD_SYSTEM_SCRIPT.Role.PRESSURE))
 	var hp_ratio := clampf(float(ctx.get("hp_ratio", 1.0)), 0.0, 1.0)
@@ -139,7 +140,15 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 			"target": shadow_scan_target,
 		}
 
-	if alert_level <= ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS and not has_los:
+	if not has_los and alert_level == ENEMY_ALERT_LEVELS_SCRIPT.CALM:
+		return {"type": IntentType.PATROL}
+
+	if not has_los and alert_level == ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS:
+		if has_shadow_scan_target and shadow_scan_target_in_shadow:
+			return {
+				"type": IntentType.SHADOW_BOUNDARY_SCAN,
+				"target": shadow_scan_target,
+			}
 		var inv_target := investigate_anchor if has_investigate_anchor else last_seen_pos
 		var inv_dist := dist_to_investigate_anchor if has_investigate_anchor else dist_to_last_seen
 		var last_seen_valid := has_last_seen and last_seen_age <= investigate_max_age
@@ -162,7 +171,7 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 				"type": IntentType.SHADOW_BOUNDARY_SCAN,
 				"target": shadow_scan_target,
 			}
-		if alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.COMBAT:
+		if combat_lock:
 			return _combat_no_los_grace_intent(known_target_pos, last_seen_pos, home_pos)
 		if has_last_seen and dist_to_last_seen > investigate_arrive_px:
 			return {
@@ -172,12 +181,17 @@ func _choose_intent(ctx: Dictionary) -> Dictionary:
 		if has_last_seen:
 			return {
 				"type": IntentType.SEARCH,
-				"target": search_target,
+				"target": last_seen_pos,
 			}
 		if has_investigate_anchor and dist_to_investigate_anchor > investigate_arrive_px:
 			return {
 				"type": IntentType.INVESTIGATE,
 				"target": investigate_anchor,
+			}
+		if has_known_target:
+			return {
+				"type": IntentType.SEARCH,
+				"target": known_target_pos,
 			}
 		if target_context_exists:
 			return {

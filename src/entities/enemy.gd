@@ -66,6 +66,9 @@ const COMBAT_SEARCH_PROGRESS_THRESHOLD := 0.8
 const COMBAT_NO_CONTACT_WINDOW_SEC := 8.0
 const COMBAT_NO_CONTACT_WINDOW_LOCKDOWN_SEC := 12.0
 const FLASHLIGHT_NEAR_THRESHOLD_PX := 400.0
+const SUSPICIOUS_SHADOW_SCAN_FLASHLIGHT_CHANCE := 0.30
+const SUSPICIOUS_SHADOW_SCAN_FLASHLIGHT_BUCKET_COUNT := 10
+const SUSPICIOUS_SHADOW_SCAN_FLASHLIGHT_ACTIVE_BUCKETS := 3
 const RUNTIME_BUDGET_ORPHAN_FALLBACK_SEC := 2.0
 const TRANSITION_BLOCK_SINGLE_TICK := "single_transition_per_tick"
 const SHOTGUN_FIRE_BLOCK_NO_COMBAT_STATE := "no_combat_state"
@@ -1098,18 +1101,19 @@ func _build_utility_context(player_valid: bool, player_visible: bool, assignment
 	var shadow_scan_source := "none"
 	var has_shadow_scan_target := false
 	var shadow_scan_target_in_shadow := false
-	if has_known_target and _is_finite_nonzero_vector2(known_target_pos):
-		shadow_scan_target = known_target_pos
-		shadow_scan_source = "known_target_pos"
-	elif has_last_seen and _is_finite_nonzero_vector2(_last_seen_pos):
-		shadow_scan_target = _last_seen_pos
-		shadow_scan_source = "last_seen"
-	elif has_investigate_anchor and _is_finite_nonzero_vector2(_investigate_anchor):
-		shadow_scan_target = _investigate_anchor
-		shadow_scan_source = "investigate_anchor"
-	has_shadow_scan_target = shadow_scan_source != "none"
-	if has_shadow_scan_target and nav_system and nav_system.has_method("is_point_in_shadow"):
-		shadow_scan_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shadow_scan_target))
+	if effective_alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS:
+		if has_known_target and _is_finite_nonzero_vector2(known_target_pos):
+			shadow_scan_target = known_target_pos
+			shadow_scan_source = "known_target_pos"
+		elif has_last_seen and _is_finite_nonzero_vector2(_last_seen_pos):
+			shadow_scan_target = _last_seen_pos
+			shadow_scan_source = "last_seen"
+		elif has_investigate_anchor and _is_finite_nonzero_vector2(_investigate_anchor):
+			shadow_scan_target = _investigate_anchor
+			shadow_scan_source = "investigate_anchor"
+		has_shadow_scan_target = shadow_scan_source != "none"
+		if has_shadow_scan_target and nav_system and nav_system.has_method("is_point_in_shadow"):
+			shadow_scan_target_in_shadow = bool(nav_system.call("is_point_in_shadow", shadow_scan_target))
 	var home_pos := global_position
 	if nav_system and nav_system.has_method("get_room_center") and home_room_id >= 0:
 		var nav_home := nav_system.get_room_center(home_room_id) as Vector2
@@ -1278,6 +1282,27 @@ func set_flashlight_scanner_allowed(allowed: bool) -> void:
 	_flashlight_scanner_allowed = allowed
 
 
+func _suspicious_shadow_scan_flashlight_bucket() -> int:
+	var bucket: int = int(
+		posmod(
+			int(entity_id) + int(_debug_tick_id),
+			SUSPICIOUS_SHADOW_SCAN_FLASHLIGHT_BUCKET_COUNT
+		)
+	)
+	return bucket
+
+
+func _suspicious_shadow_scan_flashlight_gate_passes() -> bool:
+	var expected_active_buckets := int(
+		round(
+			SUSPICIOUS_SHADOW_SCAN_FLASHLIGHT_CHANCE * float(SUSPICIOUS_SHADOW_SCAN_FLASHLIGHT_BUCKET_COUNT)
+		)
+	)
+	if expected_active_buckets != SUSPICIOUS_SHADOW_SCAN_FLASHLIGHT_ACTIVE_BUCKETS:
+		push_warning("Suspicious shadow-scan flashlight bucket constants are inconsistent")
+	return _suspicious_shadow_scan_flashlight_bucket() < SUSPICIOUS_SHADOW_SCAN_FLASHLIGHT_ACTIVE_BUCKETS
+
+
 func _compute_flashlight_active(awareness_state: int) -> bool:
 	var state_is_calm := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.CALM
 	var state_is_suspicious := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS
@@ -1285,7 +1310,7 @@ func _compute_flashlight_active(awareness_state: int) -> bool:
 	var state_is_combat := awareness_state == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT or _combat_latched
 	var raw_active: bool = (state_is_alert and _flashlight_policy_active_in_alert()) \
 		or (state_is_alert and _investigate_target_in_shadow) \
-		or (state_is_suspicious and _shadow_scan_active and _flashlight_policy_active_in_alert()) \
+		or (state_is_suspicious and _shadow_scan_active and _flashlight_policy_active_in_alert() and _suspicious_shadow_scan_flashlight_gate_passes()) \
 		or _shadow_linger_flashlight \
 		or (state_is_combat and _flashlight_policy_active_in_combat()) \
 		or (_is_zone_lockdown() and _flashlight_policy_active_in_lockdown()) \
