@@ -281,3 +281,7 @@ func _pursuit_ctx(target: Vector2) -> Dictionary:
 		"dist": target.length(),
 		"combat_lock": false,
 	}
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

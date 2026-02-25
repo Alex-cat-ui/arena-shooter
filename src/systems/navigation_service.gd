@@ -21,6 +21,7 @@ var _rng := RandomNumberGenerator.new()
 const DOOR_NAV_OVERLAP_PX := 16.0
 const NAV_CARVE_EPSILON := 0.5
 const OBSTACLE_CLEARANCE_PX := 16.0
+const OBSTACLE_INTERSECTION_SAMPLE_STEP_PX := 8.0
 const NAV_OBSTACLE_GROUP := "nav_obstacles"
 const POLICY_SAMPLE_STEP_PX := 12.0
 var _nav_regions: Array[NavigationRegion2D] = []
@@ -29,6 +30,10 @@ var _runtime_queries = null
 var _enemy_wiring = null
 var _shadow_policy = null
 var _last_nav_obstacle_source: String = "none"
+var _last_nav_obstacles: Array[Rect2] = []
+var _legacy_traverse_api_warned: bool = false
+var _geometry_map_unavailable_warned: bool = false
+var _nav_build_invalid: bool = false
 
 
 func _ensure_runtime_components() -> void:
@@ -191,6 +196,9 @@ func clear() -> void:
 	_room_graph.clear()
 	_pair_doors.clear()
 	_last_nav_obstacle_source = "none"
+	_last_nav_obstacles.clear()
+	_geometry_map_unavailable_warned = false
+	_nav_build_invalid = false
 
 
 func build_from_layout(p_layout, parent: Node2D) -> void:
@@ -202,6 +210,7 @@ func build_from_layout(p_layout, parent: Node2D) -> void:
 
 	layout = p_layout
 	rebuild_for_layout(layout)
+	_nav_build_invalid = false
 
 	var void_ids: Array = []
 	for rid_variant in _extract_void_room_ids(layout):
@@ -225,6 +234,7 @@ func build_from_layout(p_layout, parent: Node2D) -> void:
 				door_overlaps_per_room[room_id].append(overlap_rect)
 
 	var nav_obstacles := _resolve_nav_obstacles_for_build(layout)
+	_last_nav_obstacles = nav_obstacles.duplicate()
 	var cleared_obstacles: Array[Rect2] = []
 	for obs in nav_obstacles:
 		cleared_obstacles.append((obs as Rect2).grow(OBSTACLE_CLEARANCE_PX))
@@ -235,13 +245,16 @@ func build_from_layout(p_layout, parent: Node2D) -> void:
 		var room := layout.rooms[i] as Dictionary
 		var rects := room.get("rects", []) as Array
 		var carved_rects := _subtract_obstacles_from_rects(rects, cleared_obstacles)
-		if carved_rects.is_empty():
-			carved_rects = rects
 		var door_overlaps: Array = door_overlaps_per_room.get(i, [])
-		_create_region_for_room(i, carved_rects, door_overlaps, parent)
+		var door_overlaps_carved := _subtract_obstacles_from_rects(door_overlaps, cleared_obstacles)
+		_create_region_for_room(i, carved_rects, door_overlaps_carved, parent)
+
+	_validate_nav_build_integrity(nav_obstacles)
 
 
 func get_navigation_map_rid() -> RID:
+	if _nav_build_invalid:
+		return RID()
 	for region in _nav_regions:
 		if is_instance_valid(region):
 			return region.get_navigation_map()
@@ -255,14 +268,95 @@ func debug_get_nav_obstacle_source() -> String:
 	return _last_nav_obstacle_source
 
 
+func is_navigation_build_valid() -> bool:
+	return not _nav_build_invalid
+
+
+func path_intersects_navigation_obstacles(
+	from_pos: Vector2,
+	path_points: Array,
+	sample_step_px: float = OBSTACLE_INTERSECTION_SAMPLE_STEP_PX
+) -> bool:
+	if _last_nav_obstacles.is_empty() or path_points.is_empty():
+		return false
+	var sample_step := maxf(sample_step_px, 1.0)
+	var prev := from_pos
+	for point_variant in path_points:
+		var point := point_variant as Vector2
+		var seg_len := prev.distance_to(point)
+		var steps := maxi(int(ceil(seg_len / sample_step)), 1)
+		for step in range(1, steps + 1):
+			var t := float(step) / float(steps)
+			var sample := prev.lerp(point, t)
+			for obstacle_variant in _last_nav_obstacles:
+				var obstacle := obstacle_variant as Rect2
+				if obstacle.size.x <= NAV_CARVE_EPSILON or obstacle.size.y <= NAV_CARVE_EPSILON:
+					continue
+				if obstacle.has_point(sample):
+					return true
+		prev = point
+	return false
+
+
 func room_id_at_point(p: Vector2) -> int:
 	_ensure_runtime_components()
 	return int(_runtime_queries.room_id_at_point(p))
 
 
-func can_enemy_traverse_point(enemy: Node, point: Vector2) -> bool:
+func can_enemy_traverse_shadow_policy_point(enemy: Node, point: Vector2) -> bool:
 	_ensure_runtime_components()
+	if _shadow_policy and _shadow_policy.has_method("can_enemy_traverse_shadow_policy_point"):
+		return bool(_shadow_policy.call("can_enemy_traverse_shadow_policy_point", enemy, point))
 	return bool(_shadow_policy.can_enemy_traverse_point(enemy, point))
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, point: Vector2) -> bool:
+	return is_point_on_navigation_map(point)
+
+
+func is_point_on_navigation_map(point: Vector2, tolerance_px: float = 4.0) -> bool:
+	if not _has_bound_navigation_regions():
+		if not _geometry_map_unavailable_warned:
+			_geometry_map_unavailable_warned = true
+			push_warning("geometry_map_unavailable")
+		return false
+	var map_rid := get_navigation_map_rid()
+	if not map_rid.is_valid():
+		if not _geometry_map_unavailable_warned:
+			_geometry_map_unavailable_warned = true
+			push_warning("geometry_map_unavailable")
+		return false
+	var iteration_id := NavigationServer2D.map_get_iteration_id(map_rid)
+	if iteration_id <= 0:
+		if not _geometry_map_unavailable_warned:
+			_geometry_map_unavailable_warned = true
+			push_warning("geometry_map_unavailable")
+		return false
+	_geometry_map_unavailable_warned = false
+	var closest_point := NavigationServer2D.map_get_closest_point(map_rid, point)
+	if not _is_finite_vector2(closest_point):
+		return false
+	var max_dist := maxf(tolerance_px, 0.0)
+	var on_nav_map := closest_point.distance_to(point) <= max_dist + 0.001
+	if _is_point_inside_navigation_obstacle(point):
+		if on_nav_map and AIWatchdog and AIWatchdog.has_method("record_geometry_walkable_false_positive_event"):
+			AIWatchdog.call("record_geometry_walkable_false_positive_event")
+		return false
+	return on_nav_map
+
+
+func _has_bound_navigation_regions() -> bool:
+	for region in _nav_regions:
+		if is_instance_valid(region):
+			return true
+	return false
+
+
+func can_enemy_traverse_point(enemy: Node, point: Vector2) -> bool:
+	if not _legacy_traverse_api_warned:
+		_legacy_traverse_api_warned = true
+		push_warning("can_enemy_traverse_point is deprecated; use can_enemy_traverse_shadow_policy_point/can_enemy_traverse_geometry_point")
+	return can_enemy_traverse_shadow_policy_point(enemy, point)
 
 
 func validate_enemy_path_policy(
@@ -570,21 +664,11 @@ func _create_region_for_room(room_id: int, rects: Array, door_overlaps: Array, p
 
 	# Build room outline(s) from rects
 	var room_outlines: Array = []
-	if rects.size() == 1:
-		room_outlines.append(_rect_to_outline(rects[0] as Rect2))
-	else:
-		var merged := _rect_to_packed_vector2(rects[0] as Rect2)
-		for i in range(1, rects.size()):
-			var next := _rect_to_packed_vector2(rects[i] as Rect2)
-			var result: Array = Geometry2D.merge_polygons(merged, next)
-			if result.is_empty():
-				room_outlines.append(merged)
-				merged = next
-			else:
-				merged = result[0] as PackedVector2Array
-				for hole_idx in range(1, result.size()):
-					room_outlines.append(result[hole_idx] as PackedVector2Array)
-		room_outlines.append(merged)
+	for rect_variant in rects:
+		var rect := rect_variant as Rect2
+		if rect.size.x <= NAV_CARVE_EPSILON or rect.size.y <= NAV_CARVE_EPSILON:
+			continue
+		room_outlines.append(_rect_to_outline(rect))
 
 	# Merge all door overlaps in one pass (avoids repeated nav polygon rebakes)
 	var all_outlines: Array = room_outlines.duplicate()
@@ -769,6 +853,9 @@ static func _merge_overlapping_outlines(existing_outlines: Array, addition: Pack
 			while j < pending.size():
 				var a := pending[i] as PackedVector2Array
 				var b := pending[j] as PackedVector2Array
+				if not _polygons_have_area_overlap(a, b):
+					j += 1
+					continue
 				var merged := Geometry2D.merge_polygons(a, b)
 				if merged.is_empty():
 					j += 1
@@ -781,6 +868,30 @@ static func _merge_overlapping_outlines(existing_outlines: Array, addition: Pack
 				j = i + 1
 			i += 1
 	return pending
+
+
+static func _polygons_have_area_overlap(a: PackedVector2Array, b: PackedVector2Array) -> bool:
+	if a.is_empty() or b.is_empty():
+		return false
+	var intersections := Geometry2D.intersect_polygons(a, b)
+	if intersections.is_empty():
+		return false
+	for poly_variant in intersections:
+		var poly := poly_variant as PackedVector2Array
+		if absf(_polygon_area(poly)) > NAV_CARVE_EPSILON:
+			return true
+	return false
+
+
+static func _polygon_area(poly: PackedVector2Array) -> float:
+	if poly.size() < 3:
+		return 0.0
+	var sum := 0.0
+	for i in range(poly.size()):
+		var p0 := poly[i]
+		var p1 := poly[(i + 1) % poly.size()]
+		sum += p0.x * p1.y - p1.x * p0.y
+	return sum * 0.5
 
 
 func _extract_void_room_ids(source_layout) -> Array[int]:
@@ -800,3 +911,58 @@ func _extract_void_room_ids(source_layout) -> Array[int]:
 				void_ids.append(int(rid_variant))
 			break
 	return void_ids
+
+
+static func _is_finite_vector2(value: Vector2) -> bool:
+	return is_finite(value.x) and is_finite(value.y)
+
+
+func _is_point_inside_navigation_obstacle(point: Vector2) -> bool:
+	for obstacle_variant in _last_nav_obstacles:
+		var obstacle := obstacle_variant as Rect2
+		if obstacle.size.x <= NAV_CARVE_EPSILON or obstacle.size.y <= NAV_CARVE_EPSILON:
+			continue
+		if obstacle.has_point(point):
+			return true
+	return false
+
+
+func _validate_nav_build_integrity(nav_obstacles: Array[Rect2], attempt: int = 0) -> void:
+	if nav_obstacles.is_empty():
+		return
+	var map_rid := get_navigation_map_rid()
+	if not map_rid.is_valid():
+		_nav_build_invalid = true
+		push_error("invalid_nav_build:geometry_map_unavailable")
+		return
+	var iteration_id := NavigationServer2D.map_get_iteration_id(map_rid)
+	if iteration_id <= 0:
+		if attempt < 3:
+			call_deferred("_validate_nav_build_integrity_deferred", nav_obstacles.duplicate(), attempt + 1)
+		return
+	for obstacle_variant in nav_obstacles:
+		var obstacle := obstacle_variant as Rect2
+		if obstacle.size.x <= NAV_CARVE_EPSILON or obstacle.size.y <= NAV_CARVE_EPSILON:
+			continue
+		var center := obstacle.get_center()
+		var closest := NavigationServer2D.map_get_closest_point(map_rid, center)
+		if not _is_finite_vector2(closest):
+			_nav_build_invalid = true
+			push_error("invalid_nav_build:geometry_closest_point_invalid")
+			return
+		if center.distance_to(closest) <= 4.0:
+			push_warning(
+				"invalid_nav_build:obstacle_center_walkable center=%s closest=%s distance=%.3f obstacle=%s"
+				% [str(center), str(closest), center.distance_to(closest), str(obstacle)]
+			)
+
+
+func _validate_nav_build_integrity_deferred(nav_obstacles_variant: Variant, attempt: int) -> void:
+	await get_tree().process_frame
+	if _nav_build_invalid:
+		return
+	var nav_obstacles: Array[Rect2] = []
+	if nav_obstacles_variant is Array:
+		for obstacle_variant in (nav_obstacles_variant as Array):
+			nav_obstacles.append(obstacle_variant as Rect2)
+	_validate_nav_build_integrity(nav_obstacles, attempt)

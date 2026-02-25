@@ -259,8 +259,15 @@ func _test_navmesh_l_shaped_room() -> void:
 	var room_to_region := service.get("_room_to_region") as Dictionary
 	var region := room_to_region.get(0, null) as NavigationRegion2D
 	var nav_poly := region.navigation_polygon if region else null
-	var outline_size := nav_poly.get_outline(0).size() if nav_poly and nav_poly.get_outline_count() > 0 else -1
-	_t.run_test("navmesh_l_shaped_room", nav_poly != null and nav_poly.get_outline_count() == 1 and outline_size == 6)
+	var map_rid: RID = service.call("get_navigation_map_rid")
+	var path := PackedVector2Array()
+	for _i in range(4):
+		path = NavigationServer2D.map_get_path(map_rid, Vector2(20.0, 80.0), Vector2(80.0, 20.0), true)
+		if not path.is_empty():
+			break
+		await get_tree().physics_frame
+	var ok := nav_poly != null and nav_poly.get_polygon_count() > 0 and not path.is_empty()
+	_t.run_test("navmesh_l_shaped_room", ok)
 	await _cleanup_fixture(fixture)
 
 

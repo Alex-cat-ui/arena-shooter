@@ -1,0 +1,574 @@
+# PATH FIX V3
+
+Версия: v3  
+Дата: 2026-02-25  
+Фокус: глубокий аудит реального runtime pathfinding + аудит валидности тестов качества pathfinding.
+
+---
+
+## 0) Что сделано в этом аудите
+
+1. Прочитан runtime-код движения/навигации:
+   - `src/systems/enemy_pursuit_system.gd`
+   - `src/systems/enemy_patrol_system.gd`
+   - `src/systems/navigation_service.gd`
+   - `src/systems/navigation_runtime_queries.gd`
+   - `src/systems/navigation_shadow_policy.gd`
+   - `src/systems/ai_watchdog.gd`
+2. Прочитаны и проверены тесты pathfinding/контрактов/гейтов.
+3. Прогнаны ключевые сцены (headless), включая:
+   - `test_navigation_geometry_walkable_runtime`
+   - `test_stealth_nav_path_segments_avoid_props`
+   - `test_stealth_nav_polygon_hole_integrity`
+   - `test_level_stealth_checklist`
+   - `test_navmesh_migration`
+   - `test_navigation_path_contract_route_source`
+   - `test_walkable_api_legacy_bridge_contract`
+   - `test_patrol_route_points_max_respected`
+   - `test_patrol_repath_recovery_contract`
+4. Сопоставлены runtime-симптомы, baseline-артефакты и тестовые контракты.
+
+---
+
+## 1) Текущее состояние архитектуры pathfinding (по коду)
+
+### 1.1 Планирование пути
+
+1. Геометрический план собирается в `NavigationRuntimeQueries.build_policy_valid_path`:
+   - сначала `_build_geometry_path_plan` (navmesh/room_graph),
+   - потом policy validation (shadow-политика),
+   - потом выбор detour кандидатов.
+2. В контракт плана входят:
+   - `status`: `ok | unreachable_policy | unreachable_geometry`
+   - `reason`
+   - `route_source`
+   - `route_source_reason`
+   - `obstacle_intersection_detected`
+
+### 1.2 Исполнение движения
+
+1. Исполнитель движения единый: `EnemyPursuitSystem._execute_move_to_target`.
+2. PATROL идет через этот же pipeline (`_update_idle_roam` -> `_execute_move_to_target`).
+3. Перемещение:
+   - `_follow_waypoints` (navagent или waypoints),
+   - `_move_in_direction` + `_apply_preavoid`,
+   - post-slide `_handle_slide_collisions_and_repath`.
+4. Дополнительно:
+   - stall monitor,
+   - blocked-point repeat recovery,
+   - shadow-unreachable FSM.
+
+---
+
+## 2) Глубокий список проблем (runtime pathfinding)
+
+## P0 (высший приоритет)
+
+### P0.1: Инвалидный nav-build детектится, но не фейлит систему
+
+Файлы:
+- `src/systems/navigation_service.gd:930-958`
+
+Факт:
+1. В `_validate_nav_build_integrity` при `obstacle_center_walkable` вызывается только `push_warning`.
+2. `_nav_build_invalid = true` НЕ выставляется.
+3. `is_navigation_build_valid()` продолжает возвращать `true`.
+
+Подтверждение runtime:
+1. В реальных прогонах стабильно появляется warning:
+   - `invalid_nav_build:obstacle_center_walkable center=(1000,700) ... obstacle=(950,650,100,100)`
+2. При этом тесты/гейты остаются PASS.
+
+Риск:
+1. Система формально считает сборку навигации валидной, даже когда интеграционный чек сам сообщает проблему holes/carve.
+
+---
+
+### P0.2: Тест hole integrity может давать ложный PASS
+
+Файлы:
+- `tests/test_stealth_nav_polygon_hole_integrity.gd:63-73`
+- `src/systems/navigation_service.gd:317-345`
+
+Факт:
+1. Тест проверяет центр obstacle через `is_point_on_navigation_map(center)`.
+2. Эта функция дополнительно использует `_is_point_inside_navigation_obstacle(point)` и принудительно возвращает `false`.
+3. То есть тест может пройти даже если navmesh геометрически ошибочен (но точка попала в список obstacle rect).
+
+Риск:
+1. Тест декларирует "hole integrity", но реально проверяет не только геометрию navmap, а геометрию + overlay obstacle list.
+
+---
+
+### P0.3: KPI `nav_path_obstacle_intersections_total` фактически "слепой"
+
+Файлы:
+- `src/systems/navigation_runtime_queries.gd:256-267`
+- `src/systems/navigation_runtime_queries.gd:331-341`
+- `src/systems/navigation_runtime_queries.gd:497-504`
+
+Факт:
+1. При пересечении obstacle код возвращает `unreachable_geometry` и `reason=path_intersects_obstacle`.
+2. Метрика инкрементится только если `status == "ok" and obstacle_intersection_detected == true`.
+3. В штатном коде пересечение уже переводит статус в `unreachable_geometry`, поэтому счетчик почти не растет.
+
+Риск:
+1. KPI-гейт по `kpi_nav_path_obstacle_intersections_max` может оставаться зеленым при реальных пересечениях.
+
+---
+
+### P0.4: KPI `room_graph_fallback_when_navmesh_available_total` логически почти недостижим
+
+Файлы:
+- `src/systems/navigation_runtime_queries.gd:354-467`
+- `src/systems/navigation_runtime_queries.gd:504-517`
+
+Факт:
+1. Fallback на room_graph в `_build_geometry_path_plan` включается, когда navmesh map RID невалиден.
+2. Метрика fallback_when_navmesh_available инкрементится только когда route_source=room_graph И одновременно map RID валиден и iteration_id > 0.
+3. Это конфликтующие условия в текущей логике.
+
+Риск:
+1. Метрика KPI практически "мертвая": зеленая не означает отсутствие проблемы fallback при доступном navmesh.
+
+---
+
+### P0.5: Performance gate подмешивает synthetic pathfinding-метрики вручную
+
+Файлы:
+- `tests/test_ai_long_run_stress.gd:279-283`
+
+Факт:
+1. В benchmark-контракте тест сам вызывает:
+   - `AIWatchdog.record_collision_repath_event()`
+   - `AIWatchdog.record_preavoid_event(true)`
+2. Эти события добавляются напрямую, не только из реального pathfinding pipeline.
+
+Риск:
+1. Gate может проходить минимальные проверки метрик даже при деградации реального runtime-сигнала.
+
+---
+
+## P1 (высокий приоритет)
+
+### P1.1: `collision_repath_events_total` считает в основном door-open, но не non-door collision-blocked
+
+Файлы:
+- `src/systems/enemy_pursuit_system.gd:1642-1660`
+- `src/systems/enemy_pursuit_system.gd:1675-1677`
+
+Факт:
+1. Для non-door collision выставляется `path_failed_reason=collision_blocked` и forced repath.
+2. Но `AIWatchdog.record_collision_repath_event(...)` вызывается только в ветке door collision с `door_opened == true`.
+
+Риск:
+1. Метрика collision-repath не отражает фактическое число collision-induced репланов.
+2. KPI и диагностика искажены.
+
+---
+
+### P1.2: Runtime показывает высокий repath rate, но гейты это напрямую не блокируют
+
+Файлы/артефакты:
+- `src/systems/ai_watchdog.gd:10-12`, `:197`
+- `artifacts/path_fix_v02_baseline/baseline_report.md`
+- baseline logs
+
+Факт:
+1. В baseline и прогоне сцен есть warning `High repath rate` (вплоть до ~15.9/sec).
+2. Основной release-проход при этом green.
+
+Риск:
+1. Визуально pathfinding может быть "нервным/дребезжащим" даже при зеленом CI.
+
+---
+
+### P1.3: Если geometry API не доступен, `_can_traverse_position` разрешает проход (`return true`)
+
+Файл:
+- `src/systems/enemy_pursuit_system.gd:1543-1550`
+
+Факт:
+1. Если у `nav_system` нет `can_enemy_traverse_geometry_point` и legacy API, функция возвращает `true`.
+
+Риск:
+1. Ошибки wiring/инициализации могут временно снимать ограничения traversability.
+
+---
+
+### P1.4: Проверка пересечения пути с obstacle дискретная, с шагом 8px
+
+Файл:
+- `src/systems/navigation_service.gd:275-298`
+
+Факт:
+1. `path_intersects_navigation_obstacles` семплирует сегменты с фиксированным шагом.
+2. Для узких/острых конфигураций возможны false negative.
+
+Риск:
+1. Контракт `obstacle_intersection_detected=false` не гарантирует геометрически строгую непересекаемость.
+
+---
+
+### P1.5: Валидация nav-build при `iteration_id <= 0` может тихо завершиться без hard-fail
+
+Файл:
+- `src/systems/navigation_service.gd:938-942`
+
+Факт:
+1. При отсутствии iteration id делается до 3 deferred-попыток.
+2. После исчерпания попыток нет явного `push_error`/флага invalid в этой ветке.
+
+Риск:
+1. Интеграционная валидация может не отработать жёстко и оставить сомнительное состояние "валидным".
+
+---
+
+### P1.6: Сильная копипаста логики в `_execute_move_to_target` повышает риск рассинхрона веток
+
+Файл:
+- `src/systems/enemy_pursuit_system.gd:743-892`
+
+Факт:
+1. Блоки blocked-point repeat/recovery повторяются многократно с минимальными вариациями.
+
+Риск:
+1. Любой hotfix легко внести не во все ветки, создавая плавающие баги path recovery.
+
+---
+
+## P2 (средний приоритет)
+
+### P2.1: Patrol частично теряет детерминизм из-за seed xor с wall-clock
+
+Файл:
+- `src/systems/enemy_patrol_system.gd:215`
+
+Факт:
+1. `_rng.seed ^= Time.get_ticks_msec()` ломает полностью детерминированную репродукцию даже при фиксированном seed.
+
+Риск:
+1. Усложняет дебаг pathfinding-флейков.
+
+---
+
+### P2.2: В fallback idle-roam используется глобальный `randf_range`, не локальный RNG
+
+Файл:
+- `src/systems/enemy_pursuit_system.gd:1136`
+
+Факт:
+1. Таймер ожидания fallback roam берется от глобального RNG.
+
+Риск:
+1. Дополнительная недетерминированность в тестах/реплеях.
+
+---
+
+## 3) Аудит качества тестов pathfinding (что реально проверяют)
+
+## 3.1 Сильные стороны
+
+1. Есть интеграционные прогоны на реальной 3zone сцене:
+   - `test_stealth_nav_path_segments_avoid_props`
+   - `test_stealth_nav_polygon_hole_integrity`
+   - `test_level_stealth_checklist`
+2. Есть контрактные проверки route_source/reason/status.
+3. Есть отдельные миграционные тесты navmesh.
+
+## 3.2 Слабые стороны и слепые зоны
+
+### T1: Некоторые тесты проверяют в основном контракт/stub, а не качество реального маршрута
+
+Файлы:
+- `tests/test_navigation_geometry_walkable_runtime.gd`
+- `tests/test_navigation_path_contract_route_source.gd`
+
+Факт:
+1. Используются FakeNav/FakeService со synthetic поведением.
+2. Это полезно для API-контрактов, но недостаточно для качества runtime-path в реальных сценах.
+
+---
+
+### T2: `test_stealth_nav_path_segments_avoid_props` строит планы с `enemy = null`
+
+Файл:
+- `tests/test_stealth_nav_path_segments_avoid_props.gd:73`
+
+Факт:
+1. Проверяется геометрическая часть, но policy-path валидация врага (shadow/flashlight constraints) не участвует.
+
+---
+
+### T3: В `test_ai_long_run_stress` KPI-сигнал частично synthetic
+
+Файл:
+- `tests/test_ai_long_run_stress.gd:279-283`
+
+Факт:
+1. Счетчики collision/preavoid поднимаются прямыми вызовами watchdog.
+
+---
+
+### T4: Runtime warnings/errors и leaks не участвуют в verdict тестов
+
+Файлы/логи:
+- `tests/test_helpers.gd` (ассерты только boolean)
+- примеры логов:
+  - `invalid_nav_build:obstacle_center_walkable` при PASS
+  - RID/Object leaks при PASS (`test_patrol_route_points_max_respected`, `test_navigation_path_contract_route_source`)
+
+Факт:
+1. Даже при явных runtime warning тест может остаться green.
+
+---
+
+## 4) Почему сейчас возможен "зеленый CI" при проблемном pathfinding
+
+1. Core-валидатор nav-build не фейлит на `obstacle_center_walkable`.
+2. Часть KPI метрик устроена так, что фактические проблемы не попадают в счетчики.
+3. В performance-gate есть ручной инжект событий.
+4. Несколько критических тестов валидируют контракты, но не принудительно проверяют строго геометрию навигации в runtime.
+
+---
+
+## 5) Приоритизированный backlog фиксов
+
+## B0 (немедленно)
+
+1. Сделать `obstacle_center_walkable` hard-fail:
+   - выставлять `_nav_build_invalid = true`,
+   - возвращать `invalid_nav_build` в path contracts.
+2. Починить `test_stealth_nav_polygon_hole_integrity`:
+   - проверять `NavigationServer2D.map_get_closest_point` напрямую по map RID,
+   - не использовать `is_point_on_navigation_map` как единственный источник истины.
+3. Переделать `nav_path_obstacle_intersections_total`:
+   - инкрементить при каждом `reason=path_intersects_obstacle`, не только при `status=ok`.
+4. Убрать synthetic-инжект pathfinding метрик из performance-gate либо вынести в отдельный "fixture-only" режим.
+
+## B1 (высокий)
+
+1. Привести `collision_repath_events_total` к реальному смыслу:
+   - учитывать non-door forced-repath события.
+2. Добавить gate на sustained `replans_per_sec` в реальных сценах.
+3. Ужесточить `path_intersects_navigation_obstacles`:
+   - adaptive sampling или segment-vs-rect analytical check.
+4. При `iteration_id <= 0` после лимита попыток ставить invalid build.
+
+## B2 (стабильность/дебаг)
+
+1. Убрать wall-clock mixing из patrol seed.
+2. Убрать global RNG в fallback roam.
+3. Рефактор `_execute_move_to_target` (дедупликация recovery-веток).
+
+---
+
+## 6) Итог по текущему состоянию
+
+1. Архитектурно pipeline pathfinding стал заметно лучше, и базовые сценарии действительно проходят.
+2. Но есть системные разрывы между:
+   - "что runtime реально делает",
+   - "что KPI считают",
+   - "что тесты подтверждают".
+3. Главный риск сейчас: ложное чувство надежности при зеленом тестовом прогоне.
+
+---
+
+## 7) Дополнительные подтвержденные проблемы (дорасследование)
+
+## P0 (критично)
+
+### P0.6: `test_ai_performance_gate` меряет почти "замороженный" мир
+
+Файлы:
+- `tests/test_ai_long_run_stress.gd:495-523`
+- `tests/test_ai_long_run_stress.gd:530-531`
+- `tests/test_ai_long_run_stress.gd:278-283`
+
+Факт:
+1. В benchmark-режиме вызывается `_stabilize_collision_layout`, где у врагов отключаются:
+   - `set_paused(true)`,
+   - `set_process(false)`,
+   - `set_physics_process(false)`.
+2. Это делается уже на раннем warmup (`frame == 30`), а потом метрики сбрасываются.
+3. Основной прогон (`10800` physics frames) дальше идет на почти выключенном AI.
+4. `collision_repath`/`preavoid` частично поднимаются synthetic-вызовами watchdog.
+
+Риск:
+1. Gate показывает PASS даже когда реальная нагрузка pathfinding существенно недоизмерена.
+
+---
+
+### P0.7: `test_level_stealth_checklist` в части проверок принимает obstacle-block как "норму"
+
+Файлы:
+- `tests/test_level_stealth_checklist.gd:403-405`
+- `tests/test_level_stealth_checklist.gd:448-449`
+- `tests/test_level_stealth_checklist.gd:301-303`
+
+Факт:
+1. В `_route_length_via_policy` obstacle-block конвертируется в synthetic длину `1.10 * direct`, а не в FAIL.
+2. В `_check_boundary_scan_support` obstacle-block считается "ok sample".
+3. В `_check_shadow_escape_availability`, если все кандидаты obstacle-blocked, проверка не падает (`continue`).
+
+Риск:
+1. Checklist gate может быть зеленым при реальной недоступности части маршрутов.
+
+## P1 (высокий)
+
+### P1.7: Тесты используют ту же функцию-проверку пересечений, что и production runtime (oracle coupling)
+
+Файлы:
+- `tests/test_stealth_nav_path_segments_avoid_props.gd:80-82`
+- `tests/test_level_stealth_checklist.gd:502-505`
+- `src/systems/navigation_service.gd:275-298`
+
+Факт:
+1. Тесты валидируют obstacle safety через `path_intersects_navigation_obstacles`.
+2. Это тот же sample-based алгоритм, который они должны независимо проверять.
+
+Риск:
+1. Если в функции есть false negative, тесты повторяют тот же false negative и остаются зелеными.
+
+---
+
+### P1.8: Порог warning и порог gate для repath измеряются в разных "единицах строгости"
+
+Файлы:
+- `src/systems/ai_watchdog.gd:10`
+- `tests/test_ai_performance_gate.gd:60`
+- `tests/test_ai_performance_gate.gd:192-193`
+
+Факт:
+1. Runtime warning срабатывает на `8.0 replans/sec` (глобально).
+2. Gate проверяет `replans_per_enemy_per_sec <= 1.8`.
+3. Для fixed benchmark (`enemy_count = 12`) это эквивалентно ~`21.6 replans/sec` глобально.
+
+Риск:
+1. Возможна ситуация "частые High repath warnings" при формально PASS гейте.
+
+---
+
+### P1.9: `test_patrol_route_variety` закрепляет wall-clock недетерминизм как "ожидаемое поведение"
+
+Файлы:
+- `tests/test_patrol_route_variety.gd:72`
+- `src/systems/enemy_patrol_system.gd:215`
+
+Факт:
+1. Тест делает `OS.delay_msec(3)` и ожидает, что два rebuild дадут разные маршруты.
+2. Это напрямую зависит от `Time.get_ticks_msec()` в seed-мешалке patrol.
+
+Риск:
+1. Репродуцируемость ухудшается, а тест стимулирует недетерминизм вместо контроля качества маршрута.
+
+## P2 (средний)
+
+### P2.3: Reachability-фильтр patrol зависит от наличия `is_point_in_shadow`
+
+Файл:
+- `src/systems/enemy_patrol_system.gd:296-345`
+
+Факт:
+1. Блоки reachability filter/refill вложены внутрь `if nav_system.has_method("is_point_in_shadow")`.
+2. Если shadow API нет, reachability фильтр не применяется вообще.
+
+Риск:
+1. В stub/legacy окружениях patrol может брать unreachable точки без явного fail.
+
+---
+
+## 8) Свежие прогоны (2026-02-25, headless)
+
+Команды:
+1. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_ai_performance_gate.tscn`
+2. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_level_stealth_checklist.tscn`
+3. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_stealth_nav_path_segments_avoid_props.tscn`
+4. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_stealth_nav_polygon_hole_integrity.tscn`
+5. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_patrol_navigation_kpi_gate.tscn`
+
+Наблюдения:
+1. `test_ai_performance_gate` — `8/8 PASS`, при этом в логе:
+   - `invalid_nav_build:obstacle_center_walkable ...`
+   - `[AIWatchdog] High repath rate: 16.1/sec`.
+2. `test_level_stealth_checklist` — `12/12 PASS`, при этом тот же `invalid_nav_build` warning.
+3. `test_stealth_nav_path_segments_avoid_props` — `5/5 PASS`, при этом `invalid_nav_build` warning.
+4. `test_stealth_nav_polygon_hole_integrity` — `4/4 PASS`, при этом `invalid_nav_build` warning.
+5. `test_patrol_navigation_kpi_gate` — `6/6 PASS`.
+
+Вывод:
+1. На практике подтверждается ключевой разрыв: критичные warning-симптомы регулярно наблюдаются в зеленом тестовом прогоне.
+
+---
+
+## 9) Дорасследование именно навигации (не только тестов)
+
+### P0.8: Потеря hole в `ROOM_C` воспроизводится в чистой математике сборки контуров
+
+Файлы:
+- `src/systems/navigation_service.gd:750-867`
+- `src/levels/stealth_3zone_test_controller.gd:24-30`
+- `src/levels/stealth_3zone_test_controller.gd:52-59`
+
+Команды:
+1. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://artifacts/nav_probe_3zone_scene.tscn`
+2. `xvfb-run -a /snap/bin/godot-4 --headless --path . --script res://artifacts/nav_outline_math_probe.gd`
+
+Факт (runtime scene-probe):
+1. `NAV|build_valid=true|obst_source=layout_api`, но одновременно warning:
+   - `invalid_nav_build:obstacle_center_walkable center=(1000.0,700.0) ...`
+2. Из 6 obstacle центров только `idx=3` (`ShadowC1`) не вырезан:
+   - `OBS|idx=3|center=(1000,700)|dist=0.000`
+   - остальные `idx=0,1,2,4,5` дают `dist=76.000`.
+3. `ROOMC` содержит контур, включающий проблемный центр:
+   - `ROOMC|outline_count=4|polygon_count=7`
+   - `ROOMC_OUTLINE|idx=0|contains_center=true`.
+
+Факт (изолированная математика алгоритма):
+1. `ROOM_C - obstacles` (carve) корректно дает фрагменты без центра `ShadowC1`.
+2. После добавления `door_overlaps` и `_merge_overlapping_outlines(...)` получаем:
+   - `MODEL2|outline_count=4`
+   - `OUTLINE|0|pts=12|contains_center=true`.
+3. Координаты этого контура совпадают с runtime-пробой (`(1700,614) ... (900,568)`), то есть дефект воспроизводится без физики/AI.
+
+Вывод:
+1. Корневая проблема локализуется в этапе merge контуров (`_merge_overlapping_outlines`) при объединении carved-room + door-overlap геометрии.
+2. Это не “рандомный runtime-глюк” и не только issue тестов; это детерминированная геометрическая регрессия сборки nav-полигонов.
+
+Риск:
+1. В комнате C образуется walkable-карман внутри препятствия `ShadowC1`, что ломает корректность геометрии навигации и может провоцировать лишние repath/столкновения.
+
+---
+
+### P0.9: Контракт может вернуть `status=ok`, даже если raw navmesh path не достигает target
+
+Файлы:
+- `src/systems/navigation_runtime_queries.gd:371-388`
+- `src/systems/enemy_pursuit_system.gd:1218-1244`
+
+Факт:
+1. В `_build_geometry_path_plan` если последний узел raw-пути не равен `to_pos`, код принудительно делает `out.append(to_pos)`.
+2. Дальше валидируется только пересечение obstacle (`_path_intersects_obstacle`), но не проверяется геометрическая достижимость append-сегмента.
+3. В пробе:
+   - `RAW|raw_to_outside` заканчивается в `(1690,1158)` при цели `(2500,1400)`;
+   - но контракт: `PLAN|to_outside_navmesh|status=ok|reason=ok|route_source=navmesh`.
+
+Риск:
+1. “OK-план” может содержать невалидный хвост вне navmesh, что искажает качество маршрутов и делает часть проверок “ложно-зелеными”.
+
+---
+
+### P1.10: Проверка “стены ок?” в текущем наборе тестов неполная
+
+Файлы:
+- `tests/test_patrol_obstacle_avoidance_wall.gd:10-36`
+- `tests/test_patrol_obstacle_avoidance_props.gd:10-33`
+
+Факт:
+1. Оба теста используют `Fake*Nav`, где `build_policy_valid_path` возвращает заранее заданные точки.
+2. Эти тесты не используют реальный `NavigationService`/navmesh уровня.
+
+Вывод по стенам:
+1. Глобальной поломки “все стены сломаны” не подтверждено.
+2. Подтверждена локальная навигационная поломка в `ROOM_C` (carve/merge вокруг `ShadowC1`).
+3. Текущие wall-тесты не дают строгой гарантии качества реальной wall-навигации на тестовом уровне.

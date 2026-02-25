@@ -183,6 +183,10 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		or int(pre_snap.get("collision_repath_events_total", -1)) != 0
 		or int(pre_snap.get("preavoid_events_total", -1)) != 0
 		or int(pre_snap.get("patrol_preavoid_events_total", -1)) != 0
+		or int(pre_snap.get("geometry_walkable_false_positive_total", -1)) != 0
+		or int(pre_snap.get("nav_path_obstacle_intersections_total", -1)) != 0
+		or int(pre_snap.get("room_graph_fallback_when_navmesh_available_total", -1)) != 0
+		or int(pre_snap.get("patrol_route_rebuilds_total", -1)) != 0
 	):
 		base_report["gate_status"] = "FAIL"
 		base_report["gate_reason"] = "metrics_contract_missing"
@@ -257,6 +261,10 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 			or int(post_warmup_snap.get("collision_repath_events_total", -1)) != 0
 			or int(post_warmup_snap.get("preavoid_events_total", -1)) != 0
 			or int(post_warmup_snap.get("patrol_preavoid_events_total", -1)) != 0
+			or int(post_warmup_snap.get("geometry_walkable_false_positive_total", -1)) != 0
+			or int(post_warmup_snap.get("nav_path_obstacle_intersections_total", -1)) != 0
+			or int(post_warmup_snap.get("room_graph_fallback_when_navmesh_available_total", -1)) != 0
+			or int(post_warmup_snap.get("patrol_route_rebuilds_total", -1)) != 0
 		):
 			level.queue_free()
 			await get_tree().process_frame
@@ -295,12 +303,16 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		"detour_candidates_evaluated_total",
 		"hard_stall_events_total",
 		"collision_repath_events_total",
-		"preavoid_events_total",
-		"patrol_preavoid_events_total",
-		"patrol_collision_repath_events_total",
-		"patrol_hard_stall_events_total",
-		"patrol_zero_progress_windows_total",
-	]
+			"preavoid_events_total",
+			"patrol_preavoid_events_total",
+			"patrol_collision_repath_events_total",
+			"patrol_hard_stall_events_total",
+			"patrol_zero_progress_windows_total",
+			"geometry_walkable_false_positive_total",
+			"nav_path_obstacle_intersections_total",
+			"room_graph_fallback_when_navmesh_available_total",
+			"patrol_route_rebuilds_total",
+		]
 	for key_variant in required_snapshot_keys:
 		var key := String(key_variant)
 		if not snap.has(key):
@@ -319,6 +331,10 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 	base_report["patrol_collision_repath_events_total"] = maxi(int(snap.get("patrol_collision_repath_events_total", 0)), 0)
 	base_report["patrol_hard_stall_events_total"] = maxi(int(snap.get("patrol_hard_stall_events_total", 0)), 0)
 	base_report["patrol_zero_progress_windows_total"] = maxi(int(snap.get("patrol_zero_progress_windows_total", 0)), 0)
+	base_report["geometry_walkable_false_positive_total"] = maxi(int(snap.get("geometry_walkable_false_positive_total", 0)), 0)
+	base_report["nav_path_obstacle_intersections_total"] = maxi(int(snap.get("nav_path_obstacle_intersections_total", 0)), 0)
+	base_report["room_graph_fallback_when_navmesh_available_total"] = maxi(int(snap.get("room_graph_fallback_when_navmesh_available_total", 0)), 0)
+	base_report["patrol_route_rebuilds_total"] = maxi(int(snap.get("patrol_route_rebuilds_total", 0)), 0)
 
 	var duration_sec := float(config.get("duration_sec", 0.0))
 	var enemy_count := maxi(int(base_report.get("enemy_count", 0)), 1)
@@ -326,14 +342,17 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 	var detour_total := int(base_report.get("detour_candidates_evaluated_total", 0))
 	var hard_stalls_total := int(base_report.get("hard_stall_events_total", 0))
 	var patrol_hard_stalls_total := int(base_report.get("patrol_hard_stall_events_total", 0))
+	var patrol_route_rebuilds_total := int(base_report.get("patrol_route_rebuilds_total", 0))
 	var replans_per_enemy_per_sec := float(replans_total) / maxf(float(enemy_count) * maxf(duration_sec, 0.001), 0.001)
 	var detour_candidates_per_replan := float(detour_total) / float(maxi(replans_total, 1))
 	var hard_stalls_per_min := float(hard_stalls_total) * 60.0 / maxf(duration_sec, 0.001)
 	var patrol_hard_stalls_per_min := float(patrol_hard_stalls_total) * 60.0 / maxf(duration_sec, 0.001)
+	var patrol_route_rebuilds_per_min := float(patrol_route_rebuilds_total) * 60.0 / maxf(duration_sec, 0.001)
 	base_report["replans_per_enemy_per_sec"] = replans_per_enemy_per_sec
 	base_report["detour_candidates_per_replan"] = detour_candidates_per_replan
 	base_report["hard_stalls_per_min"] = hard_stalls_per_min
 	base_report["patrol_hard_stalls_per_min"] = patrol_hard_stalls_per_min
+	base_report["patrol_route_rebuilds_per_min"] = patrol_route_rebuilds_per_min
 
 	var threshold_failures: Array[String] = []
 	if float(base_report.get("ai_ms_avg", 0.0)) > float(GameConfig.kpi_ai_ms_avg_max if GameConfig else 1.20):
@@ -354,6 +373,14 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		threshold_failures.append("patrol_hard_stalls_per_min")
 	if int(base_report.get("patrol_zero_progress_windows_total", 0)) > int(GameConfig.kpi_patrol_zero_progress_windows_max if GameConfig else 220):
 		threshold_failures.append("patrol_zero_progress_windows_total")
+	if int(base_report.get("geometry_walkable_false_positive_total", 0)) > int(GameConfig.kpi_geometry_walkable_false_positive_max if GameConfig else 0):
+		threshold_failures.append("geometry_walkable_false_positive_total")
+	if int(base_report.get("nav_path_obstacle_intersections_total", 0)) > int(GameConfig.kpi_nav_path_obstacle_intersections_max if GameConfig else 0):
+		threshold_failures.append("nav_path_obstacle_intersections_total")
+	if int(base_report.get("room_graph_fallback_when_navmesh_available_total", 0)) > int(GameConfig.kpi_room_graph_fallback_when_navmesh_available_max if GameConfig else 0):
+		threshold_failures.append("room_graph_fallback_when_navmesh_available_total")
+	if patrol_route_rebuilds_per_min > float(GameConfig.kpi_patrol_route_rebuilds_per_min_max if GameConfig else 39.0):
+		threshold_failures.append("patrol_route_rebuilds_per_min")
 	base_report["kpi_threshold_failures"] = threshold_failures
 
 	if int(base_report.get("collision_repath_events_total", 0)) <= 0:
@@ -383,18 +410,23 @@ func _build_benchmark_report_shell(config: Dictionary) -> Dictionary:
 		"hard_stall_events_total": 0,
 		"collision_repath_events_total": 0,
 		"preavoid_events_total": 0,
-		"patrol_preavoid_events_total": 0,
-		"patrol_collision_repath_events_total": 0,
-		"patrol_hard_stall_events_total": 0,
-		"patrol_zero_progress_windows_total": 0,
-		"replans_per_enemy_per_sec": 0.0,
-		"detour_candidates_per_replan": 0.0,
-		"hard_stalls_per_min": 0.0,
-		"patrol_hard_stalls_per_min": 0.0,
-		"kpi_threshold_failures": [],
-		"metrics_snapshot": {},
-		"metrics_warmup_frames": 0,
-	}
+			"patrol_preavoid_events_total": 0,
+			"patrol_collision_repath_events_total": 0,
+			"patrol_hard_stall_events_total": 0,
+			"patrol_zero_progress_windows_total": 0,
+			"geometry_walkable_false_positive_total": 0,
+			"nav_path_obstacle_intersections_total": 0,
+			"room_graph_fallback_when_navmesh_available_total": 0,
+			"patrol_route_rebuilds_total": 0,
+			"replans_per_enemy_per_sec": 0.0,
+			"detour_candidates_per_replan": 0.0,
+			"hard_stalls_per_min": 0.0,
+			"patrol_hard_stalls_per_min": 0.0,
+			"patrol_route_rebuilds_per_min": 0.0,
+			"kpi_threshold_failures": [],
+			"metrics_snapshot": {},
+			"metrics_warmup_frames": 0,
+		}
 
 
 func _validate_benchmark_config(config: Dictionary) -> Dictionary:

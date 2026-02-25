@@ -44,11 +44,17 @@ class FakeShadowNav:
 	func can_enemy_traverse_point(_enemy: Node, _point: Vector2) -> bool:
 		return true
 
+	func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+		return true
+
 	func build_policy_valid_path(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		return {
 			"status": "ok",
 			"path_points": [to_pos],
 			"reason": "ok",
+			"route_source": "navmesh",
+			"route_source_reason": "fake_navmesh",
+			"obstacle_intersection_detected": false,
 		}
 
 
@@ -113,6 +119,7 @@ func _test_exec_result_has_enemy_consumed_keys() -> void:
 		"request_fire",
 		"path_failed",
 		"movement_intent",
+		"traverse_check_source",
 		"shadow_scan_status",
 		"shadow_scan_complete_reason",
 		"repath_recovery_request_next_search_node",
@@ -134,6 +141,7 @@ func _test_exec_result_has_enemy_consumed_keys() -> void:
 		result.get("request_fire", null) is bool
 		and result.get("path_failed", null) is bool
 		and result.get("movement_intent", null) is bool
+		and result.get("traverse_check_source", null) is String
 		and result.get("shadow_scan_status", null) is String
 		and result.get("shadow_scan_complete_reason", null) is String
 		and result.get("repath_recovery_request_next_search_node", null) is bool
@@ -169,12 +177,14 @@ func _test_patrol_exec_result_contract_shape() -> void:
 		and result.has("path_failed")
 		and result.has("path_failed_reason")
 		and result.has("policy_blocked_segment")
+		and result.has("traverse_check_source")
 	)
 	var type_ok := (
 		result.get("movement_intent", null) is bool
 		and result.get("path_failed", null) is bool
 		and result.get("path_failed_reason", null) is String
 		and result.get("policy_blocked_segment", null) is int
+		and result.get("traverse_check_source", null) is String
 	)
 	var snapshot := pursuit.debug_get_navigation_policy_snapshot() as Dictionary
 	var preavoid_keys_ok := (
@@ -182,12 +192,20 @@ func _test_patrol_exec_result_contract_shape() -> void:
 		and snapshot.has("preavoid_kind")
 		and snapshot.has("preavoid_forced_repath")
 		and snapshot.has("preavoid_side")
+		and snapshot.has("traverse_check_source")
+		and snapshot.has("path_route_source")
+		and snapshot.has("path_route_source_reason")
+		and snapshot.has("obstacle_intersection_detected")
 	)
 	var preavoid_types_ok := (
 		snapshot.get("preavoid_triggered", null) is bool
 		and snapshot.get("preavoid_kind", null) is String
 		and snapshot.get("preavoid_forced_repath", null) is bool
 		and snapshot.get("preavoid_side", null) is String
+		and snapshot.get("traverse_check_source", null) is String
+		and snapshot.get("path_route_source", null) is String
+		and snapshot.get("path_route_source_reason", null) is String
+		and snapshot.get("obstacle_intersection_detected", null) is bool
 	)
 	_t.run_test("pursuit execute_intent PATROL keeps movement/path_failed key contract", has_contract_keys)
 	_t.run_test("pursuit execute_intent PATROL keeps movement/path_failed type contract", type_ok)
@@ -284,3 +302,7 @@ func _patrol_context(target: Vector2) -> Dictionary:
 		"dist": target.length(),
 		"combat_lock": false,
 	}
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

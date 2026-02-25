@@ -63,11 +63,13 @@ func _test_combat_obstacle_chase_basic() -> void:
 	var controller := room.get_node_or_null("Stealth3ZoneTestController")
 	var player := room.get_node_or_null("Entities/Player") as CharacterBody2D
 	var enemy := _first_member_in_group_under("enemies", room) as Enemy
+	var nav_service := room.get_node_or_null("Systems/NavigationService")
 
 	_t.run_test("obstacle chase: controller exists", controller != null)
 	_t.run_test("obstacle chase: player exists", player != null)
 	_t.run_test("obstacle chase: enemy exists", enemy != null)
-	if controller == null or player == null or enemy == null:
+	_t.run_test("obstacle chase: navigation service exists", nav_service != null)
+	if controller == null or player == null or enemy == null or nav_service == null:
 		room.queue_free()
 		await get_tree().process_frame
 		return
@@ -96,6 +98,32 @@ func _test_combat_obstacle_chase_basic() -> void:
 		"obstacle chase: pre-combat PATROL advances while direct path is blocked",
 		bool(patrol_metrics.get("direct_path_blocked_start", false))
 			and bool(patrol_metrics.get("progress_while_blocked", false))
+	)
+	_t.run_test(
+		"obstacle chase: pre-combat snapshot exposes geometry traverse source",
+		String(patrol_metrics.get("traverse_check_source", "")) == "geometry_api"
+	)
+	_t.run_test(
+		"obstacle chase: pre-combat snapshot exposes route source contract",
+		String(patrol_metrics.get("route_source", "")) != ""
+			and patrol_metrics.get("obstacle_intersection_detected", null) is bool
+	)
+
+	var path_contract := nav_service.call("build_policy_valid_path", enemy.global_position, player.global_position, enemy) as Dictionary
+	var obstacle_intersection := bool(path_contract.get("obstacle_intersection_detected", false))
+	var segment_intersection := false
+	if nav_service.has_method("path_intersects_navigation_obstacles"):
+		segment_intersection = bool(
+			nav_service.call(
+				"path_intersects_navigation_obstacles",
+				enemy.global_position,
+				path_contract.get("path_points", []) as Array
+			)
+		)
+	_t.run_test("obstacle chase: path contract reports route_source", String(path_contract.get("route_source", "")) != "")
+	_t.run_test(
+		"obstacle chase: path segment-vs-obstacle validation blocks intersections",
+		not obstacle_intersection and not segment_intersection
 	)
 
 	_press_key(controller, KEY_3)
@@ -210,6 +238,7 @@ func _run_precombat_patrol_segment(enemy: Enemy, player_pos: Vector2, frames: in
 	var prev_pos := enemy.global_position
 	var direct_path_blocked_start := _ray_blocked(enemy, enemy.global_position, player_pos)
 	var progress_while_blocked := false
+	var final_snapshot: Dictionary = {}
 	for _i in range(frames):
 		pursuit.execute_intent(
 			1.0 / 60.0,
@@ -232,6 +261,7 @@ func _run_precombat_patrol_segment(enemy: Enemy, player_pos: Vector2, frames: in
 		if _ray_blocked(enemy, current_pos, player_pos) and step_px > 0.15:
 			progress_while_blocked = true
 		prev_pos = current_pos
+		final_snapshot = pursuit.debug_get_navigation_policy_snapshot() as Dictionary
 
 	enemy.set_physics_process(prev_physics_processing)
 	pursuit.set("_patrol", prev_patrol)
@@ -243,4 +273,7 @@ func _run_precombat_patrol_segment(enemy: Enemy, player_pos: Vector2, frames: in
 		"moved_total": moved_total,
 		"direct_path_blocked_start": direct_path_blocked_start,
 		"progress_while_blocked": progress_while_blocked,
+		"traverse_check_source": String(final_snapshot.get("traverse_check_source", "")),
+		"route_source": String(final_snapshot.get("path_route_source", "")),
+		"obstacle_intersection_detected": bool(final_snapshot.get("obstacle_intersection_detected", false)),
 	}

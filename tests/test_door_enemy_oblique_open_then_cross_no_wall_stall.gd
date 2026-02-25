@@ -119,3 +119,7 @@ func _free_world(world: Dictionary) -> void:
 	if root:
 		root.queue_free()
 	await get_tree().physics_frame
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

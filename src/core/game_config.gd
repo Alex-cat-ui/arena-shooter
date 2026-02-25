@@ -185,6 +185,7 @@ const DEFAULT_AI_BALANCE := {
 		"shadow_weight_aggressive": 0.0,
 		"shadow_sample_step_px": 16.0,
 		"safe_route_max_len_factor": 1.35,
+		"allow_room_graph_fallback_without_navmesh_only": true,
 	},
 		"alert": {
 			"suspicious_ttl_sec": 18.0,
@@ -224,8 +225,11 @@ const DEFAULT_AI_BALANCE := {
 			"speed_scale": 0.82,
 			"route_points_min": 3,
 			"route_points_max": 6,
+			"target_shift_hysteresis_px": 18.0,
+			"route_rebuild_target_shift_hysteresis_px": 24.0,
 			"route_rebuild_min_sec": 7.0,
 			"route_rebuild_max_sec": 12.0,
+			"stuck_flip_cooldown_sec": 1.2,
 			"pause_min_sec": 0.25,
 			"pause_max_sec": 0.90,
 			"look_chance": 0.45,
@@ -416,6 +420,10 @@ const DEFAULT_NON_LAYOUT_SCALARS := {
 	"kpi_patrol_collision_repath_events_max": 24,
 	"kpi_patrol_hard_stalls_per_min_max": 8.0,
 	"kpi_patrol_zero_progress_windows_max": 220,
+	"kpi_geometry_walkable_false_positive_max": 0,
+	"kpi_nav_path_obstacle_intersections_max": 0,
+	"kpi_room_graph_fallback_when_navmesh_available_max": 0,
+	"kpi_patrol_route_rebuilds_per_min_max": 39.0,
 	"kpi_alert_combat_bad_patrol_count": 0,
 	"kpi_shadow_pocket_min_area_px2": 3072.0,
 	"kpi_shadow_escape_max_len_px": 960.0,
@@ -557,6 +565,10 @@ const DEFAULT_NON_LAYOUT_SCALARS := {
 @export var kpi_patrol_collision_repath_events_max: int = 24
 @export var kpi_patrol_hard_stalls_per_min_max: float = 8.0
 @export var kpi_patrol_zero_progress_windows_max: int = 220
+@export var kpi_geometry_walkable_false_positive_max: int = 0
+@export var kpi_nav_path_obstacle_intersections_max: int = 0
+@export var kpi_room_graph_fallback_when_navmesh_available_max: int = 0
+@export var kpi_patrol_route_rebuilds_per_min_max: float = 39.0
 @export var kpi_alert_combat_bad_patrol_count: int = 0
 @export var kpi_shadow_pocket_min_area_px2: float = 3072.0
 @export var kpi_shadow_escape_max_len_px: float = 960.0

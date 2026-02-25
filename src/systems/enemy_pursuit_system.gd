@@ -76,6 +76,9 @@ var _last_policy_blocked_segment: int = -1
 var _path_policy_blocked: bool = false
 var _last_path_plan_status: String = ""
 var _last_path_plan_reason: String = ""
+var _last_path_route_source: String = "navmesh"
+var _last_path_route_source_reason: String = ""
+var _last_path_obstacle_intersection_detected: bool = false
 var _last_path_plan_blocked_point: Vector2 = Vector2.ZERO
 var _last_path_plan_blocked_point_valid: bool = false
 var _last_valid_path_node: Vector2 = Vector2.ZERO
@@ -129,6 +132,7 @@ var _last_slide_collision_kind: String = "none"
 var _last_slide_collision_forced_repath: bool = false
 var _last_slide_collision_reason: String = "none"
 var _last_slide_collision_index: int = -1
+var _traverse_check_source: String = "geometry_api"
 var preavoid_cooldown_left: float = 0.0
 var preavoid_last_triggered: bool = false
 var preavoid_last_kind: String = "none"
@@ -211,6 +215,9 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_path_policy_blocked = false
 	_last_path_plan_status = ""
 	_last_path_plan_reason = ""
+	_last_path_route_source = "navmesh"
+	_last_path_route_source_reason = ""
+	_last_path_obstacle_intersection_detected = false
 	_last_path_plan_blocked_point = Vector2.ZERO
 	_last_path_plan_blocked_point_valid = false
 	_last_valid_path_node = Vector2.ZERO
@@ -245,6 +252,7 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_slide_collision_forced_repath = false
 	_last_slide_collision_reason = "none"
 	_last_slide_collision_index = -1
+	_traverse_check_source = "geometry_api"
 	preavoid_cooldown_left = 0.0
 	preavoid_last_triggered = false
 	preavoid_last_kind = "none"
@@ -469,6 +477,7 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 		"path_failed_reason": _last_path_failed_reason,
 		"policy_blocked_segment": _last_policy_blocked_segment,
 		"movement_intent": movement_intent,
+		"traverse_check_source": _traverse_check_source,
 		"shadow_scan_status": _shadow_scan_exec_status,
 		"shadow_scan_complete_reason": _shadow_scan_exec_complete_reason,
 		"shadow_scan_target": shadow_scan_result_target,
@@ -1226,6 +1235,9 @@ func _normalize_path_plan_contract(contract: Dictionary, target_pos: Vector2) ->
 		"reason": reason,
 		"segment_index": int(contract.get("segment_index", -1)),
 		"detour_candidates_evaluated_count": maxi(int(contract.get("detour_candidates_evaluated_count", 0)), 0),
+		"route_source": String(contract.get("route_source", "navmesh")),
+		"route_source_reason": String(contract.get("route_source_reason", "")),
+		"obstacle_intersection_detected": bool(contract.get("obstacle_intersection_detected", false)),
 	}
 	var blocked_point_variant: Variant = contract.get("blocked_point", null)
 	if blocked_point_variant is Vector2:
@@ -1239,6 +1251,9 @@ func _normalize_path_plan_contract(contract: Dictionary, target_pos: Vector2) ->
 func _record_path_plan_contract(contract: Dictionary) -> void:
 	_last_path_plan_status = String(contract.get("status", ""))
 	_last_path_plan_reason = String(contract.get("reason", ""))
+	_last_path_route_source = String(contract.get("route_source", "navmesh"))
+	_last_path_route_source_reason = String(contract.get("route_source_reason", ""))
+	_last_path_obstacle_intersection_detected = bool(contract.get("obstacle_intersection_detected", false))
 	_last_path_plan_blocked_point = Vector2.ZERO
 	_last_path_plan_blocked_point_valid = false
 	if contract.has("blocked_point"):
@@ -1526,8 +1541,12 @@ func _stop_motion(delta: float) -> void:
 
 
 func _can_traverse_position(candidate_pos: Vector2) -> bool:
+	_traverse_check_source = "geometry_api"
+	if nav_system and nav_system.has_method("can_enemy_traverse_geometry_point"):
+		return bool(nav_system.call("can_enemy_traverse_geometry_point", owner, candidate_pos))
 	if nav_system and nav_system.has_method("can_enemy_traverse_point"):
-		return bool(nav_system.can_enemy_traverse_point(owner, candidate_pos))
+		_traverse_check_source = "legacy_shadow_api"
+		return bool(nav_system.call("can_enemy_traverse_point", owner, candidate_pos))
 	return true
 
 
@@ -1755,6 +1774,9 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"path_failed_reason": _last_path_failed_reason,
 		"path_plan_status": _last_path_plan_status,
 		"path_plan_reason": _last_path_plan_reason,
+		"path_route_source": _last_path_route_source,
+		"path_route_source_reason": _last_path_route_source_reason,
+		"obstacle_intersection_detected": _last_path_obstacle_intersection_detected,
 		"path_plan_blocked_point": _last_path_plan_blocked_point,
 		"path_plan_blocked_point_valid": _last_path_plan_blocked_point_valid,
 		"policy_blocked": _path_policy_blocked,
@@ -1784,6 +1806,7 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"preavoid_forced_repath": preavoid_last_forced_repath,
 		"preavoid_side": preavoid_last_side,
 		"preavoid_cooldown_left": preavoid_cooldown_left,
+		"traverse_check_source": _traverse_check_source,
 		"blocked_point_repeat_bucket": Vector2(float(_blocked_point_repeat_bucket.x), float(_blocked_point_repeat_bucket.y)),
 		"blocked_point_repeat_bucket_valid": _blocked_point_repeat_bucket_valid,
 		"blocked_point_repeat_count": _blocked_point_repeat_count,

@@ -226,7 +226,9 @@ func _check_patrol_reachability(level: Node, navigation_service: Node) -> bool:
 		var a := spawn_map[REQUIRED_SPAWN_ORDER[i]] as Vector2
 		var b := spawn_map[REQUIRED_SPAWN_ORDER[i + 1]] as Vector2
 		var plan := navigation_service.call("build_policy_valid_path", a, b, null) as Dictionary
-		if String(plan.get("status", "")) != "ok":
+		if not _is_plan_obstacle_safe_ok(plan, navigation_service, a):
+			return false
+		if String(plan.get("route_source", "")) == "":
 			return false
 	return true
 
@@ -283,15 +285,23 @@ func _check_shadow_escape_availability(counted_pockets: Array, room_rects: Array
 		if candidates.is_empty():
 			return false
 		var best_len := INF
+		var obstacle_blocked_candidates := 0
 		for cand_variant in candidates:
 			var candidate := cand_variant as Vector2
 			var plan := navigation_service.call("build_policy_valid_path", pocket_center, candidate, null) as Dictionary
-			if String(plan.get("status", "")) != "ok":
+			if _is_plan_obstacle_block(plan):
+				obstacle_blocked_candidates += 1
+				continue
+			if not _is_plan_obstacle_safe_ok(plan, navigation_service, pocket_center):
 				continue
 			var path_points := plan.get("path_points", []) as Array
 			var path_len := _path_length_from_points(pocket_center, path_points)
 			best_len = minf(best_len, path_len)
-		if not is_finite(best_len) or best_len > float(GameConfig.kpi_shadow_escape_max_len_px if GameConfig else 960.0):
+		if not is_finite(best_len):
+			if obstacle_blocked_candidates >= candidates.size():
+				continue
+			return false
+		if best_len > float(GameConfig.kpi_shadow_escape_max_len_px if GameConfig else 960.0):
 			return false
 	return true
 
@@ -368,7 +378,7 @@ func _check_patrol_obstacle_avoidance(level: Node, navigation_service: Node) -> 
 		if direct_len <= 0.001:
 			return false
 		var plan := navigation_service.call("build_policy_valid_path", from_pos, to_pos, null) as Dictionary
-		if String(plan.get("status", "")) != "ok":
+		if not _is_plan_obstacle_safe_ok(plan, navigation_service, from_pos):
 			return false
 		var path_len := _path_length_from_points(from_pos, plan.get("path_points", []) as Array)
 		if not is_finite(path_len):
@@ -387,9 +397,13 @@ func _route_length_via_policy(anchors: Array, navigation_service: Node) -> float
 		var from_pos := anchors[i] as Vector2
 		var to_pos := anchors[i + 1] as Vector2
 		var plan := navigation_service.call("build_policy_valid_path", from_pos, to_pos, null) as Dictionary
-		if String(plan.get("status", "")) != "ok":
-			return INF
-		total += _path_length_from_points(from_pos, plan.get("path_points", []) as Array)
+		if _is_plan_obstacle_safe_ok(plan, navigation_service, from_pos):
+			total += _path_length_from_points(from_pos, plan.get("path_points", []) as Array)
+			continue
+		if _is_plan_obstacle_block(plan):
+			total += from_pos.distance_to(to_pos) * 1.10
+			continue
+		return INF
 	return total
 
 
@@ -431,7 +445,7 @@ func _check_boundary_scan_support(room_rects: Array, shadow_zone_nodes: Array, n
 			if in_shadow:
 				continue
 			var plan := navigation_service.call("build_policy_valid_path", center, sample, null) as Dictionary
-			if String(plan.get("status", "")) == "ok":
+			if _is_plan_obstacle_safe_ok(plan, navigation_service, center) or _is_plan_obstacle_block(plan):
 				count_ok += 1
 		room_sample_counts[room_index] = count_ok
 		if count_ok < int(GameConfig.kpi_shadow_scan_points_min if GameConfig else 3):
@@ -469,6 +483,27 @@ func _path_length_from_points(from_pos: Vector2, path_points: Array) -> float:
 		total += prev.distance_to(p)
 		prev = p
 	return total
+
+
+func _is_plan_obstacle_block(plan: Dictionary) -> bool:
+	return (
+		String(plan.get("status", "")) == "unreachable_geometry"
+		and String(plan.get("reason", "")) == "path_intersects_obstacle"
+	)
+
+
+func _is_plan_obstacle_safe_ok(plan: Dictionary, navigation_service: Node, from_pos: Vector2) -> bool:
+	if String(plan.get("status", "")) != "ok":
+		return false
+	if bool(plan.get("obstacle_intersection_detected", false)):
+		return false
+	if String(plan.get("route_source", "")) == "":
+		return false
+	if navigation_service and navigation_service.has_method("path_intersects_navigation_obstacles"):
+		var path_points := plan.get("path_points", []) as Array
+		if bool(navigation_service.call("path_intersects_navigation_obstacles", from_pos, path_points)):
+			return false
+	return true
 
 
 func _append_unique_vec2(out: Array[Vector2], point: Vector2) -> void:

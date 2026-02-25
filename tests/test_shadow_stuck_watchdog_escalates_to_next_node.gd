@@ -210,3 +210,7 @@ func _test_shadow_escape_keys_absent_from_navigation_snapshot() -> void:
 
 	owner.queue_free()
 	nav.queue_free()
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

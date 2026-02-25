@@ -103,6 +103,11 @@ const NAV_CLEARANCE_MARGIN_TEST_SCENE := "res://tests/test_nav_clearance_margin_
 const NAVIGATION_POLICY_DETOUR_BLOCKED_TEST_SCENE := "res://tests/test_navigation_policy_detour_shadow_blocked_direct.tscn"
 const NAVIGATION_POLICY_DETOUR_TWO_WP_TEST_SCENE := "res://tests/test_navigation_policy_detour_two_waypoints.tscn"
 const NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE := "res://tests/test_navigation_shadow_policy_runtime.tscn"
+const NAVIGATION_GEOMETRY_WALKABLE_RUNTIME_TEST_SCENE := "res://tests/test_navigation_geometry_walkable_runtime.tscn"
+const WALKABLE_API_LEGACY_BRIDGE_CONTRACT_TEST_SCENE := "res://tests/test_walkable_api_legacy_bridge_contract.tscn"
+const NAVIGATION_PATH_CONTRACT_ROUTE_SOURCE_TEST_SCENE := "res://tests/test_navigation_path_contract_route_source.tscn"
+const STEALTH_NAV_PATH_SEGMENTS_AVOID_PROPS_TEST_SCENE := "res://tests/test_stealth_nav_path_segments_avoid_props.tscn"
+const STEALTH_NAV_POLYGON_HOLE_INTEGRITY_TEST_SCENE := "res://tests/test_stealth_nav_polygon_hole_integrity.tscn"
 const NAVIGATION_SHOT_GATE_PARITY_TEST_SCENE := "res://tests/test_navigation_shot_gate_parity.tscn"
 const NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE := "res://tests/test_navigation_path_policy_parity.tscn"
 const NAVIGATION_SHADOW_COST_PREFERS_COVER_PATH_TEST_SCENE := "res://tests/test_navigation_shadow_cost_prefers_cover_path.tscn"
@@ -168,6 +173,7 @@ const PATROL_MODE_TRANSITION_INVARIANCE_TEST_SCENE := "res://tests/test_patrol_m
 const PATROL_PREAVOID_TRIGGERS_BEFORE_COLLISION_TEST_SCENE := "res://tests/test_patrol_preavoid_triggers_before_collision.tscn"
 const PATROL_PREAVOID_DOOR_PARITY_TEST_SCENE := "res://tests/test_patrol_preavoid_door_parity.tscn"
 const PATROL_PREAVOID_ANTI_JITTER_CONTRACT_TEST_SCENE := "res://tests/test_patrol_preavoid_anti_jitter_contract.tscn"
+const PATROL_ROUTE_POINTS_MAX_RESPECTED_TEST_SCENE := "res://tests/test_patrol_route_points_max_respected.tscn"
 const ALERT_INVESTIGATE_ANCHOR_TEST_SCENE := "res://tests/test_alert_investigate_anchor.tscn"
 const ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE := "res://tests/test_alert_combat_shadow_boundary_scan_intent.tscn"
 const SUSPICIOUS_SHADOW_SCAN_TEST_SCENE := "res://tests/test_suspicious_shadow_scan.tscn"
@@ -914,6 +920,9 @@ func _run_tests() -> void:
 	_test("Patrol preavoid anti-jitter contract test scene exists", func():
 		return _scene_exists(PATROL_PREAVOID_ANTI_JITTER_CONTRACT_TEST_SCENE)
 	)
+	_test("Patrol route_points_max respected test scene exists", func():
+		return _scene_exists(PATROL_ROUTE_POINTS_MAX_RESPECTED_TEST_SCENE)
+	)
 	_test("Alert investigate anchor test scene exists", func():
 		return _scene_exists(ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
 	)
@@ -961,6 +970,21 @@ func _run_tests() -> void:
 	)
 	_test("Navigation shadow policy runtime test scene exists", func():
 		return _scene_exists(NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
+	)
+	_test("Navigation geometry walkable runtime test scene exists", func():
+		return _scene_exists(NAVIGATION_GEOMETRY_WALKABLE_RUNTIME_TEST_SCENE)
+	)
+	_test("Walkable API legacy bridge contract test scene exists", func():
+		return _scene_exists(WALKABLE_API_LEGACY_BRIDGE_CONTRACT_TEST_SCENE)
+	)
+	_test("Navigation path contract route_source test scene exists", func():
+		return _scene_exists(NAVIGATION_PATH_CONTRACT_ROUTE_SOURCE_TEST_SCENE)
+	)
+	_test("Stealth nav path segments avoid props test scene exists", func():
+		return _scene_exists(STEALTH_NAV_PATH_SEGMENTS_AVOID_PROPS_TEST_SCENE)
+	)
+	_test("Stealth nav polygon hole integrity test scene exists", func():
+		return _scene_exists(STEALTH_NAV_POLYGON_HOLE_INTEGRITY_TEST_SCENE)
 	)
 	_test("Navigation shot gate parity test scene exists", func():
 		return _scene_exists(NAVIGATION_SHOT_GATE_PARITY_TEST_SCENE)
@@ -1141,6 +1165,10 @@ func _run_tests() -> void:
 		"Patrol preavoid anti-jitter contract suite",
 		PATROL_PREAVOID_ANTI_JITTER_CONTRACT_TEST_SCENE
 	)
+	await _run_embedded_scene_suite(
+		"Patrol route_points_max respected suite",
+		PATROL_ROUTE_POINTS_MAX_RESPECTED_TEST_SCENE
+	)
 	await _run_embedded_scene_suite("Alert investigate anchor suite", ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert/combat shadow boundary scan intent suite", ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE)
 	await _run_embedded_scene_suite("Suspicious shadow scan suite", SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
@@ -1157,6 +1185,11 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Nav obstacle fallback suite", NAV_OBSTACLE_FALLBACK_TEST_SCENE)
 	await _run_embedded_scene_suite("Nav clearance margin suite", NAV_CLEARANCE_MARGIN_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation shadow policy runtime suite", NAVIGATION_SHADOW_POLICY_RUNTIME_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation geometry walkable runtime suite", NAVIGATION_GEOMETRY_WALKABLE_RUNTIME_TEST_SCENE)
+	await _run_embedded_scene_suite("Walkable API legacy bridge contract suite", WALKABLE_API_LEGACY_BRIDGE_CONTRACT_TEST_SCENE)
+	await _run_embedded_scene_suite("Navigation path contract route_source suite", NAVIGATION_PATH_CONTRACT_ROUTE_SOURCE_TEST_SCENE)
+	await _run_embedded_scene_suite("Stealth nav path segments avoid props suite", STEALTH_NAV_PATH_SEGMENTS_AVOID_PROPS_TEST_SCENE)
+	await _run_embedded_scene_suite("Stealth nav polygon hole integrity suite", STEALTH_NAV_POLYGON_HOLE_INTEGRITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation shot gate parity suite", NAVIGATION_SHOT_GATE_PARITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation path policy parity suite", NAVIGATION_PATH_POLICY_PARITY_TEST_SCENE)
 	await _run_embedded_scene_suite("Navigation policy detour direct-blocked suite", NAVIGATION_POLICY_DETOUR_BLOCKED_TEST_SCENE)

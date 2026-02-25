@@ -1,0 +1,5 @@
+xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_ai_performance_gate.tscn
+xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_level_stealth_checklist.tscn
+xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_stealth_nav_path_segments_avoid_props.tscn
+xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_stealth_nav_polygon_hole_integrity.tscn
+xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_patrol_navigation_kpi_gate.tscn

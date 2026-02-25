@@ -6,6 +6,8 @@ extends RefCounted
 var _service: Node = null
 const POLICY_SAMPLE_STEP_PX := 12.0
 const NAV_COST_SHADOW_SAMPLE_STEP_PX := 16.0
+const ROUTE_SOURCE_NAVMESH := "navmesh"
+const ROUTE_SOURCE_ROOM_GRAPH := "room_graph"
 
 
 func _init(service: Node) -> void:
@@ -225,113 +227,309 @@ func build_policy_valid_path(
 ) -> Dictionary:
 	var geometry_plan := _build_geometry_path_plan(from_pos, to_pos)
 	var geometry_status := String(geometry_plan.get("status", "unreachable_geometry"))
+	var route_source := String(geometry_plan.get("route_source", ROUTE_SOURCE_NAVMESH))
+	var route_source_reason := String(geometry_plan.get("route_source_reason", "unknown"))
+	var obstacle_intersection_detected := bool(geometry_plan.get("obstacle_intersection_detected", false))
 	if geometry_status != "ok":
-		return geometry_plan
+		return _finalize_path_plan_result(_build_path_plan_result(
+			geometry_status,
+			_extract_path_points(geometry_plan.get("path_points", [])),
+			String(geometry_plan.get("reason", "path_unreachable")),
+			"",
+			0,
+			route_source,
+			route_source_reason,
+			obstacle_intersection_detected
+		))
 	var direct_pts := _extract_path_points(geometry_plan.get("path_points", []))
 	if direct_pts.is_empty():
-		return {
-			"status": "unreachable_geometry",
-			"path_points": [],
-			"reason": "empty_path",
-		}
+		return _finalize_path_plan_result(_build_path_plan_result(
+			"unreachable_geometry",
+			[],
+			"empty_path",
+			"",
+			0,
+			route_source,
+			route_source_reason,
+			obstacle_intersection_detected
+		))
+	var direct_intersects_obstacle := _path_intersects_obstacle(from_pos, direct_pts)
+	if direct_intersects_obstacle:
+		return _finalize_path_plan_result(_build_path_plan_result(
+			"unreachable_geometry",
+			[],
+			"path_intersects_obstacle",
+			"",
+			0,
+			route_source,
+			route_source_reason,
+			true
+		))
 	if enemy == null:
-		return {
-			"status": "ok",
-			"path_points": direct_pts,
-			"reason": "ok",
-			"route_type": "direct",
-			"detour_candidates_evaluated_count": 0,
-		}
+		return _finalize_path_plan_result(_build_path_plan_result(
+			"ok",
+			direct_pts,
+			"ok",
+			"direct",
+			0,
+			route_source,
+			route_source_reason,
+			false
+		))
 	var direct_valid := _validate_enemy_policy_path(enemy, from_pos, direct_pts)
 	if bool(direct_valid.get("valid", false)):
-		return {
-			"status": "ok",
-			"path_points": direct_pts,
-			"reason": "ok",
-			"route_type": "direct",
-			"detour_candidates_evaluated_count": 0,
-		}
+		return _finalize_path_plan_result(_build_path_plan_result(
+			"ok",
+			direct_pts,
+			"ok",
+			"direct",
+			0,
+			route_source,
+			route_source_reason,
+			false
+		))
 	var from_room := room_id_at_point(from_pos)
 	var to_room := room_id_at_point(to_pos)
 	if from_room < 0 or to_room < 0:
-		return {
-			"status": "unreachable_policy",
-			"path_points": [],
-			"reason": "policy_blocked",
-			"detour_candidates_evaluated_count": 0,
-		}
+		return _finalize_path_plan_result(_build_path_plan_result(
+			"unreachable_policy",
+			[],
+			"policy_blocked",
+			"",
+			0,
+			route_source,
+			route_source_reason,
+			false
+		))
 	var candidates := _build_detour_candidates(from_pos, to_pos, from_room, to_room)
 	var detour_candidate_count := maxi(candidates.size(), 0)
 	var best_valid: Dictionary = {}
 	var best_score: float = INF
+	var detour_intersection_detected := false
 	for cand_variant in candidates:
 		var cand := cand_variant as Dictionary
 		var cand_points := _extract_path_points(cand.get("path_points", []))
+		if _path_intersects_obstacle(from_pos, cand_points):
+			detour_intersection_detected = true
+			continue
 		var cand_validation := _validate_enemy_policy_path(enemy, from_pos, cand_points)
 		var score := _score_path_cost(cand_points, from_pos, cost_profile)
 		if bool(cand_validation.get("valid", false)) and score < best_score:
 			best_valid = cand
 			best_score = score
 	if not best_valid.is_empty():
-		return {
-			"status": "ok",
-			"path_points": _extract_path_points(best_valid.get("path_points", [])),
-			"reason": "ok",
-			"route_type": String(best_valid.get("route_type", "")),
-			"detour_candidates_evaluated_count": detour_candidate_count,
-		}
-	return {
-		"status": "unreachable_policy",
-		"path_points": [],
-		"reason": "policy_blocked",
-		"detour_candidates_evaluated_count": detour_candidate_count,
-	}
+		return _finalize_path_plan_result(_build_path_plan_result(
+			"ok",
+			_extract_path_points(best_valid.get("path_points", [])),
+			"ok",
+			String(best_valid.get("route_type", "")),
+			detour_candidate_count,
+			route_source,
+			route_source_reason,
+			false
+		))
+	if detour_intersection_detected:
+		return _finalize_path_plan_result(_build_path_plan_result(
+			"unreachable_geometry",
+			[],
+			"path_intersects_obstacle",
+			"",
+			detour_candidate_count,
+			route_source,
+			route_source_reason,
+			true
+		))
+	return _finalize_path_plan_result(_build_path_plan_result(
+		"unreachable_policy",
+		[],
+		"policy_blocked",
+		"",
+		detour_candidate_count,
+		route_source,
+		route_source_reason,
+		false
+	))
 
 
 func _build_geometry_path_plan(from_pos: Vector2, to_pos: Vector2) -> Dictionary:
+	if _service and _service.has_method("is_navigation_build_valid"):
+		if not bool(_service.call("is_navigation_build_valid")):
+			return _build_path_plan_result(
+				"unreachable_geometry",
+				[],
+				"invalid_nav_build",
+				"",
+				0,
+				ROUTE_SOURCE_NAVMESH,
+				"invalid_nav_build",
+				false
+			)
 	var map_rid := RID()
 	if _service and _service.has_method("get_navigation_map_rid"):
 		map_rid = _service.get_navigation_map_rid()
 	if map_rid.is_valid():
 		var raw_path: PackedVector2Array = NavigationServer2D.map_get_path(map_rid, from_pos, to_pos, true)
 		if raw_path.is_empty():
-			return {
-				"status": "unreachable_geometry",
-				"path_points": [],
-				"reason": "navmesh_no_path",
-			}
+			return _build_path_plan_result(
+				"unreachable_geometry",
+				[],
+				"navmesh_no_path",
+				"",
+				0,
+				ROUTE_SOURCE_NAVMESH,
+				"navmesh_path_empty",
+				false
+			)
 		var out: Array[Vector2] = []
 		for p in raw_path:
 			out.append(p)
 		if out.is_empty() or out[out.size() - 1].distance_to(to_pos) > 0.5:
 			out.append(to_pos)
-		return {
-			"status": "ok",
-			"path_points": out,
-			"reason": "ok",
-		}
+		if _path_intersects_obstacle(from_pos, out):
+			return _build_path_plan_result(
+				"unreachable_geometry",
+				[],
+				"path_intersects_obstacle",
+				"",
+				0,
+				ROUTE_SOURCE_NAVMESH,
+				"navmesh_intersection_validation_failed",
+				true
+			)
+		return _build_path_plan_result(
+			"ok",
+			out,
+			"ok",
+			"",
+			0,
+			ROUTE_SOURCE_NAVMESH,
+			"navmesh_map_path",
+			false
+		)
 
+	if not _allow_room_graph_fallback_without_navmesh_only():
+		return _build_path_plan_result(
+			"unreachable_geometry",
+			[],
+			"room_graph_fallback_disabled",
+			"",
+			0,
+			ROUTE_SOURCE_ROOM_GRAPH,
+			"navmesh_unavailable_fallback_disabled",
+			false
+		)
 	if _service == null or not _service.has_method("_build_room_graph_path_points_reachable"):
-		return {
-			"status": "unreachable_geometry",
-			"path_points": [],
-			"reason": "room_graph_unavailable",
-		}
+		return _build_path_plan_result(
+			"unreachable_geometry",
+			[],
+			"room_graph_unavailable",
+			"",
+			0,
+			ROUTE_SOURCE_ROOM_GRAPH,
+			"navmesh_unavailable_room_graph_missing",
+			false
+		)
 	var room_graph_variant: Variant = _service.call("_build_room_graph_path_points_reachable", from_pos, to_pos)
 	var room_graph_path := _extract_path_points(room_graph_variant)
 	if room_graph_path.is_empty():
-		return {
-			"status": "unreachable_geometry",
-			"path_points": [],
-			"reason": "room_graph_no_path",
-		}
+		return _build_path_plan_result(
+			"unreachable_geometry",
+			[],
+			"room_graph_no_path",
+			"",
+			0,
+			ROUTE_SOURCE_ROOM_GRAPH,
+			"navmesh_unavailable_room_graph_no_path",
+			false
+		)
 	if room_graph_path[room_graph_path.size() - 1].distance_to(to_pos) > 0.5:
 		room_graph_path.append(to_pos)
+	if _path_intersects_obstacle(from_pos, room_graph_path):
+		return _build_path_plan_result(
+			"unreachable_geometry",
+			[],
+			"path_intersects_obstacle",
+			"",
+			0,
+			ROUTE_SOURCE_ROOM_GRAPH,
+			"room_graph_intersection_validation_failed",
+			true
+		)
+	return _build_path_plan_result(
+		"ok",
+		room_graph_path,
+		"ok",
+		"",
+		0,
+		ROUTE_SOURCE_ROOM_GRAPH,
+		"navmesh_unavailable_room_graph_fallback",
+		false
+	)
+
+
+func _build_path_plan_result(
+	status: String,
+	path_points: Array[Vector2],
+	reason: String,
+	route_type: String,
+	detour_candidates_evaluated_count: int,
+	route_source: String,
+	route_source_reason: String,
+	obstacle_intersection_detected: bool
+	) -> Dictionary:
 	return {
-		"status": "ok",
-		"path_points": room_graph_path,
-		"reason": "ok",
+		"status": status,
+		"path_points": path_points,
+		"reason": reason,
+		"route_type": route_type,
+		"detour_candidates_evaluated_count": maxi(detour_candidates_evaluated_count, 0),
+		"route_source": route_source,
+		"route_source_reason": route_source_reason,
+		"obstacle_intersection_detected": obstacle_intersection_detected,
 	}
+
+
+func _finalize_path_plan_result(result: Dictionary) -> Dictionary:
+	_record_path_contract_metrics(result)
+	return result
+
+
+func _record_path_contract_metrics(result: Dictionary) -> void:
+	if not AIWatchdog:
+		return
+	var status := String(result.get("status", ""))
+	if status == "ok" and bool(result.get("obstacle_intersection_detected", false)):
+		if AIWatchdog.has_method("record_nav_path_obstacle_intersection_event"):
+			AIWatchdog.call("record_nav_path_obstacle_intersection_event")
+	var route_source := String(result.get("route_source", ""))
+	if route_source != ROUTE_SOURCE_ROOM_GRAPH:
+		return
+	if status != "ok":
+		return
+	if _service == null or not _service.has_method("get_navigation_map_rid"):
+		return
+	var map_rid: RID = _service.get_navigation_map_rid()
+	if not map_rid.is_valid():
+		return
+	if NavigationServer2D.map_get_iteration_id(map_rid) <= 0:
+		return
+	if AIWatchdog.has_method("record_room_graph_fallback_when_navmesh_available_event"):
+		AIWatchdog.call("record_room_graph_fallback_when_navmesh_available_event")
+
+
+func _allow_room_graph_fallback_without_navmesh_only() -> bool:
+	if not GameConfig:
+		return true
+	if not (GameConfig.ai_balance is Dictionary):
+		return true
+	var nav_cost := GameConfig.ai_balance.get("nav_cost", {}) as Dictionary
+	return bool(nav_cost.get("allow_room_graph_fallback_without_navmesh_only", true))
+
+
+func _path_intersects_obstacle(from_pos: Vector2, path_points: Array[Vector2]) -> bool:
+	if _service == null or not _service.has_method("path_intersects_navigation_obstacles"):
+		return false
+	return bool(_service.call("path_intersects_navigation_obstacles", from_pos, path_points))
 
 
 func _build_detour_candidates(from_pos: Vector2, to_pos: Vector2, from_room: int, to_room: int) -> Array[Dictionary]:
@@ -505,7 +703,7 @@ func _validate_enemy_policy_path(enemy: Node, from_pos: Vector2, path_points: Ar
 		)
 		if validation_variant is Dictionary:
 			return validation_variant as Dictionary
-	if _service and _service.has_method("can_enemy_traverse_point"):
+	if _service and _service.has_method("can_enemy_traverse_shadow_policy_point"):
 		var prev := from_pos
 		for point in path_points:
 			var segment_len := prev.distance_to(point)
@@ -513,13 +711,28 @@ func _validate_enemy_policy_path(enemy: Node, from_pos: Vector2, path_points: Ar
 			for step in range(1, steps + 1):
 				var t := float(step) / float(steps)
 				var sample := prev.lerp(point, t)
-				if not bool(_service.call("can_enemy_traverse_point", enemy, sample)):
+				if not bool(_service.call("can_enemy_traverse_shadow_policy_point", enemy, sample)):
 					return {
 						"valid": false,
 						"segment_index": -1,
 						"blocked_point": sample,
 					}
 			prev = point
+	elif _service and _service.has_method("can_enemy_traverse_point"):
+		var legacy_prev := from_pos
+		for point in path_points:
+			var segment_len := legacy_prev.distance_to(point)
+			var steps := maxi(int(ceil(segment_len / POLICY_SAMPLE_STEP_PX)), 1)
+			for step in range(1, steps + 1):
+				var t := float(step) / float(steps)
+				var sample := legacy_prev.lerp(point, t)
+				if not bool(_service.call("can_enemy_traverse_point", enemy, sample)):
+					return {
+						"valid": false,
+						"segment_index": -1,
+						"blocked_point": sample,
+					}
+			legacy_prev = point
 	return {
 		"valid": true,
 		"segment_index": -1,

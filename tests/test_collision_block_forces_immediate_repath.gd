@@ -194,3 +194,7 @@ func _patrol_context(player_pos: Vector2) -> Dictionary:
 		"los": false,
 		"combat_lock": false,
 	}
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

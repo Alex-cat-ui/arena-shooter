@@ -183,3 +183,7 @@ func _test_one_waypoint_detour_and_exhausted_policy() -> void:
 	enemy.queue_free()
 	service.queue_free()
 
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

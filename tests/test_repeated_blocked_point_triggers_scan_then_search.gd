@@ -408,3 +408,7 @@ func _test_next_dark_node_in_shadow_runs_shadow_boundary_scan_then_search() -> v
 
 	world.queue_free()
 	await get_tree().process_frame
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

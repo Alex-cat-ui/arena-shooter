@@ -15,6 +15,10 @@ const SNAPSHOT_REQUIRED_KEYS := [
 	"patrol_collision_repath_events_total",
 	"patrol_hard_stall_events_total",
 	"patrol_zero_progress_windows_total",
+	"geometry_walkable_false_positive_total",
+	"nav_path_obstacle_intersections_total",
+	"room_graph_fallback_when_navmesh_available_total",
+	"patrol_route_rebuilds_total",
 ]
 
 var embedded_mode: bool = false
@@ -166,6 +170,11 @@ func _test_patrol_navigation_kpi_gate_report_contract() -> void:
 			and report.has("patrol_hard_stall_events_total")
 			and report.has("patrol_zero_progress_windows_total")
 			and report.has("patrol_hard_stalls_per_min")
+			and report.has("geometry_walkable_false_positive_total")
+			and report.has("nav_path_obstacle_intersections_total")
+			and report.has("room_graph_fallback_when_navmesh_available_total")
+			and report.has("patrol_route_rebuilds_total")
+			and report.has("patrol_route_rebuilds_per_min")
 	)
 
 
@@ -175,6 +184,10 @@ func _test_patrol_navigation_kpi_gate_fixture_threshold_failure() -> void:
 		"patrol_collision_repath_events_total": int(GameConfig.kpi_patrol_collision_repath_events_max if GameConfig else 24) + 1,
 		"patrol_hard_stall_events_total": 0,
 		"patrol_zero_progress_windows_total": int(GameConfig.kpi_patrol_zero_progress_windows_max if GameConfig else 220) + 1,
+		"geometry_walkable_false_positive_total": int(GameConfig.kpi_geometry_walkable_false_positive_max if GameConfig else 0) + 1,
+		"nav_path_obstacle_intersections_total": int(GameConfig.kpi_nav_path_obstacle_intersections_max if GameConfig else 0) + 1,
+		"room_graph_fallback_when_navmesh_available_total": int(GameConfig.kpi_room_graph_fallback_when_navmesh_available_max if GameConfig else 0) + 1,
+		"patrol_route_rebuilds_total": 120,
 		"duration_sec": 60.0,
 	}
 	var report := _evaluate_thresholds_for_fixture(fixture)
@@ -187,6 +200,7 @@ func _test_patrol_navigation_kpi_gate_fixture_threshold_failure() -> void:
 			and String(failures[0]) == "patrol_preavoid_events_total"
 			and failures.has("patrol_collision_repath_events_total")
 			and failures.has("patrol_zero_progress_windows_total")
+			and failures.has("patrol_route_rebuilds_per_min")
 	)
 
 
@@ -257,7 +271,12 @@ func _run_patrol_navigation_kpi_gate() -> Dictionary:
 	var patrol_collision_repath_events_total := maxi(int(final_snapshot.get("patrol_collision_repath_events_total", 0)), 0)
 	var patrol_hard_stall_events_total := maxi(int(final_snapshot.get("patrol_hard_stall_events_total", 0)), 0)
 	var patrol_zero_progress_windows_total := maxi(int(final_snapshot.get("patrol_zero_progress_windows_total", 0)), 0)
+	var geometry_walkable_false_positive_total := maxi(int(final_snapshot.get("geometry_walkable_false_positive_total", 0)), 0)
+	var nav_path_obstacle_intersections_total := maxi(int(final_snapshot.get("nav_path_obstacle_intersections_total", 0)), 0)
+	var room_graph_fallback_when_navmesh_available_total := maxi(int(final_snapshot.get("room_graph_fallback_when_navmesh_available_total", 0)), 0)
+	var patrol_route_rebuilds_total := maxi(int(final_snapshot.get("patrol_route_rebuilds_total", 0)), 0)
 	var patrol_hard_stalls_per_min := float(patrol_hard_stall_events_total) * 60.0 / maxf(accumulated_duration_sec, 0.001)
+	var patrol_route_rebuilds_per_min := float(patrol_route_rebuilds_total) * 60.0 / maxf(accumulated_duration_sec, 0.001)
 
 	report["duration_sec"] = accumulated_duration_sec
 	report["scenario_reports"] = scenario_reports
@@ -268,6 +287,11 @@ func _run_patrol_navigation_kpi_gate() -> Dictionary:
 	report["patrol_hard_stall_events_total"] = patrol_hard_stall_events_total
 	report["patrol_zero_progress_windows_total"] = patrol_zero_progress_windows_total
 	report["patrol_hard_stalls_per_min"] = patrol_hard_stalls_per_min
+	report["geometry_walkable_false_positive_total"] = geometry_walkable_false_positive_total
+	report["nav_path_obstacle_intersections_total"] = nav_path_obstacle_intersections_total
+	report["room_graph_fallback_when_navmesh_available_total"] = room_graph_fallback_when_navmesh_available_total
+	report["patrol_route_rebuilds_total"] = patrol_route_rebuilds_total
+	report["patrol_route_rebuilds_per_min"] = patrol_route_rebuilds_per_min
 
 	var threshold_failures: Array[String] = []
 	if patrol_preavoid_events_total < int(GameConfig.kpi_patrol_preavoid_events_min if GameConfig else 1):
@@ -278,6 +302,14 @@ func _run_patrol_navigation_kpi_gate() -> Dictionary:
 		threshold_failures.append("patrol_hard_stalls_per_min")
 	if patrol_zero_progress_windows_total > int(GameConfig.kpi_patrol_zero_progress_windows_max if GameConfig else 220):
 		threshold_failures.append("patrol_zero_progress_windows_total")
+	if geometry_walkable_false_positive_total > int(GameConfig.kpi_geometry_walkable_false_positive_max if GameConfig else 0):
+		threshold_failures.append("geometry_walkable_false_positive_total")
+	if nav_path_obstacle_intersections_total > int(GameConfig.kpi_nav_path_obstacle_intersections_max if GameConfig else 0):
+		threshold_failures.append("nav_path_obstacle_intersections_total")
+	if room_graph_fallback_when_navmesh_available_total > int(GameConfig.kpi_room_graph_fallback_when_navmesh_available_max if GameConfig else 0):
+		threshold_failures.append("room_graph_fallback_when_navmesh_available_total")
+	if patrol_route_rebuilds_per_min > float(GameConfig.kpi_patrol_route_rebuilds_per_min_max if GameConfig else 39.0):
+		threshold_failures.append("patrol_route_rebuilds_per_min")
 	report["kpi_threshold_failures"] = threshold_failures
 
 	if threshold_failures.is_empty():
@@ -487,6 +519,10 @@ func _metric_delta(before: Dictionary, after: Dictionary) -> Dictionary:
 		"patrol_collision_repath_events_total": maxi(int(after.get("patrol_collision_repath_events_total", 0)) - int(before.get("patrol_collision_repath_events_total", 0)), 0),
 		"patrol_hard_stall_events_total": maxi(int(after.get("patrol_hard_stall_events_total", 0)) - int(before.get("patrol_hard_stall_events_total", 0)), 0),
 		"patrol_zero_progress_windows_total": maxi(int(after.get("patrol_zero_progress_windows_total", 0)) - int(before.get("patrol_zero_progress_windows_total", 0)), 0),
+		"geometry_walkable_false_positive_total": maxi(int(after.get("geometry_walkable_false_positive_total", 0)) - int(before.get("geometry_walkable_false_positive_total", 0)), 0),
+		"nav_path_obstacle_intersections_total": maxi(int(after.get("nav_path_obstacle_intersections_total", 0)) - int(before.get("nav_path_obstacle_intersections_total", 0)), 0),
+		"room_graph_fallback_when_navmesh_available_total": maxi(int(after.get("room_graph_fallback_when_navmesh_available_total", 0)) - int(before.get("room_graph_fallback_when_navmesh_available_total", 0)), 0),
+		"patrol_route_rebuilds_total": maxi(int(after.get("patrol_route_rebuilds_total", 0)) - int(before.get("patrol_route_rebuilds_total", 0)), 0),
 	}
 
 
@@ -494,8 +530,11 @@ func _evaluate_thresholds_for_fixture(fixture: Dictionary) -> Dictionary:
 	var report := fixture.duplicate(true)
 	var duration_sec := maxf(float(report.get("duration_sec", 0.0)), 0.001)
 	var patrol_hard_stall_events_total := maxi(int(report.get("patrol_hard_stall_events_total", 0)), 0)
+	var patrol_route_rebuilds_total := maxi(int(report.get("patrol_route_rebuilds_total", 0)), 0)
 	var patrol_hard_stalls_per_min := float(patrol_hard_stall_events_total) * 60.0 / duration_sec
+	var patrol_route_rebuilds_per_min := float(patrol_route_rebuilds_total) * 60.0 / duration_sec
 	report["patrol_hard_stalls_per_min"] = patrol_hard_stalls_per_min
+	report["patrol_route_rebuilds_per_min"] = patrol_route_rebuilds_per_min
 
 	var failures: Array[String] = []
 	if int(report.get("patrol_preavoid_events_total", 0)) < int(GameConfig.kpi_patrol_preavoid_events_min if GameConfig else 1):
@@ -506,6 +545,14 @@ func _evaluate_thresholds_for_fixture(fixture: Dictionary) -> Dictionary:
 		failures.append("patrol_hard_stalls_per_min")
 	if int(report.get("patrol_zero_progress_windows_total", 0)) > int(GameConfig.kpi_patrol_zero_progress_windows_max if GameConfig else 220):
 		failures.append("patrol_zero_progress_windows_total")
+	if int(report.get("geometry_walkable_false_positive_total", 0)) > int(GameConfig.kpi_geometry_walkable_false_positive_max if GameConfig else 0):
+		failures.append("geometry_walkable_false_positive_total")
+	if int(report.get("nav_path_obstacle_intersections_total", 0)) > int(GameConfig.kpi_nav_path_obstacle_intersections_max if GameConfig else 0):
+		failures.append("nav_path_obstacle_intersections_total")
+	if int(report.get("room_graph_fallback_when_navmesh_available_total", 0)) > int(GameConfig.kpi_room_graph_fallback_when_navmesh_available_max if GameConfig else 0):
+		failures.append("room_graph_fallback_when_navmesh_available_total")
+	if float(report.get("patrol_route_rebuilds_per_min", 0.0)) > float(GameConfig.kpi_patrol_route_rebuilds_per_min_max if GameConfig else 39.0):
+		failures.append("patrol_route_rebuilds_per_min")
 	report["kpi_threshold_failures"] = failures
 	if failures.is_empty():
 		report["gate_status"] = "PASS"
@@ -527,12 +574,17 @@ func _build_gate_report_shell() -> Dictionary:
 		"metrics_snapshot": {},
 		"preavoid_events_total": 0,
 		"patrol_preavoid_events_total": 0,
-		"patrol_collision_repath_events_total": 0,
-		"patrol_hard_stall_events_total": 0,
-		"patrol_zero_progress_windows_total": 0,
-		"patrol_hard_stalls_per_min": 0.0,
-		"kpi_threshold_failures": [],
-	}
+			"patrol_collision_repath_events_total": 0,
+			"patrol_hard_stall_events_total": 0,
+			"patrol_zero_progress_windows_total": 0,
+			"patrol_hard_stalls_per_min": 0.0,
+			"geometry_walkable_false_positive_total": 0,
+			"nav_path_obstacle_intersections_total": 0,
+			"room_graph_fallback_when_navmesh_available_total": 0,
+			"patrol_route_rebuilds_total": 0,
+			"patrol_route_rebuilds_per_min": 0.0,
+			"kpi_threshold_failures": [],
+		}
 
 
 func _patrol_context(player_pos: Vector2) -> Dictionary:
@@ -546,3 +598,7 @@ func _patrol_context(player_pos: Vector2) -> Dictionary:
 		"los": false,
 		"combat_lock": false,
 	}
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

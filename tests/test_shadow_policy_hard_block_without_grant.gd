@@ -172,3 +172,7 @@ func _test_shadow_policy_enters_phase2_fsm() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

@@ -13,6 +13,8 @@ const POINT_REACHED_PX := 14.0
 const PATROL_SPEED_SCALE := 0.82
 const ROUTE_POINTS_MIN := 3
 const ROUTE_POINTS_MAX := 6
+const ROUTE_TARGET_SHIFT_HYSTERESIS_PX := 18.0
+const ROUTE_REBUILD_TARGET_SHIFT_HYSTERESIS_PX := 24.0
 const ROUTE_REBUILD_MIN_SEC := 7.0
 const ROUTE_REBUILD_MAX_SEC := 12.0
 const PAUSE_MIN_SEC := 0.25
@@ -24,6 +26,7 @@ const LOOK_SWEEP_RAD := 0.62
 const LOOK_SWEEP_SPEED := 2.6
 const STUCK_CHECK_INTERVAL_SEC := 2.0
 const STUCK_PROGRESS_THRESHOLD_PX := 8.0
+const STUCK_FLIP_COOLDOWN_SEC := 1.2
 const SHADOW_CHECK_RANGE_PX := 96.0
 const SHADOW_CHECK_CHANCE := 0.30
 const SHADOW_CHECK_DURATION_MIN_SEC := 1.5
@@ -49,6 +52,9 @@ var _shadow_check_active: bool = false
 var _shadow_check_dir: Vector2 = Vector2.RIGHT
 var _shadow_check_phase: float = 0.0
 var _shadow_check_timer: float = 0.0
+var _stuck_flip_cooldown_left: float = 0.0
+var _last_emitted_target: Vector2 = Vector2.ZERO
+var _last_emitted_target_valid: bool = false
 
 
 func _init(p_owner: CharacterBody2D) -> void:
@@ -68,13 +74,16 @@ func configure(p_nav_system: Node, p_home_room_id: int) -> void:
 	)
 	_look_phase = 0.0
 	_look_base_dir = Vector2.RIGHT
-	_rebuild_route()
+	_rebuild_route(false)
 	_stuck_check_timer = STUCK_CHECK_INTERVAL_SEC
 	_stuck_check_last_pos = Vector2.ZERO
 	_shadow_check_active = false
 	_shadow_check_dir = Vector2.RIGHT
 	_shadow_check_phase = 0.0
 	_shadow_check_timer = 0.0
+	_stuck_flip_cooldown_left = 0.0
+	_last_emitted_target = Vector2.ZERO
+	_last_emitted_target_valid = false
 
 
 func notify_alert() -> void:
@@ -83,11 +92,12 @@ func notify_alert() -> void:
 	_stuck_check_timer = STUCK_CHECK_INTERVAL_SEC
 	_stuck_check_last_pos = owner.global_position if owner else Vector2.ZERO
 	_shadow_check_active = false
+	_stuck_flip_cooldown_left = 0.0
 
 
 func notify_calm() -> void:
 	if _route.is_empty():
-		_rebuild_route()
+		_rebuild_route(false)
 	_state = PatrolState.PAUSE
 	_state_timer = _rng.randf_range(
 		_patrol_cfg_float("pause_min_sec", PAUSE_MIN_SEC),
@@ -96,18 +106,20 @@ func notify_calm() -> void:
 	_stuck_check_timer = STUCK_CHECK_INTERVAL_SEC
 	_stuck_check_last_pos = owner.global_position if owner else Vector2.ZERO
 	_shadow_check_active = false
+	_stuck_flip_cooldown_left = 0.0
 
 
 func update(delta: float, facing_dir: Vector2) -> Dictionary:
 	if not owner:
 		return {"waiting": true}
+	_stuck_flip_cooldown_left = maxf(_stuck_flip_cooldown_left - maxf(delta, 0.0), 0.0)
 	_route_rebuild_timer -= delta
 	if _route_rebuild_timer <= 0.0:
 		_route_rebuild_timer = _rng.randf_range(
 			_patrol_cfg_float("route_rebuild_min_sec", ROUTE_REBUILD_MIN_SEC),
 			_patrol_cfg_float("route_rebuild_max_sec", ROUTE_REBUILD_MAX_SEC)
 		)
-		_rebuild_route()
+		_rebuild_route(true)
 
 	if _route.is_empty():
 		return {"waiting": true}
@@ -168,15 +180,18 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 		_stuck_check_timer = STUCK_CHECK_INTERVAL_SEC
 		var moved := owner.global_position.distance_to(_stuck_check_last_pos)
 		if moved < STUCK_PROGRESS_THRESHOLD_PX and not _route.is_empty():
-			_route_index = (_route_index + 1) % _route.size()
-			_state = PatrolState.PAUSE
-			_state_timer = _rng.randf_range(
-				_patrol_cfg_float("pause_min_sec", PAUSE_MIN_SEC),
-				_patrol_cfg_float("pause_max_sec", PAUSE_MAX_SEC)
-			)
+			if _stuck_flip_cooldown_left <= 0.0:
+				_route_index = (_route_index + 1) % _route.size()
+				_state = PatrolState.PAUSE
+				_state_timer = _rng.randf_range(
+					_patrol_cfg_float("pause_min_sec", PAUSE_MIN_SEC),
+					_patrol_cfg_float("pause_max_sec", PAUSE_MAX_SEC)
+				)
+				_stuck_flip_cooldown_left = _patrol_cfg_float("stuck_flip_cooldown_sec", STUCK_FLIP_COOLDOWN_SEC)
 		_stuck_check_last_pos = owner.global_position
 
 	var target := _route[_route_index] as Vector2
+	target = _apply_target_hysteresis(target)
 	if owner.global_position.distance_to(target) <= _patrol_cfg_float("point_reached_px", POINT_REACHED_PX):
 		_route_index = (_route_index + 1) % _route.size()
 		_state = PatrolState.PAUSE
@@ -193,10 +208,11 @@ func update(delta: float, facing_dir: Vector2) -> Dictionary:
 	}
 
 
-func _rebuild_route() -> void:
+func _rebuild_route(apply_hysteresis: bool = false) -> void:
+	var previous_route := _route.duplicate()
+	var previous_route_index := clampi(_route_index, 0, maxi(_route.size() - 1, 0))
 	_route.clear()
 	_rng.seed ^= Time.get_ticks_msec()
-	_route_index = 0
 	if not owner:
 		return
 
@@ -341,7 +357,47 @@ func _rebuild_route() -> void:
 				break
 		if keep:
 			compact.append(p)
-	_route = compact
+	var bounded_route := _apply_route_points_max(compact)
+	if apply_hysteresis and _should_keep_previous_route(previous_route, previous_route_index, bounded_route):
+		_route = previous_route
+		_route_index = previous_route_index
+		return
+	_route = bounded_route
+	_route_index = 0
+	if AIWatchdog and AIWatchdog.has_method("record_patrol_route_rebuild_event"):
+		AIWatchdog.call("record_patrol_route_rebuild_event")
+
+
+func _apply_target_hysteresis(target: Vector2) -> Vector2:
+	var hysteresis_px := _patrol_cfg_float("target_shift_hysteresis_px", ROUTE_TARGET_SHIFT_HYSTERESIS_PX)
+	if _last_emitted_target_valid and _last_emitted_target.distance_to(target) <= hysteresis_px:
+		return _last_emitted_target
+	_last_emitted_target = target
+	_last_emitted_target_valid = true
+	return target
+
+
+func _apply_route_points_max(points: Array[Vector2]) -> Array[Vector2]:
+	if points.is_empty():
+		return []
+	var max_points := maxi(_patrol_cfg_int("route_points_max", ROUTE_POINTS_MAX), 1)
+	var bounded: Array[Vector2] = []
+	for i in range(mini(points.size(), max_points)):
+		bounded.append(points[i])
+	return bounded
+
+
+func _should_keep_previous_route(previous_route: Array[Vector2], previous_route_index: int, next_route: Array[Vector2]) -> bool:
+	if previous_route.is_empty() or next_route.is_empty():
+		return false
+	var prev_idx := clampi(previous_route_index, 0, previous_route.size() - 1)
+	var previous_target := previous_route[prev_idx]
+	var next_target := next_route[0]
+	var shift_hysteresis := _patrol_cfg_float(
+		"route_rebuild_target_shift_hysteresis_px",
+		ROUTE_REBUILD_TARGET_SHIFT_HYSTERESIS_PX
+	)
+	return previous_target.distance_to(next_target) <= shift_hysteresis
 
 
 func _patrol_cfg_float(key: String, fallback: float) -> float:

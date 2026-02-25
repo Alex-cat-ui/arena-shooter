@@ -193,3 +193,7 @@ func _test_two_waypoint_detour_determinism() -> void:
 	enemy.queue_free()
 	service.queue_free()
 
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

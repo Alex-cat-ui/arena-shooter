@@ -187,3 +187,7 @@ func _test_shadow_stall_uses_scan_search_canon() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

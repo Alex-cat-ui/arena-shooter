@@ -125,3 +125,7 @@ func _test_stall_and_plan_lock_invariants() -> void:
 
 	owner.queue_free()
 	nav.queue_free()
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

@@ -56,15 +56,18 @@ func _test_performance_gate_metrics_formulas_and_thresholds() -> void:
 	var detour_total := int(report.get("detour_candidates_evaluated_total", 0))
 	var hard_stalls_total := int(report.get("hard_stall_events_total", 0))
 	var patrol_hard_stalls_total := int(report.get("patrol_hard_stall_events_total", 0))
+	var patrol_route_rebuilds_total := int(report.get("patrol_route_rebuilds_total", 0))
 	var expected_replans_per_enemy_per_sec := float(replans_total) / maxf(float(maxi(enemy_count, 1)) * maxf(duration_sec, 0.001), 0.001)
 	var expected_detour_candidates_per_replan := float(detour_total) / float(maxi(replans_total, 1))
 	var expected_hard_stalls_per_min := float(hard_stalls_total) * 60.0 / maxf(duration_sec, 0.001)
 	var expected_patrol_hard_stalls_per_min := float(patrol_hard_stalls_total) * 60.0 / maxf(duration_sec, 0.001)
+	var expected_patrol_route_rebuilds_per_min := float(patrol_route_rebuilds_total) * 60.0 / maxf(duration_sec, 0.001)
 	var formulas_ok := (
 		is_equal_approx(float(report.get("replans_per_enemy_per_sec", -1.0)), expected_replans_per_enemy_per_sec)
 		and is_equal_approx(float(report.get("detour_candidates_per_replan", -1.0)), expected_detour_candidates_per_replan)
 		and is_equal_approx(float(report.get("hard_stalls_per_min", -1.0)), expected_hard_stalls_per_min)
 		and is_equal_approx(float(report.get("patrol_hard_stalls_per_min", -1.0)), expected_patrol_hard_stalls_per_min)
+		and is_equal_approx(float(report.get("patrol_route_rebuilds_per_min", -1.0)), expected_patrol_route_rebuilds_per_min)
 	)
 	var fixed_config_ok := (
 		int(report.get("seed", -1)) == 1337
@@ -102,11 +105,15 @@ func _test_performance_gate_rejects_threshold_failure_fixture() -> void:
 		"detour_candidates_evaluated_total": 1500,
 		"hard_stall_events_total": 10,
 		"collision_repath_events_total": 3,
-		"patrol_preavoid_events_total": 0,
-		"patrol_collision_repath_events_total": 4,
-		"patrol_hard_stall_events_total": 40,
-		"patrol_zero_progress_windows_total": 12,
-	}
+			"patrol_preavoid_events_total": 0,
+			"patrol_collision_repath_events_total": 4,
+			"patrol_hard_stall_events_total": 40,
+			"patrol_zero_progress_windows_total": 12,
+			"geometry_walkable_false_positive_total": 1,
+			"nav_path_obstacle_intersections_total": 1,
+			"room_graph_fallback_when_navmesh_available_total": 1,
+			"patrol_route_rebuilds_total": 200,
+		}
 	var report := _evaluate_thresholds_for_fixture(fixture)
 	var failures := report.get("kpi_threshold_failures", []) as Array
 	_t.run_test("performance gate fixture: threshold failure rejects", String(report.get("gate_status", "")) == "FAIL")
@@ -138,6 +145,11 @@ func _get_or_run_fixed_benchmark_report() -> Dictionary:
 			"patrol_hard_stall_events_total": 0,
 			"patrol_zero_progress_windows_total": 0,
 			"patrol_hard_stalls_per_min": 0.0,
+			"geometry_walkable_false_positive_total": 0,
+			"nav_path_obstacle_intersections_total": 0,
+			"room_graph_fallback_when_navmesh_available_total": 0,
+			"patrol_route_rebuilds_total": 0,
+			"patrol_route_rebuilds_per_min": 0.0,
 			"kpi_threshold_failures": [],
 		}
 		_cached_gate_report_valid = true
@@ -166,10 +178,12 @@ func _evaluate_thresholds_for_fixture(fixture: Dictionary) -> Dictionary:
 	var detour_total := maxi(int(report.get("detour_candidates_evaluated_total", 0)), 0)
 	var hard_stalls_total := maxi(int(report.get("hard_stall_events_total", 0)), 0)
 	var patrol_hard_stalls_total := maxi(int(report.get("patrol_hard_stall_events_total", 0)), 0)
+	var patrol_route_rebuilds_total := maxi(int(report.get("patrol_route_rebuilds_total", 0)), 0)
 	report["replans_per_enemy_per_sec"] = float(replans_total) / (float(enemy_count) * duration_sec)
 	report["detour_candidates_per_replan"] = float(detour_total) / float(maxi(replans_total, 1))
 	report["hard_stalls_per_min"] = float(hard_stalls_total) * 60.0 / duration_sec
 	report["patrol_hard_stalls_per_min"] = float(patrol_hard_stalls_total) * 60.0 / duration_sec
+	report["patrol_route_rebuilds_per_min"] = float(patrol_route_rebuilds_total) * 60.0 / duration_sec
 	var failures: Array[String] = []
 	if float(report.get("ai_ms_avg", 0.0)) > float(GameConfig.kpi_ai_ms_avg_max if GameConfig else 1.20):
 		failures.append("ai_ms_avg")
@@ -189,6 +203,14 @@ func _evaluate_thresholds_for_fixture(fixture: Dictionary) -> Dictionary:
 		failures.append("patrol_hard_stalls_per_min")
 	if int(report.get("patrol_zero_progress_windows_total", 0)) > int(GameConfig.kpi_patrol_zero_progress_windows_max if GameConfig else 220):
 		failures.append("patrol_zero_progress_windows_total")
+	if int(report.get("geometry_walkable_false_positive_total", 0)) > int(GameConfig.kpi_geometry_walkable_false_positive_max if GameConfig else 0):
+		failures.append("geometry_walkable_false_positive_total")
+	if int(report.get("nav_path_obstacle_intersections_total", 0)) > int(GameConfig.kpi_nav_path_obstacle_intersections_max if GameConfig else 0):
+		failures.append("nav_path_obstacle_intersections_total")
+	if int(report.get("room_graph_fallback_when_navmesh_available_total", 0)) > int(GameConfig.kpi_room_graph_fallback_when_navmesh_available_max if GameConfig else 0):
+		failures.append("room_graph_fallback_when_navmesh_available_total")
+	if float(report.get("patrol_route_rebuilds_per_min", 0.0)) > float(GameConfig.kpi_patrol_route_rebuilds_per_min_max if GameConfig else 39.0):
+		failures.append("patrol_route_rebuilds_per_min")
 	report["kpi_threshold_failures"] = failures
 	if int(report.get("collision_repath_events_total", 0)) <= 0:
 		report["gate_status"] = "FAIL"

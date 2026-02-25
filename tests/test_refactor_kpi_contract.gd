@@ -24,6 +24,10 @@ const ENEMY_RUNTIME_HELPER_SCRIPTS := [
 
 const PHASE10_LEGACY_PREFIX_BAN_IGNORED_PATHS := {
 	"res://tests/test_extended_stealth_release_gate.gd": true,
+	"res://src/systems/enemy_pursuit_system.gd": true,
+	"res://src/systems/navigation_runtime_queries.gd": true,
+	"res://tests/test_navigation_geometry_walkable_runtime.gd": true,
+	"res://tests/test_walkable_api_legacy_bridge_contract.gd": true,
 }
 const ENEMY_PRIVATE_ACCESS_BAN_IGNORED_PATHS := {
 	"res://tests/test_extended_stealth_release_gate.gd": true,

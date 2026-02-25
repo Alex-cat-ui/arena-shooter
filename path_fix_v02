@@ -1,0 +1,251 @@
+# PATH FIX V02 (compact)
+
+Версия: v02
+Скоуп: без procedural-генератора; фокус `stealth_3zone` + общий nav/movement контракт.
+
+## 1) Подтверждено
+
+1. PATROL уже идет через `_execute_move_to_target`.
+2. Корневой дефект: runtime walkable берется из `can_enemy_traverse_point` (shadow-policy), не из геометрии nav.
+3. В `stealth_3zone` obstacle source из layout API приходит корректно.
+4. Итоговый path может пересекать props.
+5. Дефект маскируют легаси-слои: старый traverse API, room-graph fallback, dual obstacle source, старые test stubs.
+
+## 2) Цели
+
+1. Runtime movement использует geometry walkable.
+2. Path в stealth не пересекает props.
+3. Path contract прозрачен (`route_source`, причина fallback).
+4. Patrol jitter снижен без изменения combat decision style.
+5. Легаси снимается поэтапно, под тестами.
+
+## 3) Инварианты
+
+1. Не менять awareness/utility/combat-role логику.
+2. Не менять planner statuses: `ok|unreachable_policy|unreachable_geometry`.
+3. Не ломать door flow (`DoorBody`: collision/open/repath).
+4. `execute_intent()` существующие ключи не менять; можно только добавлять debug-поля.
+
+## 4) Фазы
+
+### Фаза 0: Baseline
+
+Сделать:
+1. Прогон:
+   - `tests/test_level_stealth_checklist.tscn`
+   - `tests/test_combat_obstacle_chase_basic.tscn` (5x)
+   - `tests/test_3zone_smoke.tscn`
+   - `tests/test_ai_long_run_stress.tscn`
+   - `tests/test_ai_performance_gate.tscn`
+2. Сохранить: pass/fail, время, seed, watchdog snapshot, flake rate.
+3. Зафиксировать `baseline_patrol_route_rebuilds_per_min`.
+
+Выход:
+1. Baseline воспроизводим и задокументирован.
+
+### Фаза 1: Split walkable API + bridge
+
+Файлы:
+1. `src/systems/navigation_service.gd`
+2. `src/systems/navigation_shadow_policy.gd`
+3. `src/systems/enemy_pursuit_system.gd`
+4. `src/systems/navigation_runtime_queries.gd`
+
+Сделать:
+1. Добавить API:
+   - `can_enemy_traverse_shadow_policy_point(enemy, point)`
+   - `can_enemy_traverse_geometry_point(enemy, point)`
+   - `is_point_on_navigation_map(point, tolerance_px := 4.0)`
+2. `can_enemy_traverse_point` оставить как legacy shim (deprecation).
+3. Перевести pursuit `_can_traverse_position` на geometry API.
+4. Legacy fallback разрешить только для stubs без geometry API.
+5. Если geometry API есть -> fallback запрещен.
+6. При невалидной nav map: geometry check `false`, лог `geometry_map_unavailable`.
+7. Добавить debug: `traverse_check_source = geometry_api|legacy_shadow_api`.
+
+Выход:
+1. Runtime movement больше не зависит от shadow traversal.
+2. Legacy fallback используется только в старых stubs.
+
+### Фаза 2: Obstacle hole integrity
+
+Файл:
+1. `src/systems/navigation_service.gd`
+
+Сделать:
+1. Починить merge/bake, чтобы obstacle holes не терялись после door-overlap.
+2. Запретить коллапс multi-outline в сплошной контур без hole.
+3. После bake проверять: центр каждого obstacle не walkable.
+4. При провале: `invalid_nav_build`, тесты падают.
+5. Проверить door connectivity после фикса.
+
+Выход:
+1. Geometry path не пересекает props.
+2. Door переходы не деградируют.
+
+### Фаза 3: Path contract + fallback governance
+
+Файлы:
+1. `src/systems/navigation_runtime_queries.gd`
+2. `src/systems/navigation_service.gd`
+3. `src/core/game_config.gd`
+4. `src/core/config_validator.gd`
+
+Сделать:
+1. В `build_policy_valid_path` добавить:
+   - `route_source: navmesh|room_graph`
+   - `route_source_reason`
+   - `obstacle_intersection_detected: bool`
+2. Добавить config: `allow_room_graph_fallback_without_navmesh_only` (default `true`).
+3. Политика fallback:
+   - navmesh есть -> room_graph fallback запрещен;
+   - navmesh нет -> room_graph fallback разрешен.
+4. Добавить segment-vs-obstacle validation hook.
+5. При пересечении: `unreachable_geometry`, `reason=path_intersects_obstacle`.
+
+Выход:
+1. `ok` не выдается для path-through-obstacle.
+2. Контракт явно показывает источник маршрута и причину fallback.
+
+### Фаза 4: Patrol stability tuning
+
+Файлы:
+1. `src/systems/enemy_patrol_system.gd`
+2. `src/core/game_config.gd`
+3. `src/core/config_validator.gd`
+
+Сделать:
+1. Реально применить `route_points_max`.
+2. Добавить hysteresis для route rebuild/repath при малых target shifts.
+3. Смягчить stuck flip без изменения decision logic.
+
+Выход:
+1. Patrol jitter снижен.
+2. Alert/combat transitions без регрессий.
+
+### Фаза 5: Новые тесты
+
+Добавить:
+1. `tests/test_stealth_nav_path_segments_avoid_props.gd` + `.tscn`
+2. `tests/test_stealth_nav_polygon_hole_integrity.gd` + `.tscn`
+3. `tests/test_navigation_geometry_walkable_runtime.gd` + `.tscn`
+4. `tests/test_navigation_path_contract_route_source.gd` + `.tscn`
+5. `tests/test_patrol_route_points_max_respected.gd` + `.tscn`
+6. `tests/test_walkable_api_legacy_bridge_contract.gd` + `.tscn`
+
+Выход:
+1. До фикса ключевые тесты красные, после фикса зеленые.
+
+### Фаза 6: Правка легаси-тестов
+
+Обновить:
+1. `tests/test_level_stealth_checklist.gd`
+2. `tests/test_navmesh_migration.gd`
+3. `tests/test_navigation_shadow_policy_runtime.gd`
+4. `tests/test_combat_obstacle_chase_basic.gd`
+5. `tests/test_enemy_pursuit_exec_result_contract.gd`
+
+Сделать обязательно:
+1. Добавить segment-vs-obstacle assertions.
+2. Явно проверить split shadow vs geometry API.
+3. В exec_result проверить:
+   - `traverse_check_source`
+   - `route_source`
+   - `obstacle_intersection_detected`
+4. Во всех stubs с `can_enemy_traverse_point` добавить `can_enemy_traverse_geometry_point`.
+
+Выход:
+1. Нет тестов со старым API без geometry-аналога.
+
+### Фаза 7: KPI + gates
+
+Файлы:
+1. `src/systems/ai_watchdog.gd`
+2. `src/core/game_config.gd`
+3. `src/core/config_validator.gd`
+4. `tests/test_ai_long_run_stress.gd`
+5. `tests/test_ai_performance_gate.gd`
+6. `tests/test_patrol_navigation_kpi_gate.gd` + `.tscn`
+
+Счетчики:
+1. `geometry_walkable_false_positive_total`
+2. `nav_path_obstacle_intersections_total`
+3. `room_graph_fallback_when_navmesh_available_total`
+4. `patrol_route_rebuilds_total`
+
+KPI:
+1. `kpi_geometry_walkable_false_positive_max = 0`
+2. `kpi_nav_path_obstacle_intersections_max = 0`
+3. `kpi_room_graph_fallback_when_navmesh_available_max = 0`
+4. `kpi_patrol_route_rebuilds_per_min_max = ceil(baseline_patrol_route_rebuilds_per_min * 1.10)`
+
+Gate wiring:
+1. `test_ai_performance_gate` обновить новыми KPI.
+2. В `test_extended_stealth_release_gate` включить nav/walkable sub-gate.
+
+Выход:
+1. KPI deterministic green.
+
+### Фаза 8: Runner wiring + regression
+
+Файл:
+1. `tests/test_runner_node.gd`
+
+Сделать:
+1. Зарегистрировать новые test scenes (constants + existence checks + run).
+2. Tier 1: новые + обновленные легаси-тесты.
+3. Tier 2: полный `tests/test_runner.tscn`.
+4. Дополнительно: `test_combat_obstacle_chase_basic` 5x.
+
+Выход:
+1. Полная регрессия green.
+2. Flake rate `combat_obstacle_chase_basic` не хуже baseline.
+
+### Фаза 9: Легаси-снос (отложенный)
+
+Старт только если:
+1. Один полный RC->release цикл green по всем gates серии.
+2. Нет дефектов `path-through-obstacle` и `geometry-walkable-false-positive`.
+
+Сделать:
+1. Удалить runtime-вызовы legacy shim.
+2. Удалить legacy shim.
+3. Удалить legacy-only ветки тестов.
+4. Оставить один migration test на отсутствие старых зависимостей.
+
+Выход:
+1. В runtime нет legacy traverse API.
+2. В тестах нет зависимостей от старого API без geometry-аналога.
+
+## 5) Обязательная проверка миграции
+
+1. `bash -lc 'set -euo pipefail; files=$(rg -l "func can_enemy_traverse_point" tests); for f in $files; do rg -n "func can_enemy_traverse_geometry_point" "$f" >/dev/null || { echo "MISSING_GEOMETRY_METHOD:$f"; exit 1; }; done; echo OK'`
+
+## 6) Коммит-порядок
+
+1. A: Фаза 1
+2. B: Фаза 2
+3. C: Фаза 3
+4. D: Фаза 4
+5. E: Фаза 5
+6. F: Фаза 6
+7. G: Фаза 7
+8. H: Фаза 8
+9. I: Фаза 9 (отдельным циклом)
+
+## 7) Acceptance
+
+1. Runtime movement использует geometry walkable.
+2. Path в stealth не пересекает props.
+3. Центр obstacle после bake не walkable.
+4. Path contract содержит `route_source` и корректную причину fallback.
+5. Легаси-тесты мигрированы.
+6. Новые тесты зарегистрированы и проходят.
+7. KPI по false-positive/intersection/fallback зеленые.
+8. Patrol jitter снижен без смены combat-style.
+
+## 8) Было -> стало
+
+1. Было: упоры/метания у стен и props. Стало: стабильный обход без path-through-obstacle.
+2. Было: pre-avoid/repath лечили симптом. Стало: корректный walkable на входе, pre-avoid только polishing.
+3. Было: легаси API маскировал дефект. Стало: split API + прозрачный контракт + gate-контроль.

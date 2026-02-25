@@ -1,0 +1,10 @@
+run_id	scene	exit_code	duration_sec	log_file
+01_level_stealth_checklist	res://tests/test_level_stealth_checklist.tscn	0	5.493	artifacts/path_fix_v02_baseline/logs/01_level_stealth_checklist.log
+02_combat_obstacle_chase_basic_r1	res://tests/test_combat_obstacle_chase_basic.tscn	0	10.362	artifacts/path_fix_v02_baseline/logs/02_combat_obstacle_chase_basic_r1.log
+03_combat_obstacle_chase_basic_r2	res://tests/test_combat_obstacle_chase_basic.tscn	0	9.080	artifacts/path_fix_v02_baseline/logs/03_combat_obstacle_chase_basic_r2.log
+04_combat_obstacle_chase_basic_r3	res://tests/test_combat_obstacle_chase_basic.tscn	0	8.652	artifacts/path_fix_v02_baseline/logs/04_combat_obstacle_chase_basic_r3.log
+05_combat_obstacle_chase_basic_r4	res://tests/test_combat_obstacle_chase_basic.tscn	0	7.766	artifacts/path_fix_v02_baseline/logs/05_combat_obstacle_chase_basic_r4.log
+06_combat_obstacle_chase_basic_r5	res://tests/test_combat_obstacle_chase_basic.tscn	0	8.402	artifacts/path_fix_v02_baseline/logs/06_combat_obstacle_chase_basic_r5.log
+07_3zone_smoke	res://tests/test_3zone_smoke.tscn	0	48.064	artifacts/path_fix_v02_baseline/logs/07_3zone_smoke.log
+08_ai_long_run_stress	res://tests/test_ai_long_run_stress.tscn	0	12.421	artifacts/path_fix_v02_baseline/logs/08_ai_long_run_stress.log
+09_ai_performance_gate	res://tests/test_ai_performance_gate.tscn	0	227.172	artifacts/path_fix_v02_baseline/logs/09_ai_performance_gate.log

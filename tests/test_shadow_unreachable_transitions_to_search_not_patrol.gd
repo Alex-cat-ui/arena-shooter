@@ -165,3 +165,7 @@ func _test_phase2_shadow_unreachable_canon_and_plan_lock() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

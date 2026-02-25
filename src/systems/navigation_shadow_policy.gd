@@ -10,7 +10,7 @@ func _init(service: Node) -> void:
 	_service = service
 
 
-func can_enemy_traverse_point(enemy: Node, point: Vector2) -> bool:
+func can_enemy_traverse_shadow_policy_point(enemy: Node, point: Vector2) -> bool:
 	if enemy == null:
 		return true
 	var point_in_shadow := is_point_in_shadow(point)
@@ -19,6 +19,10 @@ func can_enemy_traverse_point(enemy: Node, point: Vector2) -> bool:
 	if is_enemy_flashlight_active(enemy):
 		return true
 	return _enemy_is_currently_inside_shadow(enemy)
+
+
+func can_enemy_traverse_point(enemy: Node, point: Vector2) -> bool:
+	return can_enemy_traverse_shadow_policy_point(enemy, point)
 
 
 func is_point_in_shadow(point: Vector2) -> bool:
@@ -63,7 +67,7 @@ func validate_enemy_path_policy(
 		for step in range(1, steps + 1):
 			var t := float(step) / float(steps)
 			var sample := prev.lerp(point, t)
-			if not can_enemy_traverse_point(enemy, sample):
+			if not can_enemy_traverse_shadow_policy_point(enemy, sample):
 				return {
 					"valid": false,
 					"segment_index": segment_index,

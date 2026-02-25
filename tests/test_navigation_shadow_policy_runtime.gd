@@ -61,11 +61,27 @@ func _test_shadow_policy_contracts() -> void:
 	add_child(enemy_lit)
 
 	_t.run_test("is_point_in_shadow detects point inside shadow zone", nav.is_point_in_shadow(Vector2.ZERO))
-	_t.run_test("shadow blocks entry without flashlight when enemy is outside shadow", not nav.can_enemy_traverse_point(enemy_dark, Vector2.ZERO))
+	_t.run_test(
+		"shadow split API blocks entry without flashlight when enemy is outside shadow",
+		not nav.can_enemy_traverse_shadow_policy_point(enemy_dark, Vector2.ZERO)
+	)
 	enemy_dark.global_position = Vector2.ZERO
-	_t.run_test("enemy already in shadow can keep moving to escape", nav.can_enemy_traverse_point(enemy_dark, Vector2(20.0, 0.0)))
-	_t.run_test("flashlight grants traversal override in shadow", nav.can_enemy_traverse_point(enemy_lit, Vector2.ZERO))
-	_t.run_test("outside shadow remains traversable", nav.can_enemy_traverse_point(enemy_dark, Vector2(300.0, 300.0)))
+	_t.run_test(
+		"shadow split API lets enemy already in shadow keep moving to escape",
+		nav.can_enemy_traverse_shadow_policy_point(enemy_dark, Vector2(20.0, 0.0))
+	)
+	_t.run_test(
+		"shadow split API flashlight grants traversal override in shadow",
+		nav.can_enemy_traverse_shadow_policy_point(enemy_lit, Vector2.ZERO)
+	)
+	_t.run_test(
+		"shadow split API outside shadow remains traversable",
+		nav.can_enemy_traverse_shadow_policy_point(enemy_dark, Vector2(300.0, 300.0))
+	)
+	_t.run_test(
+		"geometry split API returns false when nav map is unavailable",
+		not nav.can_enemy_traverse_geometry_point(enemy_dark, Vector2.ZERO)
+	)
 
 	nav.queue_free()
 	enemy_dark.queue_free()

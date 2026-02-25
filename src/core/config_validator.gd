@@ -68,6 +68,17 @@ static func validate() -> ValidationResult:
 	_validate_number_key(result, blood_evidence_cfg, "blood_evidence_ttl_sec", "game_config", 1.0, 100000.0)
 	_validate_number_key(result, blood_evidence_cfg, "blood_evidence_detection_radius_px", "game_config", 1.0, 100000.0)
 
+	var kpi_cfg := {
+		"kpi_geometry_walkable_false_positive_max": GameConfig.kpi_geometry_walkable_false_positive_max,
+		"kpi_nav_path_obstacle_intersections_max": GameConfig.kpi_nav_path_obstacle_intersections_max,
+		"kpi_room_graph_fallback_when_navmesh_available_max": GameConfig.kpi_room_graph_fallback_when_navmesh_available_max,
+		"kpi_patrol_route_rebuilds_per_min_max": GameConfig.kpi_patrol_route_rebuilds_per_min_max,
+	}
+	_validate_int_key(result, kpi_cfg, "kpi_geometry_walkable_false_positive_max", "game_config", 0, 1000000)
+	_validate_int_key(result, kpi_cfg, "kpi_nav_path_obstacle_intersections_max", "game_config", 0, 1000000)
+	_validate_int_key(result, kpi_cfg, "kpi_room_graph_fallback_when_navmesh_available_max", "game_config", 0, 1000000)
+	_validate_number_key(result, kpi_cfg, "kpi_patrol_route_rebuilds_per_min_max", "game_config", 0.0, 100000.0)
+
 	_validate_enemy_stats(result)
 	_validate_projectile_ttl(result)
 	_validate_ai_balance(result)
@@ -244,6 +255,7 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_number_key(result, nav_cost, "shadow_weight_aggressive", "ai_balance.nav_cost", 0.0, 1000000.0)
 		_validate_number_key(result, nav_cost, "shadow_sample_step_px", "ai_balance.nav_cost", 1.0, 1000.0)
 		_validate_number_key(result, nav_cost, "safe_route_max_len_factor", "ai_balance.nav_cost", 1.0, 10.0)
+		_validate_bool_key(result, nav_cost, "allow_room_graph_fallback_without_navmesh_only", "ai_balance.nav_cost")
 
 	var alert := _ai_section(result, ai_balance, "alert")
 	if not alert.is_empty():
@@ -291,10 +303,13 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		var look_max := _validate_number_key(result, patrol, "look_max_sec", "ai_balance.patrol", 0.0, 30.0)
 		_validate_number_key(result, patrol, "point_reached_px", "ai_balance.patrol", 1.0, 500.0)
 		_validate_number_key(result, patrol, "speed_scale", "ai_balance.patrol", 0.01, 10.0)
+		_validate_number_key(result, patrol, "target_shift_hysteresis_px", "ai_balance.patrol", 0.0, 500.0)
+		_validate_number_key(result, patrol, "route_rebuild_target_shift_hysteresis_px", "ai_balance.patrol", 0.0, 1000.0)
 		_validate_number_key(result, patrol, "look_chance", "ai_balance.patrol", 0.0, 1.0)
 		_validate_number_key(result, patrol, "look_sweep_rad", "ai_balance.patrol", 0.0, TAU)
 		_validate_number_key(result, patrol, "look_sweep_speed", "ai_balance.patrol", 0.0, 50.0)
 		_validate_number_key(result, patrol, "route_dedup_min_dist_px", "ai_balance.patrol", 0.0, 1000.0)
+		_validate_number_key(result, patrol, "stuck_flip_cooldown_sec", "ai_balance.patrol", 0.0, 30.0)
 		if route_points_min != -1 and route_points_max != -1 and route_points_min > route_points_max:
 			result.add_error("ai_balance.patrol.route_points_min must be <= route_points_max")
 		if not is_nan(route_rebuild_min) and not is_nan(route_rebuild_max) and route_rebuild_min > route_rebuild_max:
@@ -356,6 +371,23 @@ static func _validate_number_key(
 	if numeric < min_value or numeric > max_value:
 		result.add_error("%s must be in range [%.3f, %.3f]" % [path, min_value, max_value])
 	return numeric
+
+
+static func _validate_bool_key(
+	result: ValidationResult,
+	dict: Dictionary,
+	key: String,
+	path_prefix: String
+) -> bool:
+	var path := "%s.%s" % [path_prefix, key]
+	if not dict.has(key):
+		result.add_error("%s is required" % path)
+		return false
+	var value: Variant = dict.get(key)
+	if not (value is bool):
+		result.add_error("%s must be a bool" % path)
+		return false
+	return bool(value)
 
 
 static func _validate_int_key(

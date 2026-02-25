@@ -222,3 +222,7 @@ func _push_context(player_pos: Vector2) -> Dictionary:
 		"dist": 140.0,
 		"combat_lock": true,
 	}
+
+
+func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+	return true

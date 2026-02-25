@@ -1,0 +1,64 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+3-ZONE STEALTH SMOKE
+============================================================
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] level_loads_without_error
+[PASS] six_enemies_spawned
+[PASS] four_zones_calm
+[PASS] player_in_room_a1
+[PASS] 3zone player weapon pipeline wired
+[PASS] 3zone weapon_2 switches player to shotgun
+[PASS] 3zone spawn shadow setup is valid
+WARNING: [AIWatchdog] AI tick slow: 3.05ms (threshold 2.0ms)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:166)
+         [1] _process (res://src/systems/ai_watchdog.gd:58)
+[PASS] 3zone CALM in shadow keeps enemies calm
+[PASS] 3zone CALM in shadow keeps confirm near zero
+[PASS] door_a1a2_starts_closed
+[PASS] shadow_areas_present
+[PASS] all_spawns_inside_rooms
+[PASS] chokes_are_navigable
+[PASS] walls_have_no_gaps
+[PASS] door_a1a2_in_wall_gap
+[CombatSystem] GodMode active - damage blocked
+[PASS] 3zone enemy fires in COMBAT
+[PASS] 3zone door_interact opens nearby door
+[PASS] 3zone door_kick opens nearby door
+[StateManager] PLAYING -> PAUSED
+[PauseMenu] Ready
+[PASS] 3zone ESC opens pause menu
+[StateManager] PAUSED -> PLAYING
+[PASS] 3zone ESC closes pause menu
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 1 -> 0)
+[CombatSystem] Player died!
+[StateManager] PLAYING -> GAME_OVER
+[GameOver] Ready
+[PASS] 3zone reaches GAME_OVER in forced combat
+[PASS] 3zone debug label shows GAME_OVER freeze + hp
+[PASS] 3zone shows GameOver menu on GAME_OVER
+
+============================================================
+3-ZONE STEALTH SMOKE RESULTS: 23/23 passed
+============================================================

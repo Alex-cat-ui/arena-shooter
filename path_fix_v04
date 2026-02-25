@@ -1,0 +1,116 @@
+**План Исправления Pathfinding По Фазам (строго по [path_fix_v3](/root/arena-shooter/path_fix_v3))**
+
+## 1. Границы и источник
+1. Источник требований: только [path_fix_v3](/root/arena-shooter/path_fix_v3).
+2. В план включены все зафиксированные проблемы: `P0.1–P0.9`, `P1.1–P1.10`, `P2.1–P2.3`, `T1–T4`.
+3. Новые гипотезы и новые фичи не добавляются.
+4. Целевые файлы исправлений: [navigation_service.gd](/root/arena-shooter/src/systems/navigation_service.gd), [navigation_runtime_queries.gd](/root/arena-shooter/src/systems/navigation_runtime_queries.gd), [enemy_pursuit_system.gd](/root/arena-shooter/src/systems/enemy_pursuit_system.gd), [enemy_patrol_system.gd](/root/arena-shooter/src/systems/enemy_patrol_system.gd), [ai_watchdog.gd](/root/arena-shooter/src/systems/ai_watchdog.gd), тесты в `/tests`.
+
+## 2. Матрица покрытия по фазам
+1. Фаза 1 покрывает `P0.1`, `P0.2`, `P0.8`, `P1.5`.
+2. Фаза 2 покрывает `P0.9`, `P1.4`.
+3. Фаза 3 покрывает `P0.3`, `P0.4`, `P1.1`, `P1.2`, `P1.8`.
+4. Фаза 4 покрывает `P0.5`, `P0.6`, `P0.7`, `P1.7`, `P1.10`, `T1`, `T2`, `T3`, `T4`.
+5. Фаза 5 покрывает `P1.3`, `P2.3` и легаси-ветки.
+6. Фаза 6 покрывает `P1.6`, `P2.1`, `P2.2`, `P1.9`.
+7. Фаза 7 закрывает интеграцию, регрессию и финальный DoD.
+
+## 3. Фаза 0. Базовая фиксация состояния
+1. Зафиксировать baseline прогонов из `path_fix_v3` и сохранить логи как артефакт сравнения.
+2. Выполнить команды из секции “Свежие прогоны” в [path_fix_v3](/root/arena-shooter/path_fix_v3:481) без изменений кода.
+3. Подтвердить текущие симптомы в логах: `invalid_nav_build:obstacle_center_walkable`, `High repath rate` при PASS.
+4. Критерий выхода: есть “до исправлений” набор логов и результатов по всем тестам из секции 8.
+
+## 4. Фаза 1. Починка геометрической корректности nav-build
+1. Исправить детерминированный дефект merge-контуров в [navigation_service.gd](/root/arena-shooter/src/systems/navigation_service.gd:750) на участке `_merge_overlapping_outlines`, чтобы hole для `ShadowC1` не исчезал (`P0.8`).
+2. В `_validate_nav_build_integrity` в [navigation_service.gd](/root/arena-shooter/src/systems/navigation_service.gd:930) перевести `obstacle_center_walkable` в hard-fail c установкой `_nav_build_invalid = true` (`P0.1`).
+3. При `iteration_id <= 0` после лимита deferred-попыток выставлять invalid build, без “тихого” валидного состояния (`P1.5`).
+4. Переписать [test_stealth_nav_polygon_hole_integrity.gd](/root/arena-shooter/tests/test_stealth_nav_polygon_hole_integrity.gd) на прямую проверку геометрии через `NavigationServer2D.map_get_closest_point` по RID, без единственного источника `is_point_on_navigation_map` (`P0.2`).
+5. Критерий выхода: warning `invalid_nav_build:obstacle_center_walkable` исчезает на тестовой 3zone сцене, hole-check падает при искусственном регрессе и проходит на исправленном коде.
+
+## 5. Фаза 2. Починка контракта маршрута и obstacle-проверки
+1. Убрать ложный `status=ok`, когда raw nav path не достигает цели: в [navigation_runtime_queries.gd](/root/arena-shooter/src/systems/navigation_runtime_queries.gd:354) прекратить безусловный “дотяг” `append(to_pos)` без проверки достижимости (`P0.9`).
+2. Синхронизировать нормализацию в [enemy_pursuit_system.gd](/root/arena-shooter/src/systems/enemy_pursuit_system.gd:1218), чтобы локальная нормализация не превращала геометрически недостижимый маршрут в корректный.
+3. Ужесточить `path_intersects_navigation_obstacles` в [navigation_service.gd](/root/arena-shooter/src/systems/navigation_service.gd:275) через аналитический `segment-vs-rect` check как источник истины для verdict, чтобы снизить false-negative (`P1.4`).
+4. Критерий выхода: кейс `to_outside_navmesh` из `path_fix_v3` больше не возвращает `status=ok`, а obstacle-intersection проверки не зависят от грубого шага 8px.
+
+## 6. Фаза 3. Приведение KPI и watchdog к реальному поведению
+1. Исправить инкремент `nav_path_obstacle_intersections_total` в [navigation_runtime_queries.gd](/root/arena-shooter/src/systems/navigation_runtime_queries.gd:497), чтобы события `reason=path_intersects_obstacle` учитывались независимо от `status=ok` (`P0.3`).
+2. Исправить логику `room_graph_fallback_when_navmesh_available_total` в [navigation_runtime_queries.gd](/root/arena-shooter/src/systems/navigation_runtime_queries.gd:504), убрав конфликт условий, из-за которого метрика “мертвая” (`P0.4`).
+3. В [enemy_pursuit_system.gd](/root/arena-shooter/src/systems/enemy_pursuit_system.gd:1642) учитывать non-door forced repath в `collision_repath_events_total` (`P1.1`).
+4. Привести gate-threshold к той же метрике, что warning в [ai_watchdog.gd](/root/arena-shooter/src/systems/ai_watchdog.gd:10): сравнение в `global replans/sec` с порогом warning (`P1.2`, `P1.8`), чтобы “warning storm” не считался нормальным PASS.
+5. Критерий выхода: KPI отражают реальные события pathfinding, и пороги warning/gate сопоставимы в одной шкале.
+
+## 7. Фаза 4. Починка тестов качества (чтобы green = реально хорошо)
+1. Удалить synthetic-инжект метрик из gate-ветки в [test_ai_long_run_stress.gd](/root/arena-shooter/tests/test_ai_long_run_stress.gd:279); если synthetic нужен, вынести его только в отдельный fixture-тест, не участвующий в gate (`P0.5`, `T3`).
+2. Убрать “заморозку мира” как основу performance-gate в [test_ai_long_run_stress.gd](/root/arena-shooter/tests/test_ai_long_run_stress.gd:495), чтобы тест мерил живой runtime (`P0.6`).
+3. В [test_level_stealth_checklist.gd](/root/arena-shooter/tests/test_level_stealth_checklist.gd) перестать принимать obstacle-block как норму в проверках маршрутов (`P0.7`).
+4. Развязать oracle-coupling: в тестах использовать независимый геометрический чек, а не production `path_intersects_navigation_obstacles` (`P1.7`).
+5. Дополнить wall-тесты с `FakeNav` интеграционными тестами через реальный `NavigationService`, сохранив старые stub-тесты как unit-контракты (`P1.10`, `T1`).
+6. Для `test_stealth_nav_path_segments_avoid_props` добавить policy-aware сценарии с `enemy != null` (`T2`).
+7. Сделать runtime warnings/errors/leaks фатальными для verdict в test harness (`T4`).
+8. Критерий выхода: тесты не проходят при повторении зафиксированных дефектов из `path_fix_v3`.
+
+## 8. Фаза 5. Легаси и fail-closed поведение
+1. В [enemy_pursuit_system.gd](/root/arena-shooter/src/systems/enemy_pursuit_system.gd:1543) убрать fail-open `return true` при отсутствии geometry API/legacy API (`P1.3`).
+2. В [enemy_patrol_system.gd](/root/arena-shooter/src/systems/enemy_patrol_system.gd:296) вынести reachability filter из зависимости от `is_point_in_shadow`, чтобы stub/legacy режим не пропускал unreachable точки (`P2.3`).
+3. Актуализировать и расширить [test_walkable_api_legacy_bridge_contract.gd](/root/arena-shooter/tests/test_walkable_api_legacy_bridge_contract.gd) под fail-closed контракт.
+4. Критерий выхода: в legacy/stub окружении путь не считается проходимым “по умолчанию”.
+
+## 9. Фаза 6. Детерминизм и техдолг движения
+1. Убрать wall-clock mixing seed в [enemy_patrol_system.gd](/root/arena-shooter/src/systems/enemy_patrol_system.gd:215) (`P2.1`).
+2. Убрать global RNG в fallback roam в [enemy_pursuit_system.gd](/root/arena-shooter/src/systems/enemy_pursuit_system.gd:1136) (`P2.2`).
+3. Переписать [test_patrol_route_variety.gd](/root/arena-shooter/tests/test_patrol_route_variety.gd:72), чтобы тестировал качество маршрута, а не wall-clock-случайность (`P1.9`).
+4. Дедуплицировать recovery-ветки в `_execute_move_to_target` в [enemy_pursuit_system.gd](/root/arena-shooter/src/systems/enemy_pursuit_system.gd:743) (`P1.6`).
+5. Критерий выхода: повторяемость прогонов при фиксированном seed и снижение риска рассинхрона hotfix-веток.
+
+## 10. Фаза 7. Интеграционный прогон и критерии 100% Done
+1. Прогнать обязательный набор из [path_fix_v3](/root/arena-shooter/path_fix_v3:481): `test_ai_performance_gate`, `test_level_stealth_checklist`, `test_stealth_nav_path_segments_avoid_props`, `test_stealth_nav_polygon_hole_integrity`, `test_patrol_navigation_kpi_gate`.
+2. Прогнать дополнительные тесты, упомянутые как проблемные/контрактные: `test_walkable_api_legacy_bridge_contract`, `test_navigation_path_contract_route_source`, wall/props интеграционные тесты после их замены.
+3. Зафиксировать отсутствие warning-симптомов из baseline: `invalid_nav_build:obstacle_center_walkable`, невалидные `ok` для недостижимых целей, искусственно зеленые KPI.
+4. Закрыть каждый ID из матрицы фаз явной пометкой “fixed + test evidence”.
+5. Критерий выхода: все ID из `path_fix_v3` закрыты, и green CI больше не скрывает зафиксированные в документе дефекты.
+
+## 11. Порядок мержа
+1. Один PR на фазу.
+2. Мерж только после green по фазовым тестам и обновления трассировки “Issue ID -> тест/лог”.
+3. После Фазы 4 сделать промежуточный стоп и проверить, что тесты реально ловят регресс `P0.8` и `P0.9`.
+4. После Фазы 7 обновить [path_fix_v3](/root/arena-shooter/path_fix_v3) как “закрыто/частично закрыто” по каждому пункту.
+
+## 12. Жесткие правила без додумок
+1. Любая формулировка “сделать лучше” трактуется как: есть код-изменение, есть тест, есть лог/метрика до и после.
+2. Любой пункт считается закрытым только при наличии трех артефактов:
+   1. diff в целевом файле;
+   2. результат запуска релевантных тестов;
+   3. строка в чеклисте трассировки `Issue ID -> файлы -> тесты -> лог`.
+3. Если пункт содержит числовой порог, порог берется из уже зафиксированных значений в [path_fix_v3](/root/arena-shooter/path_fix_v3), новые числа не вводятся без отдельной явной фиксации в документе.
+4. Для `P1.2/P1.8` единица сравнения фиксирована: `global replans/sec`.
+5. Для `P0.9` `status=ok` разрешен только если конечная точка геометрически достижима по navmesh-проверке; недостижимый хвост не допускается.
+6. Для `P0.2/P1.7` production helper-функции не используются как единственный оракул в тестах геометрической корректности.
+
+## 13. Обязательные команды проверки по фазам
+1. Фаза 0 и Фаза 7:
+   1. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_ai_performance_gate.tscn`
+   2. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_level_stealth_checklist.tscn`
+   3. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_stealth_nav_path_segments_avoid_props.tscn`
+   4. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_stealth_nav_polygon_hole_integrity.tscn`
+   5. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_patrol_navigation_kpi_gate.tscn`
+2. Фаза 1:
+   1. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://artifacts/nav_probe_3zone_scene.tscn`
+3. Фаза 4:
+   1. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_patrol_obstacle_avoidance_wall.tscn`
+   2. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_patrol_obstacle_avoidance_props.tscn`
+4. Фаза 5:
+   1. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_walkable_api_legacy_bridge_contract.tscn`
+5. Фаза 6:
+   1. `xvfb-run -a /snap/bin/godot-4 --headless --path . --scene res://tests/test_patrol_route_variety.tscn`
+
+## 14. Формат итогового чеклиста закрытия
+1. Заполняется таблица строками вида:
+   1. `Issue ID`
+   2. `Измененные файлы`
+   3. `Каким тестом подтверждено`
+   4. `Ключевая строка лога/метрики до`
+   5. `Ключевая строка лога/метрики после`
+   6. `Статус: closed/partial`
+2. Без заполненной строки issue считается незакрытым, даже если код уже изменен.
