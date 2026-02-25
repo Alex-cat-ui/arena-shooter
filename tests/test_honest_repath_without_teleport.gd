@@ -67,11 +67,9 @@ func _test_honest_repath_without_teleport() -> void:
 	_press_key(controller, KEY_3)
 	await get_tree().physics_frame
 
-	var pursuit_variant: Variant = enemy.get("_pursuit")
-	var pursuit := pursuit_variant as Object
 	var collision_snapshot_keys_ok := false
-	if pursuit != null and pursuit.has_method("debug_get_navigation_policy_snapshot"):
-		var initial_snapshot := pursuit.call("debug_get_navigation_policy_snapshot") as Dictionary
+	var initial_snapshot := enemy.debug_get_pursuit_navigation_policy_snapshot_for_test()
+	if not initial_snapshot.is_empty():
 		collision_snapshot_keys_ok = (
 			initial_snapshot.has("collision_kind")
 			and initial_snapshot.has("collision_forced_repath")
@@ -92,8 +90,8 @@ func _test_honest_repath_without_teleport() -> void:
 		moved_total += step_px
 		max_step_px = maxf(max_step_px, step_px)
 		prev_pos = current_pos
-		if pursuit != null and pursuit.has_method("debug_get_navigation_policy_snapshot"):
-			var snapshot := pursuit.call("debug_get_navigation_policy_snapshot") as Dictionary
+		var snapshot := enemy.debug_get_pursuit_navigation_policy_snapshot_for_test()
+		if not snapshot.is_empty():
 			if String(snapshot.get("collision_kind", "")) == "non_door":
 				non_door_collision_snapshot_ok = (
 					non_door_collision_snapshot_ok

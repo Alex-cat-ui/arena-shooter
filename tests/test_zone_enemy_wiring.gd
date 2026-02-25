@@ -30,7 +30,7 @@ class FakeLayout:
 class FakeEnemy:
 	extends Node2D
 
-	var _zone_director: Node = null
+	var _zone_director_internal: Node = null
 	var _room_id: int = 0
 
 	func _init(room_id: int = 0) -> void:
@@ -46,25 +46,28 @@ class FakeEnemy:
 		pass
 
 	func set_zone_director(director: Node) -> void:
-		_zone_director = director
+		_zone_director_internal = director
+
+	func has_zone_director() -> bool:
+		return _zone_director_internal != null
 
 	func enter_combat() -> void:
-		if not _zone_director:
+		if not _zone_director_internal:
 			return
-		if not _zone_director.has_method("get_zone_for_room") or not _zone_director.has_method("trigger_lockdown"):
+		if not _zone_director_internal.has_method("get_zone_for_room") or not _zone_director_internal.has_method("trigger_lockdown"):
 			return
 		var room_id := int(get_meta("room_id", _room_id))
-		var zone_id := int(_zone_director.get_zone_for_room(room_id))
-		_zone_director.trigger_lockdown(zone_id)
+		var zone_id := int(_zone_director_internal.get_zone_for_room(room_id))
+		_zone_director_internal.trigger_lockdown(zone_id)
 
-	func _get_zone_state() -> int:
-		if not _zone_director:
+	func get_zone_state_for_debug() -> int:
+		if not _zone_director_internal:
 			return -1
-		if not _zone_director.has_method("get_zone_for_room") or not _zone_director.has_method("get_zone_state"):
+		if not _zone_director_internal.has_method("get_zone_for_room") or not _zone_director_internal.has_method("get_zone_state"):
 			return -1
 		var room_id := int(get_meta("room_id", _room_id))
-		var zone_id := int(_zone_director.get_zone_for_room(room_id))
-		return int(_zone_director.get_zone_state(zone_id))
+		var zone_id := int(_zone_director_internal.get_zone_for_room(room_id))
+		return int(_zone_director_internal.get_zone_state(zone_id))
 
 
 func _ready() -> void:
@@ -98,7 +101,7 @@ func _test_enemy_receives_zone_director() -> void:
 	var nav: Node = fixture["nav"] as Node
 	var enemy: FakeEnemy = fixture["enemy"] as FakeEnemy
 	nav.call("_configure_enemy", enemy)
-	_t.run_test("enemy_receives_zone_director", enemy._zone_director != null)
+	_t.run_test("enemy_receives_zone_director", enemy.has_zone_director())
 	await _cleanup_fixture(fixture)
 
 
@@ -121,7 +124,7 @@ func _test_null_zone_director_no_crash() -> void:
 	var enemy: FakeEnemy = fixture["enemy"] as FakeEnemy
 	nav.call("_configure_enemy", enemy)
 	enemy.enter_combat()
-	_t.run_test("null_zone_director_no_crash", enemy._get_zone_state() == -1)
+	_t.run_test("null_zone_director_no_crash", enemy.get_zone_state_for_debug() == -1)
 	await _cleanup_fixture(fixture)
 
 
@@ -132,7 +135,7 @@ func _test_dynamically_spawned_enemy_gets_director() -> void:
 	entities_container.add_child(dynamic_enemy)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_t.run_test("dynamically_spawned_enemy_gets_director", dynamic_enemy._zone_director != null)
+	_t.run_test("dynamically_spawned_enemy_gets_director", dynamic_enemy.has_zone_director())
 	dynamic_enemy.queue_free()
 	await _cleanup_fixture(fixture)
 

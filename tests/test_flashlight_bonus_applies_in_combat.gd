@@ -58,23 +58,14 @@ func _test_flashlight_bonus_applies_in_combat() -> void:
 	)
 	enemy.debug_force_awareness_state("COMBAT")
 
-	var pursuit_variant: Variant = enemy.get("_pursuit")
-	if pursuit_variant != null:
-		var pursuit_obj := pursuit_variant as Object
-		if pursuit_obj and pursuit_obj.has_method("set_speed_tiles"):
-			pursuit_obj.call("set_speed_tiles", 0.0)
-			pursuit_obj.set("facing_dir", Vector2.RIGHT)
-			pursuit_obj.set("_target_facing_dir", Vector2.RIGHT)
+	enemy.debug_set_pursuit_speed_tiles_for_test(0.0)
+	enemy.debug_set_pursuit_facing_for_test(Vector2.RIGHT)
 
 	enemy.runtime_budget_tick(0.3)
 	var in_cone_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 
 	player.global_position = Vector2(120.0, 260.0)
-	if pursuit_variant != null:
-		var pursuit_obj_2 := pursuit_variant as Object
-		if pursuit_obj_2:
-			pursuit_obj_2.set("facing_dir", Vector2.RIGHT)
-			pursuit_obj_2.set("_target_facing_dir", Vector2.RIGHT)
+	enemy.debug_set_pursuit_facing_for_test(Vector2.RIGHT)
 	enemy.runtime_budget_tick(0.3)
 	var out_cone_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 

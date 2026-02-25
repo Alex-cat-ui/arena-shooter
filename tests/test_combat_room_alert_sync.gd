@@ -53,8 +53,9 @@ func _test_force_combat_escalates_room_alert_same_tick() -> void:
 		controller.call("_force_enemy_combat")
 
 	var room_id := int(enemy.get_meta("room_id", -1))
-	if room_id < 0 and enemy.has_method("_resolve_room_id_for_events"):
-		room_id = int(enemy.call("_resolve_room_id_for_events"))
+	if room_id < 0:
+		enemy.runtime_budget_tick(0.0)
+		room_id = int(enemy.get_meta("room_id", -1))
 	var room_alert_effective := ENEMY_ALERT_LEVELS_SCRIPT.CALM
 	var room_alert_transient := ENEMY_ALERT_LEVELS_SCRIPT.CALM
 	if room_id >= 0:

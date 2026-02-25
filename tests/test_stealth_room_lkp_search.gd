@@ -80,10 +80,16 @@ func _test_lkp_investigate_then_search() -> void:
 	los_blocker.global_position = enemy.global_position + Vector2(130.0, 0.0)
 	await get_tree().physics_frame
 	var lkp := enemy.global_position + Vector2(260.0, 0.0)
-	enemy.set("_last_seen_pos", lkp)
-	enemy.set("_last_seen_age", 0.1)
-	enemy.set("_investigate_anchor", lkp)
-	enemy.set("_investigate_anchor_valid", true)
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("lkp search: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		room.queue_free()
+		await get_tree().process_frame
+		return
+	detection_runtime.call("set_state_value", "_last_seen_pos", lkp)
+	detection_runtime.call("set_state_value", "_last_seen_age", 0.1)
+	detection_runtime.call("set_state_value", "_investigate_anchor", lkp)
+	detection_runtime.call("set_state_value", "_investigate_anchor_valid", true)
 	if enemy.has_method("debug_force_awareness_state"):
 		enemy.call("debug_force_awareness_state", "ALERT")
 
@@ -140,3 +146,8 @@ func _members_in_group_under(group_name: String, ancestor: Node) -> Array[Node]:
 		if member == ancestor or ancestor.is_ancestor_of(member):
 			out.append(member)
 	return out
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

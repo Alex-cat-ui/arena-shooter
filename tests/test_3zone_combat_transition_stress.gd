@@ -45,6 +45,17 @@ func run_suite() -> Dictionary:
 	}
 
 
+func run_gate_report() -> Dictionary:
+	var suite_result := await run_suite()
+	var ok := bool(suite_result.get("ok", false))
+	return {
+		"gate_status": "PASS" if ok else "FAIL",
+		"gate_reason": "ok" if ok else "stress_assertion_failed",
+		"suite_run": int(suite_result.get("run", 0)),
+		"suite_passed": int(suite_result.get("passed", 0)),
+	}
+
+
 func _test_alert_to_combat_transition_loop_no_freeze() -> void:
 	var all_iterations_ok := true
 	var reached_combat_count := 0
@@ -117,13 +128,8 @@ func _test_mass_combat_transition_no_hard_freeze() -> void:
 		var angle := (TAU * float(i)) / float(maxi(enemies.size(), 1))
 		enemy.global_position = center + Vector2.RIGHT.rotated(angle) * 180.0
 		enemy.set_meta("room_id", 0)
-		var pursuit_variant: Variant = enemy.get("_pursuit")
-		if pursuit_variant != null:
-			var pursuit := pursuit_variant as Object
-			if pursuit:
-				var face_dir := (center - enemy.global_position).normalized()
-				pursuit.set("facing_dir", face_dir)
-				pursuit.set("_target_facing_dir", face_dir)
+		var face_dir := (center - enemy.global_position).normalized()
+		enemy.debug_set_pursuit_facing_for_test(face_dir)
 		if enemy.has_method("debug_force_awareness_state"):
 			enemy.call("debug_force_awareness_state", "COMBAT")
 

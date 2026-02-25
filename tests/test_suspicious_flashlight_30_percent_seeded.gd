@@ -81,10 +81,16 @@ func _test_seeded_suspicious_shadow_scan_flashlight_changes_with_entity_id_same_
 func _test_suspicious_flashlight_gate_is_off_when_shadow_scan_inactive() -> void:
 	var enemy := _new_sampling_enemy(false)
 	enemy.entity_id = 1501
-	enemy.set("_debug_tick_id", 0)
-	var tick0 := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
-	enemy.set("_debug_tick_id", 2)
-	var tick2 := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("suspicious gate setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		enemy.free()
+		GameConfig.reset_to_defaults()
+		return
+	detection_runtime.call("set_state_value", "_debug_tick_id", 0)
+	var tick0 := bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
+	detection_runtime.call("set_state_value", "_debug_tick_id", 2)
+	var tick2 := bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
 	_t.run_test(
 		"suspicious flashlight gate is off at tick 0 when shadow scan inactive",
 		not tick0
@@ -103,7 +109,10 @@ func _new_sampling_enemy(shadow_scan_active: bool) -> Enemy:
 		var canon := GameConfig.stealth_canon as Dictionary
 		canon["flashlight_works_in_alert"] = true
 	var enemy := ENEMY_SCRIPT.new()
-	enemy.set("_flashlight_activation_delay_timer", 0.0)
+	enemy.initialize(1500, "zombie")
+	var detection_runtime := _detection_runtime(enemy)
+	if detection_runtime != null:
+		detection_runtime.call("set_state_value", "_flashlight_activation_delay_timer", 0.0)
 	enemy.set_shadow_scan_active(shadow_scan_active)
 	enemy.set_flashlight_scanner_allowed(true)
 	return enemy
@@ -112,7 +121,15 @@ func _new_sampling_enemy(shadow_scan_active: bool) -> Enemy:
 func _sample_sequence(enemy: Enemy, entity_value: int) -> Array:
 	var seq: Array = []
 	enemy.entity_id = entity_value
+	var detection_runtime := _detection_runtime(enemy)
+	if detection_runtime == null:
+		return seq
 	for tick in range(100):
-		enemy.set("_debug_tick_id", tick)
-		seq.append(bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS)))
+		detection_runtime.call("set_state_value", "_debug_tick_id", tick)
+		seq.append(bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS)))
 	return seq
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

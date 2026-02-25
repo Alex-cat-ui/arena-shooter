@@ -97,13 +97,20 @@ func _test_combat_context_keeps_last_seen() -> void:
 
 	enemy.call("initialize", 5001, "zombie")
 	enemy.call("debug_force_awareness_state", "COMBAT")
+	var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test(
 		"setup: enemy is in COMBAT awareness",
-		bool(enemy.call("_is_combat_awareness_active"))
+		int(snapshot.get("state", ENEMY_ALERT_LEVELS_SCRIPT.CALM)) == ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
 	)
 
-	enemy.set("_last_seen_age", 0.5)
-	enemy.set("_last_seen_pos", Vector2(64.0, 0.0))
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("combat context setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	detection_runtime.call("set_state_value", "_last_seen_age", 0.5)
+	detection_runtime.call("set_state_value", "_last_seen_pos", Vector2(64.0, 0.0))
 	var assignment := {
 		"role": 0,
 		"slot_position": Vector2.ZERO,
@@ -112,10 +119,10 @@ func _test_combat_context_keeps_last_seen() -> void:
 	}
 	var target_context := {
 		"known_target_pos": Vector2.ZERO,
-		"target_is_last_seen": false,
-		"has_known_target": false,
-	}
-	var utility_ctx := enemy.call("_build_utility_context", false, false, assignment, target_context) as Dictionary
+			"target_is_last_seen": false,
+			"has_known_target": false,
+		}
+	var utility_ctx := detection_runtime.call("build_utility_context", false, false, assignment, target_context) as Dictionary
 	_t.run_test(
 		"COMBAT utility context keeps has_last_seen when _last_seen_age is finite",
 		bool(utility_ctx.get("has_last_seen", false))
@@ -151,3 +158,8 @@ func _brain_ctx(override: Dictionary) -> Dictionary:
 	for key_variant in override.keys():
 		base[key_variant] = override[key_variant]
 	return base
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

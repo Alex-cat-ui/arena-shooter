@@ -56,8 +56,9 @@ func _test_no_duplicate_state_change_per_tick() -> void:
 		enemy.set_physics_process(false)
 
 	var room_id := int(enemy.get_meta("room_id", -1))
-	if room_id < 0 and enemy.has_method("_resolve_room_id_for_events"):
-		room_id = int(enemy.call("_resolve_room_id_for_events"))
+	if room_id < 0:
+		enemy.runtime_budget_tick(0.0)
+		room_id = int(enemy.get_meta("room_id", -1))
 
 	var duplicate_ticks := 0
 	var alert_combat_same_tick_cycles := 0
@@ -69,7 +70,8 @@ func _test_no_duplicate_state_change_per_tick() -> void:
 
 		var events_before := _state_events.size()
 		enemy.on_heard_shot(room_id, enemy.global_position)
-		enemy.call("_on_enemy_reinforcement_called", 999001, room_id, [room_id])
+		if EventBus:
+			EventBus.emit_enemy_reinforcement_called(999001, room_id, [room_id])
 		await _flush_event_bus_frames(1)
 		var events_after := _state_events.size()
 		var produced := events_after - events_before

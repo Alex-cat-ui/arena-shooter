@@ -57,15 +57,9 @@ func _test_room_stays_below_combat_before_confirm_complete() -> void:
 	player.velocity = Vector2.ZERO
 	if enemy.has_method("set_physics_process"):
 		enemy.set_physics_process(false)
-	var pursuit_variant: Variant = enemy.get("_pursuit")
-	if pursuit_variant != null:
-		var pursuit_obj := pursuit_variant as Object
-		if pursuit_obj:
-			if pursuit_obj.has_method("set_speed_tiles"):
-				pursuit_obj.call("set_speed_tiles", 0.0)
-			var face_dir := (player.global_position - enemy.global_position).normalized()
-			pursuit_obj.set("facing_dir", face_dir)
-			pursuit_obj.set("_target_facing_dir", face_dir)
+	enemy.debug_set_pursuit_speed_tiles_for_test(0.0)
+	var face_dir := (player.global_position - enemy.global_position).normalized()
+	enemy.debug_set_pursuit_facing_for_test(face_dir)
 
 	for _i in range(49):
 		_sync_enemy_facing(enemy, player.global_position)
@@ -73,8 +67,9 @@ func _test_room_stays_below_combat_before_confirm_complete() -> void:
 		await get_tree().process_frame
 
 	var room_id := int(enemy.get_meta("room_id", -1))
-	if room_id < 0 and enemy.has_method("_resolve_room_id_for_events"):
-		room_id = int(enemy.call("_resolve_room_id_for_events"))
+	if room_id < 0:
+		enemy.runtime_budget_tick(0.0)
+		room_id = int(enemy.get_meta("room_id", -1))
 	var state_before := String(enemy.get_meta("awareness_state", "CALM"))
 	var room_effective_before := int(alert_system.get_room_effective_level(room_id)) if room_id >= 0 and alert_system.has_method("get_room_effective_level") else ENEMY_ALERT_LEVELS_SCRIPT.CALM
 
@@ -115,14 +110,5 @@ func _first_member_in_group_under(group_name: String, ancestor: Node) -> Node:
 
 
 func _sync_enemy_facing(enemy: Enemy, target_pos: Vector2) -> void:
-	var pursuit_variant: Variant = enemy.get("_pursuit")
-	if pursuit_variant == null:
-		return
-	var pursuit_obj := pursuit_variant as Object
-	if pursuit_obj == null:
-		return
 	var face_dir := (target_pos - enemy.global_position).normalized()
-	if face_dir.length_squared() <= 0.0001:
-		return
-	pursuit_obj.set("facing_dir", face_dir)
-	pursuit_obj.set("_target_facing_dir", face_dir)
+	enemy.debug_set_pursuit_facing_for_test(face_dir)

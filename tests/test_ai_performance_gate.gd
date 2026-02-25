@@ -72,6 +72,10 @@ func _test_performance_gate_metrics_formulas_and_thresholds() -> void:
 	var thresholds_ok := bool((report.get("kpi_threshold_failures", []) as Array).is_empty()) and String(report.get("gate_reason", "")) != "threshold_failed"
 	_t.run_test("performance gate: fixed benchmark config is exact", fixed_config_ok)
 	_t.run_test("performance gate: derived formulas match contract", formulas_ok)
+	_t.run_test(
+		"performance gate: fixed benchmark report verdict is PASS/ok",
+		String(report.get("gate_status", "")) == "PASS" and String(report.get("gate_reason", "")) == "ok"
+	)
 	_t.run_test("performance gate: threshold verdict is enforced", thresholds_ok or String(report.get("gate_status", "")) == "FAIL")
 
 

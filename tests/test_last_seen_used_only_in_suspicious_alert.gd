@@ -73,13 +73,15 @@ func _test_last_seen_forbidden_in_combat_and_allowed_in_alert() -> void:
 	)
 
 	enemy.debug_force_awareness_state("ALERT")
-	enemy.set("_last_seen_pos", remembered_pos)
-	enemy.set("_last_seen_age", 0.1)
-	var utility_variant: Variant = enemy.get("_utility_brain")
-	if utility_variant != null:
-		var utility_obj := utility_variant as Object
-		if utility_obj and utility_obj.has_method("reset"):
-			utility_obj.call("reset")
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("last_seen rule: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	detection_runtime.call("set_state_value", "_last_seen_pos", remembered_pos)
+	detection_runtime.call("set_state_value", "_last_seen_age", 0.1)
+	enemy.debug_reset_utility_brain()
 	enemy.runtime_budget_tick(1.0)
 	var alert_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	var alert_intent := enemy.get_current_intent() as Dictionary
@@ -93,6 +95,11 @@ func _test_last_seen_forbidden_in_combat_and_allowed_in_alert() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object
 
 
 func _spawn_blocker(parent: Node2D, pos: Vector2, size: Vector2) -> StaticBody2D:

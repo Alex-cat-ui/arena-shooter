@@ -2,6 +2,7 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const ENEMY_SCRIPT := preload("res://src/entities/enemy.gd")
+const ENEMY_COMBAT_ROLE_RUNTIME_SCRIPT := preload("res://src/entities/enemy_combat_role_runtime.gd")
 const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 const ENEMY_UTILITY_BRAIN_SCRIPT := preload("res://src/systems/enemy_utility_brain.gd")
 const ENEMY_SQUAD_SYSTEM_SCRIPT := preload("res://src/systems/enemy_squad_system.gd")
@@ -37,7 +38,7 @@ func run_suite() -> Dictionary:
 
 
 func _test_assignment_supports_flank_requires_path_status_ok() -> void:
-	var enemy := ENEMY_SCRIPT.new()
+	var runtime = ENEMY_COMBAT_ROLE_RUNTIME_SCRIPT.new()
 	var assignment := {
 		"role": Enemy.SQUAD_ROLE_FLANK,
 		"slot_role": Enemy.SQUAD_ROLE_FLANK,
@@ -47,13 +48,13 @@ func _test_assignment_supports_flank_requires_path_status_ok() -> void:
 		"slot_path_length": 420.0,
 		"slot_path_eta_sec": 2.8,
 	}
-	var ok := not bool(enemy.call("_assignment_supports_flank_role", assignment))
+	var ok := not bool(runtime.call("assignment_supports_flank_role", assignment))
 	_t.run_test("FLANK requires path_status=ok", ok)
-	enemy.free()
+	runtime = null
 
 
 func _test_assignment_supports_flank_requires_eta_within_budget() -> void:
-	var enemy := ENEMY_SCRIPT.new()
+	var runtime = ENEMY_COMBAT_ROLE_RUNTIME_SCRIPT.new()
 	var assignment := {
 		"role": Enemy.SQUAD_ROLE_FLANK,
 		"slot_role": Enemy.SQUAD_ROLE_FLANK,
@@ -63,9 +64,9 @@ func _test_assignment_supports_flank_requires_eta_within_budget() -> void:
 		"slot_path_length": 600.0,
 		"slot_path_eta_sec": 4.0,
 	}
-	var ok := not bool(enemy.call("_assignment_supports_flank_role", assignment))
+	var ok := not bool(runtime.call("assignment_supports_flank_role", assignment))
 	_t.run_test("FLANK requires ETA within budget", ok)
-	enemy.free()
+	runtime = null
 
 
 func _test_utility_move_to_slot_blocked_when_flank_contract_false() -> void:

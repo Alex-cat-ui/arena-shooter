@@ -52,10 +52,7 @@ func _test_flashlight_active_in_combat_when_latched() -> void:
 	enemy.set_physics_process(false)
 	player.global_position = enemy.global_position + Vector2(300.0, 0.0)
 	player.velocity = Vector2.ZERO
-	var pursuit = enemy.get("_pursuit")
-	if pursuit:
-		pursuit.set("facing_dir", Vector2.RIGHT)
-		pursuit.set("_target_facing_dir", Vector2.RIGHT)
+	enemy.debug_set_pursuit_facing_for_test(Vector2.RIGHT)
 
 	if controller.has_method("_force_enemy_combat"):
 		controller.call("_force_enemy_combat")
@@ -68,12 +65,18 @@ func _test_flashlight_active_in_combat_when_latched() -> void:
 	_t.run_test("combat setup: enemy is latched", bool(snapshot.get("latched", false)))
 	_t.run_test("combat setup: room latch count is non-zero", int(snapshot.get("room_latch_count", 0)) > 0)
 	_t.run_test("combat setup: flashlight is active", bool(snapshot.get("flashlight_active", false)))
-	enemy.set("_shadow_linger_flashlight", true)
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("combat flashlight setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		room.queue_free()
+		await get_tree().process_frame
+		return
+	detection_runtime.call("set_state_value", "_shadow_linger_flashlight", true)
 	enemy.runtime_budget_tick(0.2)
 	snapshot = enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test("combat + shadow linger keeps flashlight active", bool(snapshot.get("flashlight_active", false)))
 	_t.run_test("combat + shadow linger does not drop latch", bool(snapshot.get("latched", false)))
-	enemy.set("_shadow_linger_flashlight", false)
+	detection_runtime.call("set_state_value", "_shadow_linger_flashlight", false)
 	enemy.runtime_budget_tick(0.2)
 	snapshot = enemy.get_debug_detection_snapshot() as Dictionary
 	_t.run_test(
@@ -103,3 +106,8 @@ func _first_member_in_group_under(group_name: String, ancestor: Node) -> Node:
 		if member == ancestor or ancestor.is_ancestor_of(member):
 			return member
 	return null
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

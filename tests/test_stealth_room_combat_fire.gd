@@ -95,24 +95,23 @@ func _test_player_loadout_and_enemy_fire() -> void:
 
 	if controller.has_method("_force_enemy_combat"):
 		controller.call("_force_enemy_combat")
-	var armed_delay_sec := float(enemy.get("_combat_first_attack_delay_timer"))
+	var pre_fire_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
+	var armed_delay_sec := float(pre_fire_snapshot.get("shotgun_first_attack_delay_left", 0.0))
 	_t.run_test(
 		"stealth fire: first-attack delay is not armed before first valid firing solution",
-		not bool(enemy.get("_combat_first_shot_delay_armed")) and armed_delay_sec <= 0.0
+		not bool(pre_fire_snapshot.get("shotgun_first_attack_delay_armed", false)) and armed_delay_sec <= 0.0
 	)
 
 	# Face enemy toward player for deterministic first contact.
-	var pursuit = enemy.get("_pursuit")
-	if pursuit:
-		pursuit.set("facing_dir", Vector2.RIGHT)
-		pursuit.set("_target_facing_dir", Vector2.RIGHT)
+	enemy.debug_set_pursuit_facing_for_test(Vector2.RIGHT)
 
 	var fired_too_early := false
 	var loop_start_physics_frame := Engine.get_physics_frames()
 	for _i in range(300):
 		await get_tree().physics_frame
 		await get_tree().process_frame
-		if _first_fire_frame < 0 and float(enemy.get("_shot_cooldown")) > 0.0:
+		var tick_snapshot := enemy.get_debug_detection_snapshot() as Dictionary
+		if _first_fire_frame < 0 and float(tick_snapshot.get("shotgun_cooldown_left", 0.0)) > 0.0:
 			_first_fire_frame = int(Engine.get_physics_frames() - loop_start_physics_frame)
 		if _first_fire_frame > 0 and _first_fire_frame < COMBAT_FIRST_ATTACK_AND_TELEGRAPH_MIN_FRAMES:
 			fired_too_early = true

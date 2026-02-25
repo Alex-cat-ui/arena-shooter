@@ -512,12 +512,8 @@ func _test_3zone_enemy_combat_fire(level: Node2D) -> void:
 
 	var facing_dir := (player.global_position - shooter.global_position).normalized()
 	if facing_dir.length_squared() > 0.0001:
-		var pursuit_variant: Variant = shooter.get("_pursuit")
-		if pursuit_variant != null:
-			var pursuit_obj := pursuit_variant as Object
-			if pursuit_obj:
-				pursuit_obj.set("facing_dir", facing_dir)
-				pursuit_obj.set("_target_facing_dir", facing_dir)
+		if shooter.has_method("debug_set_pursuit_facing_for_test"):
+			shooter.call("debug_set_pursuit_facing_for_test", facing_dir)
 
 	if shooter.has_method("debug_force_awareness_state"):
 		shooter.call("debug_force_awareness_state", "COMBAT")
@@ -651,12 +647,8 @@ func _test_3zone_game_over_runtime_debug(level: Node2D) -> void:
 
 	var facing_dir := (player.global_position - shooter.global_position).normalized()
 	if facing_dir.length_squared() > 0.0001:
-		var pursuit_variant: Variant = shooter.get("_pursuit")
-		if pursuit_variant != null:
-			var pursuit_obj := pursuit_variant as Object
-			if pursuit_obj:
-				pursuit_obj.set("facing_dir", facing_dir)
-				pursuit_obj.set("_target_facing_dir", facing_dir)
+		if shooter.has_method("debug_set_pursuit_facing_for_test"):
+			shooter.call("debug_set_pursuit_facing_for_test", facing_dir)
 
 	if shooter.has_method("debug_force_awareness_state"):
 		shooter.call("debug_force_awareness_state", "COMBAT")

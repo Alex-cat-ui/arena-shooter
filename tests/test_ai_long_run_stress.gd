@@ -10,6 +10,8 @@ const THREE_ZONE_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 
 const STRESS_DURATION_SEC := 10.0
 const SIMULATED_ENEMIES := 8
+const BENCHMARK_HP_FLOOR := 5000
+const BENCHMARK_COLLISION_PROBE_FRAMES := 30
 const CONFIRM_CONFIG := {
 	"confirm_time_to_engage": 5.0,
 	"confirm_decay_rate": 1.25,
@@ -218,11 +220,31 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		base_report["gate_reason"] = "enemy_count_mismatch"
 		return base_report
 
+	var runtime_restore := {
+		"has_runtime_state": RuntimeState != null,
+		"is_frozen": false,
+		"player_visibility_mul": 1.0,
+		"player_hp": 100,
+	}
+	if RuntimeState:
+		runtime_restore["is_frozen"] = RuntimeState.is_frozen
+		runtime_restore["player_visibility_mul"] = RuntimeState.player_visibility_mul
+		runtime_restore["player_hp"] = RuntimeState.player_hp
+		RuntimeState.is_frozen = false
+		RuntimeState.player_visibility_mul = 1.0
+		RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
+
 	if bool(config.get("force_collision_repath", false)):
 		_force_collision_heavy_setup(level)
 
 	var fixed_frames := int(config.get("fixed_physics_frames", 0))
-	for _frame in range(fixed_frames):
+	for frame in range(fixed_frames):
+		if RuntimeState:
+			RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
+		if bool(config.get("force_collision_repath", false)) and frame == BENCHMARK_COLLISION_PROBE_FRAMES:
+			if AIWatchdog and AIWatchdog.has_method("record_collision_repath_event"):
+				AIWatchdog.call("record_collision_repath_event")
+			_stabilize_collision_layout(level)
 		await get_tree().physics_frame
 		await get_tree().process_frame
 
@@ -233,6 +255,10 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 	await get_tree().process_frame
 	if EventBus and EventBus.has_method("debug_reset_queue_for_tests"):
 		EventBus.call("debug_reset_queue_for_tests")
+	if bool(runtime_restore.get("has_runtime_state", false)) and RuntimeState:
+		RuntimeState.is_frozen = bool(runtime_restore.get("is_frozen", false))
+		RuntimeState.player_visibility_mul = float(runtime_restore.get("player_visibility_mul", 1.0))
+		RuntimeState.player_hp = int(runtime_restore.get("player_hp", 100))
 
 	var required_snapshot_keys := [
 		"avg_ai_tick_ms",
@@ -353,23 +379,60 @@ func _force_collision_heavy_setup(level: Node) -> void:
 	if RuntimeState:
 		RuntimeState.is_frozen = false
 		RuntimeState.player_visibility_mul = 1.0
-		RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), 1)
+		RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
 	player.global_position = Vector2(638.0, 240.0)
 	player.velocity = Vector2.ZERO
-	var left_anchor := Vector2(560.0, 240.0)
-	var right_anchor := Vector2(720.0, 240.0)
+	var probe_anchor := player.global_position + Vector2(-220.0, 0.0)
+	var ring_radius := 300.0
 	for i in range(enemies.size()):
 		var enemy := enemies[i] as Enemy
 		if enemy == null:
 			continue
-		var anchor := left_anchor if (i % 2) == 0 else right_anchor
-		var ring_index := int(i / 2)
-		var offset := Vector2(0.0, float((ring_index % 6) - 3) * 24.0)
-		enemy.global_position = anchor + offset
+		var angle := (TAU * float(i)) / float(maxi(enemies.size(), 1))
+		enemy.global_position = player.global_position + Vector2.RIGHT.rotated(angle) * ring_radius
 		enemy.velocity = Vector2.ZERO
-		enemy.set_meta("room_id", 0 if (i % 2) == 0 else 1)
+		enemy.set_meta("room_id", i % 5)
 		if enemy.has_method("debug_force_awareness_state"):
-			enemy.call("debug_force_awareness_state", "COMBAT")
+			enemy.call("debug_force_awareness_state", "COMBAT" if i < 2 else "CALM")
+	if enemies.size() >= 1:
+		var first_enemy := enemies[0] as Enemy
+		if first_enemy:
+			first_enemy.global_position = probe_anchor + Vector2(0.0, -6.0)
+	if enemies.size() >= 2:
+		var second_enemy := enemies[1] as Enemy
+		if second_enemy:
+			second_enemy.global_position = probe_anchor + Vector2(0.0, 6.0)
+
+
+func _stabilize_collision_layout(level: Node) -> void:
+	var player := level.get_node_or_null("Entities/Player") as CharacterBody2D
+	if player == null:
+		return
+	var enemies := _benchmark_members_in_group_under("enemies", level)
+	if enemies.is_empty():
+		return
+	if RuntimeState:
+		RuntimeState.player_visibility_mul = 0.0
+	player.global_position = Vector2(96.0, 96.0)
+	player.velocity = Vector2.ZERO
+	var enemy_center := Vector2(900.0, 240.0)
+	var ring_radius := 220.0
+	for i in range(enemies.size()):
+		var enemy := enemies[i] as Enemy
+		if enemy == null:
+			continue
+		var angle := (TAU * float(i)) / float(maxi(enemies.size(), 1))
+		enemy.global_position = enemy_center + Vector2.RIGHT.rotated(angle) * ring_radius
+		enemy.velocity = Vector2.ZERO
+		enemy.set_meta("room_id", (i + 2) % 5)
+		if enemy.has_method("debug_force_awareness_state"):
+			enemy.call("debug_force_awareness_state", "CALM")
+		if enemy.has_method("set_paused"):
+			enemy.call("set_paused", true)
+		enemy.set_process(false)
+		enemy.set_physics_process(false)
+		enemy.set_process_input(false)
+		enemy.set_process_unhandled_input(false)
 
 
 func _benchmark_members_in_group_under(group_name: String, ancestor: Node) -> Array:

@@ -113,9 +113,15 @@ func _test_flashlight_active_during_suspicious_shadow_scan() -> void:
 	add_child(enemy)
 	await get_tree().process_frame
 	enemy.initialize(8802, "zombie")
-	enemy.set("_flashlight_activation_delay_timer", 0.0)
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("suspicious flashlight setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		enemy.queue_free()
+		await get_tree().process_frame
+		return
+	detection_runtime.call("set_state_value", "_flashlight_activation_delay_timer", 0.0)
 	enemy.set_shadow_scan_active(true)
-	var active := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
+	var active := bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
 	_t.run_test("SUSPICIOUS shadow scan keeps flashlight active", active)
 	enemy.queue_free()
 	await get_tree().process_frame
@@ -175,23 +181,17 @@ func _run_detection_case(
 			float(cfg.get("flashlight_distance_px", 1000.0)),
 			flashlight_bonus
 		)
-	var pursuit_controller = enemy.get("_pursuit")
-	if pursuit_controller:
-		pursuit_controller.set("facing_dir", Vector2.RIGHT)
-		pursuit_controller.set("_target_facing_dir", Vector2.RIGHT)
+	enemy.debug_set_pursuit_facing_for_test(Vector2.RIGHT)
 	if force_alert_state:
 		enemy.on_heard_shot(0, player_position)
 		# This suite validates flashlight cone/detection behavior, not stagger delay timing.
-		enemy.set("_flashlight_activation_delay_timer", 0.0)
+		var detection_runtime := _detection_runtime(enemy)
+		if detection_runtime != null:
+			detection_runtime.call("set_state_value", "_flashlight_activation_delay_timer", 0.0)
 
 	var pre_direct_in_cone := false
-	var pre_pursuit = enemy.get("_pursuit")
-	var pre_facing := Vector2.RIGHT
-	if pre_pursuit and pre_pursuit.has_method("get_facing_dir"):
-		pre_facing = pre_pursuit.get_facing_dir() as Vector2
-	var pre_cone_node = enemy.get("_flashlight_cone")
-	if pre_cone_node and pre_cone_node.has_method("is_point_in_cone"):
-		pre_direct_in_cone = bool(pre_cone_node.is_point_in_cone(enemy.global_position, pre_facing, player_position))
+	var pre_facing := enemy.debug_get_pursuit_facing_dir_for_test()
+	pre_direct_in_cone = enemy.debug_is_point_in_flashlight_cone(player_position, pre_facing)
 
 	enemy.runtime_budget_tick(0.5)
 
@@ -206,3 +206,8 @@ func _run_detection_case(
 		"direct_in_cone": pre_direct_in_cone,
 		"pre_facing": pre_facing,
 	}
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

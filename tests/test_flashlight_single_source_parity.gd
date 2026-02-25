@@ -41,7 +41,13 @@ func _test_alert_parity() -> void:
 		return
 
 	enemy.on_heard_shot(0, player.global_position)
-	enemy.set("_flashlight_activation_delay_timer", 0.0)
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("ALERT parity setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	detection_runtime.call("set_state_value", "_flashlight_activation_delay_timer", 0.0)
 	enemy.runtime_budget_tick(0.25)
 	var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	var runtime_active := bool(snapshot.get("flashlight_active", false))
@@ -97,13 +103,15 @@ func _spawn_world(player_position: Vector2) -> Dictionary:
 	await get_tree().process_frame
 
 	enemy.initialize(9901, "zombie")
-	var pursuit = enemy.get("_pursuit")
-	if pursuit:
-		pursuit.set("facing_dir", Vector2.RIGHT)
-		pursuit.set("_target_facing_dir", Vector2.RIGHT)
+	enemy.debug_set_pursuit_facing_for_test(Vector2.RIGHT)
 
 	return {
 		"world": world,
 		"enemy": enemy,
 		"player": player,
 	}
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

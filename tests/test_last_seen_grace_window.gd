@@ -125,26 +125,9 @@ func _spawn_blocker(parent: Node2D, pos: Vector2, size: Vector2) -> StaticBody2D
 
 
 func _freeze_enemy_motion(enemy: Enemy) -> void:
-	var pursuit_variant: Variant = enemy.get("_pursuit")
-	if pursuit_variant == null:
-		return
-	var pursuit_obj := pursuit_variant as Object
-	if pursuit_obj == null:
-		return
-	if pursuit_obj.has_method("set_speed_tiles"):
-		pursuit_obj.call("set_speed_tiles", 0.0)
+	enemy.debug_set_pursuit_speed_tiles_for_test(0.0)
 	_lock_enemy_facing(enemy, Vector2.RIGHT)
 
 
 func _lock_enemy_facing(enemy: Enemy, face_dir: Vector2) -> void:
-	var pursuit_variant: Variant = enemy.get("_pursuit")
-	if pursuit_variant == null:
-		return
-	var pursuit_obj := pursuit_variant as Object
-	if pursuit_obj == null:
-		return
-	var dir := face_dir.normalized()
-	if dir.length_squared() <= 0.0001:
-		return
-	pursuit_obj.set("facing_dir", dir)
-	pursuit_obj.set("_target_facing_dir", dir)
+	enemy.debug_set_pursuit_facing_for_test(face_dir)

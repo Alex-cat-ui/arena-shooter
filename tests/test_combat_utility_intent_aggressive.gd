@@ -60,8 +60,16 @@ func _test_combat_no_los_intent_contract() -> void:
 	if had_player_group:
 		player.remove_from_group("player")
 
-	enemy.set("_last_seen_pos", enemy.global_position + Vector2(180.0, 0.0))
-	enemy.set("_last_seen_age", 0.1)
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("combat intent setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		if had_player_group:
+			player.add_to_group("player")
+		room.queue_free()
+		await get_tree().process_frame
+		return
+	detection_runtime.call("set_state_value", "_last_seen_pos", enemy.global_position + Vector2(180.0, 0.0))
+	detection_runtime.call("set_state_value", "_last_seen_age", 0.1)
 	enemy.runtime_budget_tick(0.3)
 	var snapshot := enemy.get_debug_detection_snapshot() as Dictionary
 	var intent_type := int(snapshot.get("intent_type", -1))
@@ -92,3 +100,8 @@ func _first_member_in_group_under(group_name: String, ancestor: Node) -> Node:
 		if member == ancestor or ancestor.is_ancestor_of(member):
 			return member
 	return null
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

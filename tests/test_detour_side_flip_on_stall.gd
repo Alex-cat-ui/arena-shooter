@@ -48,11 +48,7 @@ func _test_detour_side_flip_on_stall() -> void:
 	enemy.debug_force_awareness_state("COMBAT")
 	enemy.runtime_budget_tick(0.1)
 
-	var pursuit_variant: Variant = enemy.get("_pursuit")
-	if pursuit_variant != null:
-		var pursuit_obj := pursuit_variant as Object
-		if pursuit_obj and pursuit_obj.has_method("set_speed_tiles"):
-			pursuit_obj.call("set_speed_tiles", 0.0)
+	enemy.debug_set_pursuit_speed_tiles_for_test(0.0)
 
 	var blocker := _spawn_blocker(world, Vector2(220.0, 0.0), Vector2(32.0, 4200.0))
 	_t.run_test("setup: blocker exists", blocker != null)

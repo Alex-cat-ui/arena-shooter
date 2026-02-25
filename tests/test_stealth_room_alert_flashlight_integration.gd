@@ -63,10 +63,7 @@ func _test_alert_flashlight_growth_in_scene() -> void:
 	if controller.has_method("_force_enemy_alert"):
 		controller.call("_force_enemy_alert")
 
-	var pursuit_controller = enemy.get("_pursuit")
-	if pursuit_controller:
-		pursuit_controller.set("facing_dir", Vector2.RIGHT)
-		pursuit_controller.set("_target_facing_dir", Vector2.RIGHT)
+	enemy.debug_set_pursuit_facing_for_test(Vector2.RIGHT)
 
 	enemy.set_physics_process(false)
 	enemy.runtime_budget_tick(0.5)
@@ -96,8 +93,9 @@ func _test_alert_flashlight_growth_in_scene() -> void:
 	if controller.has_method("_force_enemy_combat"):
 		controller.call("_force_enemy_combat")
 	var room_id := int(enemy.get_meta("room_id", -1))
-	if room_id < 0 and enemy.has_method("_resolve_room_id_for_events"):
-		room_id = int(enemy.call("_resolve_room_id_for_events"))
+	if room_id < 0:
+		enemy.runtime_budget_tick(0.0)
+		room_id = int(enemy.get_meta("room_id", -1))
 	var room_alert_level := ENEMY_ALERT_LEVELS_SCRIPT.CALM
 	var alert_system = controller.get("_enemy_alert_system")
 	if alert_system and alert_system.has_method("get_room_alert_level") and room_id >= 0:

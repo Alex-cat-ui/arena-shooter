@@ -2,6 +2,7 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const ENEMY_SCRIPT := preload("res://src/entities/enemy.gd")
+const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels.gd")
 const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
 
 var embedded_mode: bool = false
@@ -36,10 +37,10 @@ func run_suite() -> Dictionary:
 func _test_blood_evidence_does_not_set_alert() -> void:
 	var enemy := _make_enemy()
 	enemy.apply_blood_evidence(Vector2(50.0, 50.0))
-	var state := int(enemy._awareness.get_state())
+	var state := _awareness_state(enemy)
 	_t.run_test(
 		"blood evidence does not set ALERT directly",
-		state != int(ENEMY_AWARENESS_SYSTEM_SCRIPT.State.ALERT)
+		state != ENEMY_ALERT_LEVELS_SCRIPT.ALERT
 	)
 	enemy.free()
 
@@ -47,38 +48,65 @@ func _test_blood_evidence_does_not_set_alert() -> void:
 func _test_blood_evidence_does_not_set_combat() -> void:
 	var enemy := _make_enemy()
 	enemy.apply_blood_evidence(Vector2(50.0, 50.0))
-	var state := int(enemy._awareness.get_state())
+	var state := _awareness_state(enemy)
 	_t.run_test(
 		"blood evidence does not set COMBAT directly",
-		state != int(ENEMY_AWARENESS_SYSTEM_SCRIPT.State.COMBAT)
+		state != ENEMY_ALERT_LEVELS_SCRIPT.COMBAT
 	)
 	enemy.free()
 
 
 func _test_blood_evidence_no_op_when_already_alert() -> void:
 	var enemy := _make_enemy()
-	enemy._awareness.register_noise()
-	var anchor_before := enemy._investigate_anchor
-	var anchor_valid_before := bool(enemy._investigate_anchor_valid)
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("blood evidence no-op setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		enemy.free()
+		return
+	var awareness := detection_runtime.call("get_state_value", "_awareness", null) as Object
+	if awareness != null and awareness.has_method("register_noise"):
+		awareness.call("register_noise")
+	var anchor_before := detection_runtime.call("get_state_value", "_investigate_anchor", Vector2.ZERO) as Vector2
+	var anchor_valid_before := bool(detection_runtime.call("get_state_value", "_investigate_anchor_valid", false))
 	var accepted := enemy.apply_blood_evidence(Vector2(50.0, 50.0))
 
 	_t.run_test("blood evidence is ignored when enemy is already ALERT", accepted == false)
 	_t.run_test(
 		"enemy state remains ALERT after blood evidence no-op",
-		int(enemy._awareness.get_state()) == int(ENEMY_AWARENESS_SYSTEM_SCRIPT.State.ALERT)
+		_awareness_state(enemy) == ENEMY_ALERT_LEVELS_SCRIPT.ALERT
 	)
+	var anchor_after := detection_runtime.call("get_state_value", "_investigate_anchor", Vector2.ZERO) as Vector2
+	var anchor_valid_after := bool(detection_runtime.call("get_state_value", "_investigate_anchor_valid", false))
 	_t.run_test(
 		"blood evidence no-op preserves investigate anchor fields",
-		enemy._investigate_anchor == anchor_before and bool(enemy._investigate_anchor_valid) == anchor_valid_before
+		anchor_after == anchor_before and anchor_valid_after == anchor_valid_before
 	)
 	enemy.free()
 
 
 func _make_enemy() -> Enemy:
 	var enemy := ENEMY_SCRIPT.new()
-	enemy.entity_id = 14002
-	enemy._awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
-	enemy._awareness.reset()
-	enemy._investigate_anchor = Vector2.ZERO
-	enemy._investigate_anchor_valid = false
+	enemy.initialize(14002, "zombie")
+	var detection_runtime := _detection_runtime(enemy)
+	if detection_runtime != null:
+		var awareness := ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
+		awareness.reset()
+		detection_runtime.call("set_state_value", "_awareness", awareness)
+		detection_runtime.call("set_state_value", "_investigate_anchor", Vector2.ZERO)
+		detection_runtime.call("set_state_value", "_investigate_anchor_valid", false)
 	return enemy
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object
+
+
+func _awareness_state(enemy: Enemy) -> int:
+	var detection_runtime := _detection_runtime(enemy)
+	if detection_runtime == null:
+		return ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	var awareness := detection_runtime.call("get_state_value", "_awareness", null) as Object
+	if awareness == null or not awareness.has_method("get_state"):
+		return ENEMY_ALERT_LEVELS_SCRIPT.CALM
+	return int(awareness.call("get_state"))

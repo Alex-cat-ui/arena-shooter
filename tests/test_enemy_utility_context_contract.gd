@@ -49,11 +49,17 @@ func _test_context_exposes_required_contract_fields() -> void:
 	var setup := _new_context_harness()
 	var enemy := setup["enemy"] as Enemy
 	var nav := setup["nav"] as FakeShadowQueryNav
+	var runtime := setup.get("runtime", null)
+	_t.run_test("utility context setup: detection runtime exists", runtime != null)
+	if runtime == null:
+		enemy.free()
+		nav.free()
+		return
 
-	enemy.set("_last_seen_age", 0.5)
-	enemy.set("_last_seen_pos", Vector2(200.0, 20.0))
-	enemy.set("_investigate_anchor", Vector2(100.0, 20.0))
-	enemy.set("_investigate_anchor_valid", true)
+	runtime.call("set_state_value", "_last_seen_age", 0.5)
+	runtime.call("set_state_value", "_last_seen_pos", Vector2(200.0, 20.0))
+	runtime.call("set_state_value", "_investigate_anchor", Vector2(100.0, 20.0))
+	runtime.call("set_state_value", "_investigate_anchor_valid", true)
 
 	var assignment := {
 		"role": 0,
@@ -64,7 +70,7 @@ func _test_context_exposes_required_contract_fields() -> void:
 		"slot_path_eta_sec": 0.75,
 		"has_slot": true,
 	}
-	var context := enemy.call("_build_utility_context", false, false, assignment, {
+	var context := runtime.call("build_utility_context", false, false, assignment, {
 		"known_target_pos": Vector2(300.0, 20.0),
 		"target_is_last_seen": false,
 		"has_known_target": true,
@@ -123,15 +129,21 @@ func _test_shadow_scan_target_priority_contract() -> void:
 	var setup := _new_context_harness()
 	var enemy := setup["enemy"] as Enemy
 	var nav := setup["nav"] as FakeShadowQueryNav
+	var runtime := setup.get("runtime", null)
+	_t.run_test("shadow priority setup: detection runtime exists", runtime != null)
+	if runtime == null:
+		enemy.free()
+		nav.free()
+		return
 
-	enemy.set("_last_seen_pos", Vector2(200.0, 20.0))
-	enemy.set("_investigate_anchor", Vector2(100.0, 20.0))
-	enemy.set("_investigate_anchor_valid", true)
-	enemy.set("_last_seen_age", 0.5)
+	runtime.call("set_state_value", "_last_seen_pos", Vector2(200.0, 20.0))
+	runtime.call("set_state_value", "_investigate_anchor", Vector2(100.0, 20.0))
+	runtime.call("set_state_value", "_investigate_anchor_valid", true)
+	runtime.call("set_state_value", "_last_seen_age", 0.5)
 	var assignment := {"role": 0, "slot_role": 0, "slot_position": Vector2.ZERO, "path_ok": false, "has_slot": false}
 
 	nav.shadow_center = Vector2(300.0, 20.0)
-	var known_ctx := enemy.call("_build_utility_context", false, false, assignment, {
+	var known_ctx := runtime.call("build_utility_context", false, false, assignment, {
 		"known_target_pos": Vector2(300.0, 20.0),
 		"target_is_last_seen": false,
 		"has_known_target": true,
@@ -142,7 +154,7 @@ func _test_shadow_scan_target_priority_contract() -> void:
 		and bool(known_ctx.get("shadow_scan_target_in_shadow", false))
 	)
 
-	var last_seen_ctx := enemy.call("_build_utility_context", false, false, assignment, {
+	var last_seen_ctx := runtime.call("build_utility_context", false, false, assignment, {
 		"known_target_pos": Vector2.ZERO,
 		"target_is_last_seen": false,
 		"has_known_target": false,
@@ -152,8 +164,8 @@ func _test_shadow_scan_target_priority_contract() -> void:
 		and (last_seen_ctx.get("shadow_scan_target", Vector2.ZERO) as Vector2).distance_to(Vector2(200.0, 20.0)) <= 0.001
 	)
 
-	enemy.set("_last_seen_age", INF)
-	var anchor_ctx := enemy.call("_build_utility_context", false, false, assignment, {
+	runtime.call("set_state_value", "_last_seen_age", INF)
+	var anchor_ctx := runtime.call("build_utility_context", false, false, assignment, {
 		"known_target_pos": Vector2.ZERO,
 		"target_is_last_seen": false,
 		"has_known_target": false,
@@ -173,12 +185,21 @@ func _test_shadow_scan_target_priority_contract() -> void:
 func _new_context_harness() -> Dictionary:
 	var enemy := ENEMY_SCRIPT.new()
 	var nav := FakeShadowQueryNav.new()
+	enemy.initialize(9401, "zombie")
 	enemy.global_position = Vector2.ZERO
-	enemy.nav_system = nav
-	enemy.home_room_id = 3
-	enemy.set("_current_alert_level", ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
-	enemy.set("_awareness", null)
+	var runtime := _detection_runtime(enemy)
+	if runtime != null:
+		runtime.call("set_state_value", "nav_system", nav)
+		runtime.call("set_state_value", "home_room_id", 3)
+		runtime.call("set_state_value", "_current_alert_level", ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
+		runtime.call("set_state_value", "_awareness", null)
 	return {
 		"enemy": enemy,
 		"nav": nav,
+		"runtime": runtime,
 	}
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

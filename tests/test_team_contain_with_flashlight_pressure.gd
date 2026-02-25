@@ -134,7 +134,9 @@ func _register_enemy_with_role(fixture: Dictionary, enemy_id: int, role: int) ->
 
 
 func _new_enemy() -> Enemy:
-	return ENEMY_SCRIPT.new()
+	var enemy := ENEMY_SCRIPT.new()
+	enemy.initialize(9302, "zombie")
+	return enemy
 
 
 func _test_hold_role_gets_scanner_when_no_pressure_in_squad() -> void:
@@ -156,9 +158,14 @@ func _test_hold_role_gets_scanner_when_no_pressure_in_squad() -> void:
 func _test_flank_enemy_compute_flashlight_returns_false_despite_alert() -> void:
 	_ensure_alert_flashlight_policy_active()
 	var enemy := _new_enemy()
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("flank flashlight setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		enemy.free()
+		return
 	enemy.call("set_flashlight_scanner_allowed", false)
-	enemy.set("_flashlight_activation_delay_timer", 0.0)
-	var active := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
+	detection_runtime.call("set_state_value", "_flashlight_activation_delay_timer", 0.0)
+	var active := bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
 	_t.run_test("Scanner policy blocks ALERT flashlight when scanner slot denied", not active)
 	enemy.free()
 
@@ -166,9 +173,14 @@ func _test_flank_enemy_compute_flashlight_returns_false_despite_alert() -> void:
 func _test_pressure_enemy_compute_flashlight_passes_when_allowed() -> void:
 	_ensure_alert_flashlight_policy_active()
 	var enemy := _new_enemy()
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("pressure flashlight setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		enemy.free()
+		return
 	enemy.call("set_flashlight_scanner_allowed", true)
-	enemy.set("_flashlight_activation_delay_timer", 0.0)
-	var active := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
+	detection_runtime.call("set_state_value", "_flashlight_activation_delay_timer", 0.0)
+	var active := bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
 	_t.run_test("Scanner-allowed enemy keeps ALERT flashlight policy active", active)
 	enemy.free()
 
@@ -176,9 +188,19 @@ func _test_pressure_enemy_compute_flashlight_passes_when_allowed() -> void:
 func _test_no_squad_default_scanner_allowed_true() -> void:
 	_ensure_alert_flashlight_policy_active()
 	var enemy := _new_enemy()
-	enemy.set("_flashlight_activation_delay_timer", 0.0)
-	var default_allowed := bool(enemy.get("_flashlight_scanner_allowed"))
-	var active := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("no-squad flashlight setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		enemy.free()
+		return
+	detection_runtime.call("set_state_value", "_flashlight_activation_delay_timer", 0.0)
+	var default_allowed := bool(detection_runtime.call("get_state_value", "_flashlight_scanner_allowed", true))
+	var active := bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.ALERT))
 	_t.run_test("No squad starts with scanner_allowed=true", default_allowed and enemy.squad_system == null)
 	_t.run_test("No squad keeps individual ALERT flashlight policy", active)
 	enemy.free()
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

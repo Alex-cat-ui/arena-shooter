@@ -45,10 +45,8 @@ func _test_dynamic_alert_hold_after_far_shot() -> void:
 	var shot_pos := Vector2(960.0, 0.0)
 	enemy.on_heard_shot(0, shot_pos)
 
-	var awareness = enemy.get("_awareness")
-	var hold_timer := 0.0
-	if awareness != null:
-		hold_timer = float(awareness.get("_alert_hold_timer"))
+	var awareness := _awareness_from_runtime(enemy)
+	var hold_timer := _read_alert_hold_timer(enemy)
 
 	var tile_size: int = GameConfig.tile_size if GameConfig else 32
 	var walk_speed := enemy.speed_tiles * float(tile_size)
@@ -73,10 +71,8 @@ func _test_teammate_call_without_shot_pos_extends_alert_hold() -> void:
 	enemy.initialize(9102, "zombie")
 	var accepted := enemy.apply_teammate_call(100, 10, 7001, Vector2.ZERO)
 
-	var awareness = enemy.get("_awareness")
-	var hold_timer := 0.0
-	if awareness != null:
-		hold_timer = float(awareness.get("_alert_hold_timer"))
+	var awareness := _awareness_from_runtime(enemy)
+	var hold_timer := _read_alert_hold_timer(enemy)
 
 	_t.run_test("teammate call without shot_pos is accepted from CALM", accepted)
 	_t.run_test("teammate fallback hold lower bound is 8.0s", hold_timer >= 8.0)
@@ -99,17 +95,21 @@ func _test_teammate_call_with_shot_pos_sets_anchor_and_dynamic_hold() -> void:
 	var shot_pos := Vector2(900.0, 0.0)
 	var accepted := enemy.apply_teammate_call(100, 10, 7002, shot_pos)
 
-	var awareness = enemy.get("_awareness")
-	var hold_timer := 0.0
-	if awareness != null:
-		hold_timer = float(awareness.get("_alert_hold_timer"))
+	var awareness := _awareness_from_runtime(enemy)
+	var hold_timer := _read_alert_hold_timer(enemy)
 	var tile_size: int = GameConfig.tile_size if GameConfig else 32
 	var walk_speed := enemy.speed_tiles * float(tile_size)
 	var walk_time := enemy.global_position.distance_to(shot_pos) / maxf(walk_speed, 0.001)
 
-	var anchor := enemy.get("_investigate_anchor") as Vector2
-	var anchor_valid := bool(enemy.get("_investigate_anchor_valid"))
-	var flashlight_delay := float(enemy.get("_flashlight_activation_delay_timer"))
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("teammate shot_pos setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		world.queue_free()
+		await get_tree().process_frame
+		return
+	var anchor := detection_runtime.call("get_state_value", "_investigate_anchor", Vector2.ZERO) as Vector2
+	var anchor_valid := bool(detection_runtime.call("get_state_value", "_investigate_anchor_valid", false))
+	var flashlight_delay := float(detection_runtime.call("get_state_value", "_flashlight_activation_delay_timer", 0.0))
 
 	_t.run_test("teammate call with shot_pos is accepted from CALM", accepted)
 	_t.run_test("teammate shot_pos sets investigate anchor", anchor.distance_to(shot_pos) <= 0.001 and anchor_valid)
@@ -118,3 +118,22 @@ func _test_teammate_call_with_shot_pos_sets_anchor_and_dynamic_hold() -> void:
 
 	world.queue_free()
 	await get_tree().process_frame
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object
+
+
+func _awareness_from_runtime(enemy: Enemy) -> Object:
+	var detection_runtime := _detection_runtime(enemy)
+	if detection_runtime == null:
+		return null
+	return detection_runtime.call("get_state_value", "_awareness", null) as Object
+
+
+func _read_alert_hold_timer(enemy: Enemy) -> float:
+	var awareness := _awareness_from_runtime(enemy)
+	if awareness == null:
+		return 0.0
+	return float(awareness.get("_alert_hold_timer"))

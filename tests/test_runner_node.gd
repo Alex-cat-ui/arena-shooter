@@ -66,6 +66,14 @@ const ENEMY_COMBAT_SEARCH_RUNTIME_UNIT_TEST_SCENE := "res://tests/test_enemy_com
 const ENEMY_COMBAT_SEARCH_RECOVERY_UNIT_TEST_SCENE := "res://tests/test_enemy_combat_search_recovery_unit.tscn"
 const ENEMY_FIRE_CONTROL_RUNTIME_UNIT_TEST_SCENE := "res://tests/test_enemy_fire_control_runtime_unit.tscn"
 const ENEMY_FIRE_FIRST_SHOT_GATE_UNIT_TEST_SCENE := "res://tests/test_enemy_fire_first_shot_gate_unit.tscn"
+const ENEMY_COMBAT_ROLE_RUNTIME_UNIT_TEST_SCENE := "res://tests/test_enemy_combat_role_runtime_unit.tscn"
+const ENEMY_ALERT_LATCH_RUNTIME_UNIT_TEST_SCENE := "res://tests/test_enemy_alert_latch_runtime_unit.tscn"
+const ENEMY_ZONE_RESOLUTION_CONTRACT_TEST_SCENE := "res://tests/test_enemy_zone_resolution_contract.tscn"
+const ENEMY_DETECTION_RUNTIME_TARGET_CONTEXT_UNIT_TEST_SCENE := "res://tests/test_enemy_detection_runtime_target_context_unit.tscn"
+const ENEMY_DETECTION_RUNTIME_FLASHLIGHT_POLICY_UNIT_TEST_SCENE := "res://tests/test_enemy_detection_runtime_flashlight_policy_unit.tscn"
+const ENEMY_DETECTION_RUNTIME_REACTION_WARMUP_UNIT_TEST_SCENE := "res://tests/test_enemy_detection_runtime_reaction_warmup_unit.tscn"
+const ENEMY_DEBUG_SNAPSHOT_RUNTIME_PARITY_TEST_SCENE := "res://tests/test_enemy_debug_snapshot_runtime_parity.tscn"
+const ENEMY_RUNTIME_ORCHESTRATOR_SINGLE_OWNER_TEST_SCENE := "res://tests/test_enemy_runtime_orchestrator_single_owner.tscn"
 const COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE := "res://tests/test_combat_search_per_room_budget_and_total_cap.tscn"
 const COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE := "res://tests/test_combat_next_room_scoring_no_loops.tscn"
 const COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE := "res://tests/test_combat_to_alert_requires_no_contact_and_search_progress.tscn"
@@ -179,36 +187,6 @@ const AI_PERFORMANCE_GATE_TEST_SCENE := "res://tests/test_ai_performance_gate.ts
 const REPLAY_BASELINE_GATE_TEST_SCENE := "res://tests/test_replay_baseline_gate.tscn"
 const LEVEL_STEALTH_CHECKLIST_TEST_SCENE := "res://tests/test_level_stealth_checklist.tscn"
 const EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE := "res://tests/test_extended_stealth_release_gate.tscn"
-const ENEMY_SCRIPT := preload("res://src/entities/enemy.gd")
-const ENEMY_AWARENESS_SYSTEM_SCRIPT := preload("res://src/systems/enemy_awareness_system.gd")
-const ENEMY_PATROL_SYSTEM_SCRIPT := preload("res://src/systems/enemy_patrol_system.gd")
-const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
-const NAVIGATION_SERVICE_SCRIPT := preload("res://src/systems/navigation_service.gd")
-
-
-class PhaseShadowNavStub:
-	extends Node
-
-	var in_shadow: bool = true
-
-	func is_point_in_shadow(_point: Vector2) -> bool:
-		return in_shadow
-
-
-class PhaseShadowOwner:
-	extends CharacterBody2D
-
-	var flashlight_active_for_nav: bool = false
-
-	func is_flashlight_active_for_navigation() -> bool:
-		return flashlight_active_for_nav
-
-
-class PhaseShadowZoneStub:
-	extends Node2D
-
-	func contains_point(_point: Vector2) -> bool:
-		return true
 
 func _ready() -> void:
 	print("=" .repeat(60))
@@ -779,6 +757,30 @@ func _run_tests() -> void:
 	_test("Combat role lock/reassign triggers test scene exists", func():
 		return _scene_exists(COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE)
 	)
+	_test("Enemy combat-role runtime unit test scene exists", func():
+		return _scene_exists(ENEMY_COMBAT_ROLE_RUNTIME_UNIT_TEST_SCENE)
+	)
+	_test("Enemy alert-latch runtime unit test scene exists", func():
+		return _scene_exists(ENEMY_ALERT_LATCH_RUNTIME_UNIT_TEST_SCENE)
+	)
+	_test("Enemy zone resolution contract test scene exists", func():
+		return _scene_exists(ENEMY_ZONE_RESOLUTION_CONTRACT_TEST_SCENE)
+	)
+	_test("Enemy detection runtime target-context unit test scene exists", func():
+		return _scene_exists(ENEMY_DETECTION_RUNTIME_TARGET_CONTEXT_UNIT_TEST_SCENE)
+	)
+	_test("Enemy detection runtime flashlight-policy unit test scene exists", func():
+		return _scene_exists(ENEMY_DETECTION_RUNTIME_FLASHLIGHT_POLICY_UNIT_TEST_SCENE)
+	)
+	_test("Enemy detection runtime reaction-warmup unit test scene exists", func():
+		return _scene_exists(ENEMY_DETECTION_RUNTIME_REACTION_WARMUP_UNIT_TEST_SCENE)
+	)
+	_test("Enemy debug snapshot runtime parity test scene exists", func():
+		return _scene_exists(ENEMY_DEBUG_SNAPSHOT_RUNTIME_PARITY_TEST_SCENE)
+	)
+	_test("Enemy runtime orchestrator single-owner test scene exists", func():
+		return _scene_exists(ENEMY_RUNTIME_ORCHESTRATOR_SINGLE_OWNER_TEST_SCENE)
+	)
 	_test("Enemy combat-search runtime unit test scene exists", func():
 		return _scene_exists(ENEMY_COMBAT_SEARCH_RUNTIME_UNIT_TEST_SCENE)
 	)
@@ -1017,129 +1019,6 @@ func _run_tests() -> void:
 		return _scene_exists(FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE)
 	)
 
-	print("\n--- SECTION 18c: Bugfix phase unit tests ---")
-
-	_test("Phase 1: on_heard_shot sets investigate anchor", func():
-		var enemy = ENEMY_SCRIPT.new()
-		enemy._awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
-		enemy._awareness.reset()
-		var shot_pos := Vector2(300.0, 200.0)
-		enemy.on_heard_shot(0, shot_pos)
-		var ok: bool = enemy._investigate_anchor == shot_pos and bool(enemy._investigate_anchor_valid)
-		enemy.free()
-		return ok
-	)
-
-	_test("Phase 2: noise->ALERT resets confirm progress", func():
-		var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
-		awareness.reset()
-		awareness._confirm_progress = 0.5
-		awareness._state = ENEMY_AWARENESS_SYSTEM_SCRIPT.State.SUSPICIOUS
-		awareness.register_noise()
-		return awareness.get_state_name() == "ALERT" and is_equal_approx(awareness._confirm_progress, 0.0)
-	)
-
-	_test("Phase 2: COMBAT->ALERT keeps confirm progress", func():
-		var awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
-		awareness.reset()
-		awareness._state = ENEMY_AWARENESS_SYSTEM_SCRIPT.State.COMBAT
-		awareness._confirm_progress = 0.8
-		var transitions: Array[Dictionary] = []
-		awareness._transition_to(ENEMY_AWARENESS_SYSTEM_SCRIPT.State.ALERT, "timer", transitions)
-		return awareness.get_state_name() == "ALERT" and is_equal_approx(awareness._confirm_progress, 0.8)
-	)
-
-	_test("Phase 3: stuck patrol advances to next waypoint", func():
-		var owner := CharacterBody2D.new()
-		owner.global_position = Vector2(100.0, 0.0)
-		var patrol = ENEMY_PATROL_SYSTEM_SCRIPT.new(owner)
-		patrol.configure(null, -1)
-		var route: Array[Vector2] = [Vector2(500.0, 0.0), Vector2(1000.0, 0.0)]
-		patrol._route = route
-		patrol._route_index = 0
-		patrol._state = ENEMY_PATROL_SYSTEM_SCRIPT.PatrolState.MOVE
-		patrol._route_rebuild_timer = 999.0
-		patrol._stuck_check_timer = 0.01
-		patrol._stuck_check_last_pos = Vector2(100.0, 0.0)
-		patrol.update(0.05, Vector2.RIGHT)
-		var ok: bool = patrol._route_index == 1 and patrol._state == ENEMY_PATROL_SYSTEM_SCRIPT.PatrolState.PAUSE
-		owner.free()
-		return ok
-	)
-
-	_test("Phase 4: near shot sets flashlight delay in [0.5, 1.2]", func():
-		var enemy = ENEMY_SCRIPT.new()
-		enemy.global_position = Vector2.ZERO
-		enemy.on_heard_shot(0, Vector2(200.0, 0.0))
-		var delay := float(enemy._flashlight_activation_delay_timer)
-		enemy.free()
-		return delay >= 0.5 and delay <= 1.2
-	)
-
-	_test("Phase 4: far shot sets flashlight delay in [1.0, 1.8]", func():
-		var enemy = ENEMY_SCRIPT.new()
-		enemy.global_position = Vector2.ZERO
-		enemy.on_heard_shot(0, Vector2(600.0, 0.0))
-		var delay := float(enemy._flashlight_activation_delay_timer)
-		enemy.free()
-		return delay >= 1.0 and delay <= 1.8
-	)
-
-	_test("Phase 4: alert flashlight policy blocked while delay > 0", func():
-		var enemy = ENEMY_SCRIPT.new()
-		enemy._flashlight_activation_delay_timer = 1.0
-		var blocked: bool = enemy._flashlight_policy_active_in_alert() == false
-		enemy._flashlight_activation_delay_timer = 0.0
-		var active: bool = enemy._flashlight_policy_active_in_alert() == true
-		enemy.free()
-		return blocked and active
-	)
-
-	_test("Phase 6: active shadow check returns look_dir and flag", func():
-		var owner := CharacterBody2D.new()
-		owner.global_position = Vector2.ZERO
-		var patrol = ENEMY_PATROL_SYSTEM_SCRIPT.new(owner)
-		patrol.configure(null, -1)
-		patrol._state = ENEMY_PATROL_SYSTEM_SCRIPT.PatrolState.PAUSE
-		patrol._shadow_check_active = true
-		patrol._shadow_check_dir = Vector2.RIGHT
-		patrol._shadow_check_phase = 0.0
-		patrol._shadow_check_timer = 1.0
-		var decision := patrol.update(0.1, Vector2.RIGHT)
-		var ok: bool = bool(decision.get("waiting", false)) \
-			and bool(decision.get("shadow_check", false)) \
-			and (decision.get("look_dir", Vector2.ZERO) as Vector2).length_squared() > 0.0001
-		owner.free()
-		return ok
-	)
-
-	_test("Phase 6: calm flashlight override affects navigation flashlight", func():
-		var enemy = ENEMY_SCRIPT.new()
-		enemy._awareness = ENEMY_AWARENESS_SYSTEM_SCRIPT.new()
-		enemy._awareness.reset()
-		enemy.set_shadow_check_flashlight(true)
-		var override_on := enemy.is_flashlight_active_for_navigation()
-		enemy.set_shadow_check_flashlight(false)
-		var override_off := not enemy.is_flashlight_active_for_navigation()
-		enemy.free()
-		return override_on and override_off
-	)
-
-	_test("Phase 6: navigation returns nearest shadow direction", func():
-		var nav = NAVIGATION_SERVICE_SCRIPT.new()
-		add_child(nav)
-		var zone := PhaseShadowZoneStub.new()
-		zone.global_position = Vector2(64.0, 0.0)
-		zone.add_to_group("shadow_zones")
-		add_child(zone)
-		var nearest := nav.get_nearest_shadow_zone_direction(Vector2.ZERO, 96.0) as Dictionary
-		var found: bool = bool(nearest.get("found", false))
-		var direction := nearest.get("direction", Vector2.ZERO) as Vector2
-		zone.queue_free()
-		nav.queue_free()
-		return found and direction.dot(Vector2.RIGHT) > 0.9
-	)
-
 	await _run_embedded_scene_suite("Stealth room combat fire suite", STEALTH_ROOM_COMBAT_FIRE_TEST_SCENE)
 	await _run_embedded_scene_suite("Stealth room LKP search suite", STEALTH_ROOM_LKP_SEARCH_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat room alert sync suite", COMBAT_ROOM_ALERT_SYNC_TEST_SCENE)
@@ -1159,10 +1038,18 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Suspicion channels vs confirm channel suite", SUSPICION_CHANNELS_VS_CONFIRM_CHANNEL_TEST_SCENE)
 	await _run_embedded_scene_suite("Teammate call room-graph gate suite", TEAMMATE_CALL_ROOM_GRAPH_GATE_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat role lock/reassign triggers suite", COMBAT_ROLE_LOCK_AND_REASSIGN_TRIGGERS_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy combat-role runtime unit suite", ENEMY_COMBAT_ROLE_RUNTIME_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy alert-latch runtime unit suite", ENEMY_ALERT_LATCH_RUNTIME_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy zone resolution contract suite", ENEMY_ZONE_RESOLUTION_CONTRACT_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy combat-search runtime unit suite", ENEMY_COMBAT_SEARCH_RUNTIME_UNIT_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy combat-search recovery unit suite", ENEMY_COMBAT_SEARCH_RECOVERY_UNIT_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy fire-control runtime unit suite", ENEMY_FIRE_CONTROL_RUNTIME_UNIT_TEST_SCENE)
 	await _run_embedded_scene_suite("Enemy fire first-shot gate unit suite", ENEMY_FIRE_FIRST_SHOT_GATE_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy detection runtime target-context unit suite", ENEMY_DETECTION_RUNTIME_TARGET_CONTEXT_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy detection runtime flashlight-policy unit suite", ENEMY_DETECTION_RUNTIME_FLASHLIGHT_POLICY_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy detection runtime reaction-warmup unit suite", ENEMY_DETECTION_RUNTIME_REACTION_WARMUP_UNIT_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy debug snapshot runtime parity suite", ENEMY_DEBUG_SNAPSHOT_RUNTIME_PARITY_TEST_SCENE)
+	await _run_embedded_scene_suite("Enemy runtime orchestrator single-owner suite", ENEMY_RUNTIME_ORCHESTRATOR_SINGLE_OWNER_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat search per-room budget/total cap suite", COMBAT_SEARCH_PER_ROOM_BUDGET_AND_TOTAL_CAP_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat next-room scoring suite", COMBAT_NEXT_ROOM_SCORING_NO_LOOPS_TEST_SCENE)
 	await _run_embedded_scene_suite("Combat->Alert search/no-contact gate suite", COMBAT_TO_ALERT_REQUIRES_NO_CONTACT_AND_SEARCH_PROGRESS_TEST_SCENE)

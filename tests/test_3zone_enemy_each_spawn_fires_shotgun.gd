@@ -109,12 +109,8 @@ func _test_each_spawn_can_fire_and_declares_shotgun_weapon() -> void:
 
 		var facing := (player.global_position - shooter.global_position).normalized()
 		if facing.length_squared() > 0.0001:
-			var pursuit_variant: Variant = shooter.get("_pursuit")
-			if pursuit_variant != null:
-				var pursuit_obj := pursuit_variant as Object
-				if pursuit_obj:
-					pursuit_obj.set("facing_dir", facing)
-					pursuit_obj.set("_target_facing_dir", facing)
+			if shooter.has_method("debug_set_pursuit_facing_for_test"):
+				shooter.call("debug_set_pursuit_facing_for_test", facing)
 
 		if shooter.has_method("debug_force_awareness_state"):
 			shooter.call("debug_force_awareness_state", "COMBAT")

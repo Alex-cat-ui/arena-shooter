@@ -47,12 +47,9 @@ func run_suite() -> Dictionary:
 
 func _test_config_exposes_required_keys_and_values() -> void:
 	var enemy := ENEMY_SCRIPT.new()
-	enemy.set("_combat_search_progress", 0.37)
-	enemy.set("_combat_search_total_elapsed_sec", 4.5)
-	enemy.set("_combat_search_room_elapsed_sec", 1.25)
-	enemy.set("_combat_search_total_cap_hit", true)
+	enemy.debug_set_confirm_runtime_search_metrics(0.37, 4.5, 1.25, true)
 
-	var config := enemy.call("_build_confirm_runtime_config", {"confirm_time_to_engage": 5.0}) as Dictionary
+	var config := enemy.debug_build_confirm_runtime_config({"confirm_time_to_engage": 5.0}) as Dictionary
 	var required_keys := [
 		"combat_no_contact_window_sec",
 		"combat_require_search_progress",
@@ -88,7 +85,7 @@ func _test_build_does_not_mutate_base_input() -> void:
 	var enemy := ENEMY_SCRIPT.new()
 	var base := {"confirm_time_to_engage": 3.0}
 	var before := base.duplicate(true)
-	var _cfg := enemy.call("_build_confirm_runtime_config", base) as Dictionary
+	var _cfg := enemy.debug_build_confirm_runtime_config(base) as Dictionary
 	var unchanged := base.hash() == before.hash() and not base.has("combat_search_progress")
 	_t.run_test("_build_confirm_runtime_config does not mutate caller dictionary", unchanged)
 	enemy.free()
@@ -99,14 +96,14 @@ func _test_lockdown_no_contact_window_contract() -> void:
 	var zone := FakeZoneDirector.new()
 	zone.room_to_zone[7] = 21
 	zone.zone_states[21] = 2
-	enemy.set("_zone_director", zone)
+	enemy.set_zone_director(zone)
 	enemy.set_meta("room_id", 7)
 
-	var lockdown_config := enemy.call("_build_confirm_runtime_config", {}) as Dictionary
+	var lockdown_config := enemy.debug_build_confirm_runtime_config({}) as Dictionary
 	var lockdown_ok := is_equal_approx(float(lockdown_config.get("combat_no_contact_window_sec", -1.0)), 12.0)
 
 	zone.zone_states[21] = 1
-	var normal_config := enemy.call("_build_confirm_runtime_config", {}) as Dictionary
+	var normal_config := enemy.debug_build_confirm_runtime_config({}) as Dictionary
 	var normal_ok := is_equal_approx(float(normal_config.get("combat_no_contact_window_sec", -1.0)), 8.0)
 
 	_t.run_test("lockdown contract: no-contact window expands to 12s", lockdown_ok)

@@ -63,13 +63,20 @@ func _test_suspicious_shadow_scan_intent_and_flashlight() -> void:
 		var canon := GameConfig.stealth_canon as Dictionary
 		canon["flashlight_works_in_alert"] = true
 	var enemy := ENEMY_SCRIPT.new()
+	enemy.initialize(1501, "zombie")
 	enemy.entity_id = 1501
-	enemy.set("_flashlight_activation_delay_timer", 0.0)
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("suspicious shadow-scan setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		enemy.free()
+		GameConfig.reset_to_defaults()
+		return
+	detection_runtime.call("set_state_value", "_flashlight_activation_delay_timer", 0.0)
 	enemy.set_shadow_scan_active(true)
-	enemy.set("_debug_tick_id", 0)
-	var flashlight_active_bucket_pass := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
-	enemy.set("_debug_tick_id", 2)
-	var flashlight_active_bucket_fail := bool(enemy.call("_compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
+	detection_runtime.call("set_state_value", "_debug_tick_id", 0)
+	var flashlight_active_bucket_pass := bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
+	detection_runtime.call("set_state_value", "_debug_tick_id", 2)
+	var flashlight_active_bucket_fail := bool(detection_runtime.call("compute_flashlight_active", ENEMY_ALERT_LEVELS_SCRIPT.SUSPICIOUS))
 	_t.run_test(
 		"SUSPICIOUS shadow scan flashlight active on deterministic pass bucket (tick 0)",
 		flashlight_active_bucket_pass
@@ -111,3 +118,8 @@ func _ctx(override: Dictionary) -> Dictionary:
 	for key_variant in override.keys():
 		base[key_variant] = override[key_variant]
 	return base
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object

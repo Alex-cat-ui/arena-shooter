@@ -118,14 +118,21 @@ func _test_alert_combat_no_los_with_target_context_never_patrol_or_return_home()
 
 func _test_build_utility_context_shadow_scan_target_priority_known_then_last_seen_then_anchor() -> void:
 	var enemy := ENEMY_SCRIPT.new()
+	enemy.initialize(9301, "zombie")
 	var nav := FakeShadowQueryNav.new()
 	enemy.global_position = Vector2.ZERO
-	enemy.set("_current_alert_level", ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
-	enemy.set("_awareness", null)
-	enemy.nav_system = nav
-	enemy.set("_last_seen_pos", Vector2(200.0, 20.0))
-	enemy.set("_investigate_anchor", Vector2(100.0, 20.0))
-	enemy.set("_investigate_anchor_valid", true)
+	var detection_runtime := _detection_runtime(enemy)
+	_t.run_test("context priority setup: detection runtime exists", detection_runtime != null)
+	if detection_runtime == null:
+		nav.free()
+		enemy.free()
+		return
+	detection_runtime.call("set_state_value", "_current_alert_level", ENEMY_ALERT_LEVELS_SCRIPT.ALERT)
+	detection_runtime.call("set_state_value", "_awareness", null)
+	detection_runtime.call("set_state_value", "nav_system", nav)
+	detection_runtime.call("set_state_value", "_last_seen_pos", Vector2(200.0, 20.0))
+	detection_runtime.call("set_state_value", "_investigate_anchor", Vector2(100.0, 20.0))
+	detection_runtime.call("set_state_value", "_investigate_anchor_valid", true)
 
 	var assignment := {
 		"role": 0,
@@ -134,8 +141,8 @@ func _test_build_utility_context_shadow_scan_target_priority_known_then_last_see
 		"has_slot": false,
 	}
 
-	enemy.set("_last_seen_age", 0.5)
-	var ctx_known := enemy.call("_build_utility_context", false, false, assignment, {
+	detection_runtime.call("set_state_value", "_last_seen_age", 0.5)
+	var ctx_known := detection_runtime.call("build_utility_context", false, false, assignment, {
 		"known_target_pos": Vector2(300.0, 20.0),
 		"target_is_last_seen": false,
 		"has_known_target": true,
@@ -147,7 +154,7 @@ func _test_build_utility_context_shadow_scan_target_priority_known_then_last_see
 			and bool(ctx_known.get("shadow_scan_target_in_shadow", false))
 	)
 
-	var ctx_last_seen := enemy.call("_build_utility_context", false, false, assignment, {
+	var ctx_last_seen := detection_runtime.call("build_utility_context", false, false, assignment, {
 		"known_target_pos": Vector2.ZERO,
 		"target_is_last_seen": false,
 		"has_known_target": false,
@@ -159,8 +166,8 @@ func _test_build_utility_context_shadow_scan_target_priority_known_then_last_see
 			and not bool(ctx_last_seen.get("shadow_scan_target_in_shadow", true))
 	)
 
-	enemy.set("_last_seen_age", INF)
-	var ctx_anchor := enemy.call("_build_utility_context", false, false, assignment, {
+	detection_runtime.call("set_state_value", "_last_seen_age", INF)
+	var ctx_anchor := detection_runtime.call("build_utility_context", false, false, assignment, {
 		"known_target_pos": Vector2.ZERO,
 		"target_is_last_seen": false,
 		"has_known_target": false,
@@ -174,6 +181,11 @@ func _test_build_utility_context_shadow_scan_target_priority_known_then_last_see
 
 	nav.free()
 	enemy.free()
+
+
+func _detection_runtime(enemy: Enemy) -> Object:
+	var refs := enemy.get_runtime_helper_refs()
+	return refs.get("detection_runtime", null) as Object
 
 
 func _ctx(overrides: Dictionary) -> Dictionary:
