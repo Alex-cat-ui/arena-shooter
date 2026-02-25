@@ -1,0 +1,485 @@
+# PATH FIX V01
+
+Версия: v01  
+Статус: готово к реализации  
+Основание: фактический код проекта (без внешних допущений)
+
+## 0. Что подтверждено кодом (причина бага)
+
+1. В `PATROL` используется отдельная ветка движения, отличная от боевой/поисковой.
+Файл: `src/systems/enemy_pursuit_system.gd`.
+Факт: в `execute_intent()` для `IntentType.PATROL` вызывается `_update_idle_roam()`, а в ней прямой `_move_in_direction()`.
+
+2. Полный pipeline обхода препятствий и репаса (`plan -> follow_waypoints -> slide collision classify -> forced repath`) включается через `_execute_move_to_target()`, а не через patrol direct move.
+Файл: `src/systems/enemy_pursuit_system.gd`.
+
+3. `_can_traverse_position()` проверяет policy shadow-проходимость (`can_enemy_traverse_point`), а не физический collision c props/стенами.
+Файлы: `src/systems/enemy_pursuit_system.gd`, `src/systems/navigation_service.gd`, `src/systems/navigation_shadow_policy.gd`.
+
+4. В `stealth_3zone` пропсы подаются в навигацию через layout API `_navigation_obstacles()`.
+Файл: `src/levels/stealth_3zone_test_controller.gd`.
+Следствие: основная причина упора в props/стены в patrol — именно расслоение movement-логики, а не отсутствие obstacle-данных в этом уровне.
+
+## 1. Цели фикса
+
+1. Убрать расслоение: весь movement для `PATROL/INVESTIGATE/PUSH/RETREAT/RETURN_HOME/MOVE_TO_SLOT` проходит через один pipeline.
+2. Сохранить текущие контракты режимов (awareness/utility) без изменения доменной логики.
+3. Не сломать door-взаимодействие, честный repath, anti-teleport ограничения.
+4. Закрыть регрессии тестами и KPI-гейтами.
+
+## 2. Нефункциональные инварианты (обязательные)
+
+1. Контракт результата `EnemyPursuitSystem.execute_intent()` не меняется по ключам и типам.
+Тест-контроль: `tests/test_enemy_pursuit_exec_result_contract.gd`.
+
+2. Контракт выбора intent/mode не меняется.
+Тест-контроль: `tests/test_pursuit_mode_selection_by_context.gd`, `tests/test_alert_combat_context_never_patrol.gd`, `tests/test_pursuit_intent_only_runtime.gd`.
+
+3. Контракт нав-планировщика (`ok/unreachable_policy/unreachable_geometry`) не меняется.
+Тест-контроль: `tests/test_navigation_failure_reason_contract.gd`.
+
+4. Ограничение на отсутствие teleport spikes сохраняется.
+Тест-контроль: `tests/test_honest_repath_without_teleport.gd`, `tests/test_combat_obstacle_chase_basic.gd`.
+
+## 3. План реализации по фазам
+
+## Фаза 0. Подготовка baseline
+
+### Подфаза 0.1. Зафиксировать текущий baseline
+
+Файлы: без правок кода.
+
+Действия:
+1. Прогнать набор регрессионных тестов движения и контрактов.
+2. Сохранить результаты (pass/fail + ключевые метрики) в артефакт CI/локальный лог.
+
+Минимальный baseline-набор:
+1. `tests/test_collision_block_forces_immediate_repath.tscn`
+2. `tests/test_honest_repath_without_teleport.tscn`
+3. `tests/test_combat_obstacle_chase_basic.tscn`
+4. `tests/test_enemy_pursuit_exec_result_contract.tscn`
+5. `tests/test_navigation_failure_reason_contract.tscn`
+6. `tests/test_pursuit_mode_selection_by_context.tscn`
+7. `tests/test_alert_combat_context_never_patrol.tscn`
+8. `tests/test_patrol_route_variety.tscn`
+9. `tests/test_patrol_route_traversability_filter.tscn`
+10. `tests/test_nav_obstacle_extraction_fallback.tscn`
+11. `tests/test_nav_clearance_margin_avoids_wall_hugging.tscn`
+12. `tests/test_navmesh_migration.tscn`
+
+Критерий выхода:
+1. Базовый прогон стабилен и зафиксирован.
+
+## Фаза 1. Удаление расслоения движения (ядро фикса)
+
+### Подфаза 1.1. Выделить patrol как decision-only слой
+
+Файл правки:
+1. `src/systems/enemy_pursuit_system.gd`
+
+Точные изменения:
+1. Ветка `IntentType.PATROL` в `execute_intent()` больше не делает самостоятельный direct-move.
+2. Оставить у patrol только принятие решения (`waiting/look_dir/target/speed_scale`) через `EnemyPatrolSystem.update()`.
+3. Движение к `target` переводится в общий исполнительный путь `_execute_move_to_target(...)`.
+
+### Подфаза 1.2. Централизация movement execution
+
+Файл правки:
+1. `src/systems/enemy_pursuit_system.gd`
+
+Точные изменения:
+1. Добавить единый обработчик patrol-intent (например, `_execute_patrol_intent(...)`), который:
+2. При `waiting=true` делает только `_stop_motion()` и facing.
+3. При `waiting=false` вызывает `_execute_move_to_target(...)` с patrol speed scale.
+4. Возвращает `movement_intent` по тем же правилам, что и другие move-intent.
+
+### Подфаза 1.3. Убрать прямой patrol доступ к `_move_in_direction()`
+
+Файл правки:
+1. `src/systems/enemy_pursuit_system.gd`
+
+Точные изменения:
+1. В patrol-ветках исключить прямой вызов `_move_in_direction(...)`.
+2. `_move_in_direction(...)` оставить только внутренним примитивом `_follow_waypoints(...)`.
+
+### Подфаза 1.4. Стабилизация repath при смене patrol target
+
+Файл правки:
+1. `src/systems/enemy_pursuit_system.gd`
+
+Точные изменения:
+1. При значимой смене patrol target обнулять `_repath_timer = 0.0`.
+2. Не менять контракт `plan_id/plan_target` и anti-patrol guard для alert/combat контекстов.
+
+### Подфаза 1.5. Совместимость fallback roam
+
+Файл правки:
+1. `src/systems/enemy_pursuit_system.gd`
+
+Точные изменения:
+1. Fallback idle roam (ветка без `_patrol`) тоже переводится на `_execute_move_to_target(...)`.
+2. Таймеры пауз и текущая логика выбора roam target не меняются.
+
+Критерий выхода Фазы 1:
+1. Ни одна patrol-ветка не обходит `_execute_move_to_target(...)`.
+2. `PATROL` использует те же механизмы path/repath/collision, что `PUSH/INVESTIGATE/RETURN_HOME`.
+3. Контракты `execute_intent()`/intent-mode без API-изменений.
+
+## Фаза 2. Гибридный обход до коллизии (pre-avoid, «живое» движение)
+
+## 2.1 Анализ архитектурного ограничения (что нужно исправить)
+
+1. Текущий `collision->repath` срабатывает уже после физического контакта.
+2. Из-за этого даже при корректной репланировке движение выглядит как «уперся -> стоп -> дернулся».
+3. Нужно добавить предиктивный слой перед `move_and_slide()`, но не ломать существующий fallback.
+
+## 2.2 Принципы реализации pre-avoid
+
+1. `pre-avoid` не заменяет `collision->repath`, а работает как ранний триггер.
+2. Единственный исполнитель движения остается в `EnemyPursuitSystem` (без новых параллельных движков).
+3. Door-коллизии не должны ошибочно трактоваться как обычный obstacle.
+4. Любой pre-avoid должен иметь cooldown и anti-jitter, иначе получим «дрожание» на узких проходах.
+
+### Подфаза 2.3. Конфиг pre-avoid в GameConfig
+
+Файл правки:
+1. `src/core/game_config.gd`
+
+Точные изменения в `DEFAULT_AI_BALANCE["pursuit"]`:
+1. `preavoid_enabled` (bool, default true)
+2. `preavoid_lookahead_sec` (float, default 0.18..0.24)
+3. `preavoid_probe_spread_deg` (float, default 18..28)
+4. `preavoid_repath_cooldown_sec` (float, default 0.15..0.25)
+5. `preavoid_speed_scale_min` (float, default 0.55..0.70)
+6. `preavoid_steer_weight` (float, default 0.25..0.45)
+7. `preavoid_ignore_doors` (bool, default true)
+
+### Подфаза 2.4. Runtime-поля и debug-contract для pre-avoid
+
+Файл правки:
+1. `src/systems/enemy_pursuit_system.gd`
+
+Точные изменения:
+1. Добавить runtime поля: `preavoid_cooldown_left`, `preavoid_last_triggered`, `preavoid_last_kind`, `preavoid_last_side`.
+2. Расширить `debug_get_navigation_policy_snapshot()` полями:
+3. `preavoid_triggered`
+4. `preavoid_kind` (`none|non_door|door|policy`)
+5. `preavoid_forced_repath`
+6. `preavoid_side` (`left|right|none`)
+
+### Подфаза 2.5. Алгоритм pre-avoid (до физического удара)
+
+Файл правки:
+1. `src/systems/enemy_pursuit_system.gd`
+
+Точные изменения:
+1. Перед `owner.move_and_slide()` в `_move_in_direction()` выполнять lookahead-проверку ближайшего шага.
+2. Использовать `owner.test_move(...)` (или эквивалентную предиктивную проверку) для forward/left/right направлений.
+3. Если прогнозируется `non-door` блок:
+4. При `cooldown <= 0` — ранний repath (`_repath_timer = 0.0`) без ожидания фактического столкновения.
+5. При активном cooldown — мягкий steering (увод в свободную сторону) + локальное снижение скорости, без резкого стопа.
+6. Если прогнозируется `door` и `preavoid_ignore_doors=true`:
+7. Не запускать obstacle sidestep для двери.
+8. Сохранить текущий door-flow через `_handle_slide_collisions_and_repath(...)`.
+
+### Подфаза 2.6. Anti-jitter и fail-safe
+
+Файл правки:
+1. `src/systems/enemy_pursuit_system.gd`
+
+Точные изменения:
+1. Ввести cooldown между ранними repath-триггерами.
+2. Ввести минимальное окно удержания выбранной стороны уворота.
+3. Если pre-avoid не помогает за N тиков, отдать управление текущему fallback (`collision->repath` и hard-stall recovery).
+
+Критерий выхода Фазы 2:
+1. Враг чаще «подруливает заранее», а не бьется в obstacle.
+2. Fallback `collision->repath` остается рабочим.
+3. Door поведение не деградирует.
+
+## Фаза 3. Усиление obstacle-контура и совместимости источников
+
+### Подфаза 3.1. Явный контракт obstacle provider
+
+Файлы правки:
+1. `src/systems/navigation_service.gd`
+2. `docs/...` (документация контракта)
+
+Точные изменения:
+1. Сохранить приоритет `layout._navigation_obstacles()` перед fallback.
+2. Формализовать fallback группы `nav_obstacles` (минимальный допустимый набор нод/shape).
+
+### Подфаза 3.2. Жесткая тест-фиксация fallback
+
+Файлы правки:
+1. `tests/test_nav_obstacle_extraction_fallback.gd`
+2. `tests/test_navmesh_migration.gd`
+
+Точные изменения:
+1. Проверить, что fallback реально вырезает obstacle из navmesh при отсутствии layout API.
+2. Проверить, что при наличии layout API fallback не перехватывает приоритет.
+
+Критерий выхода Фазы 3:
+1. Источник obstacle всегда детерминирован.
+2. Нет регрессий carve-поведения между уровнями.
+
+## Фаза 4. Переделка существующих тестов
+
+## 4.1 Тесты, которые меняются
+
+1. `tests/test_collision_block_forces_immediate_repath.gd`
+Изменение:
+- добавить patrol-кейс через `execute_intent()` для non-door obstacle.
+Ожидание:
+- сохраняется контракт `collision_kind/collision_forced_repath/path_failed_reason`.
+
+2. `tests/test_honest_repath_without_teleport.gd`
+Изменение:
+- добавить сегмент patrol до COMBAT.
+Ожидание:
+- нет teleport spikes, есть прогресс к цели в obstacle сцене.
+
+3. `tests/test_combat_obstacle_chase_basic.gd`
+Изменение:
+- добавить pre-combat patrol этап с obstacle.
+Ожидание:
+- patrol уже обходит препятствие до перевода в COMBAT.
+
+4. `tests/test_enemy_pursuit_exec_result_contract.gd`
+Изменение:
+- отдельный контракт-кейс для patrol execution + pre-avoid debug keys.
+Ожидание:
+- старые ключи/типы неизменны, новые debug keys стабильны.
+
+5. `tests/test_navmesh_migration.gd`
+Изменение:
+- добавить сценарий `execute_intent(PATROL)` на navmesh fixture.
+Ожидание:
+- patrol идет через unified path execution.
+
+6. `tests/test_ai_performance_gate.gd`
+Изменение:
+- обновить ожидания по «качества обхода до коллизии» (см. KPI в Фазе 6).
+
+## 4.2 Регистр в раннере
+
+Файл правки:
+1. `tests/test_runner_node.gd`
+
+Изменение:
+1. Подключить новые сцены из Фазы 5.
+2. Добавить проверки существования и запуск в suite.
+
+## Фаза 5. Новые тесты (обязательные)
+
+## 5.1 Новые unit/integration тесты
+
+1. `tests/test_patrol_obstacle_avoidance_wall.gd` + `.tscn`
+Сценарий:
+- patrol target за стеной, путь есть.
+Проверки:
+- дистанция до target падает;
+- враг не «пилит» в стену;
+- есть либо pre-avoid trigger, либо fallback repath.
+
+2. `tests/test_patrol_obstacle_avoidance_props.gd` + `.tscn`
+Сценарий:
+- patrol через prop cluster.
+Проверки:
+- нет длительного застревания у props;
+- движение остается непрерывным.
+
+3. `tests/test_patrol_preavoid_triggers_before_collision.gd` + `.tscn`
+Сценарий:
+- obstacle на траектории patrol в зоне lookahead.
+Проверки:
+- сначала фиксируется `preavoid_triggered=true`;
+- collision snapshot не обязан фиксировать фактический удар в том же окне.
+
+4. `tests/test_patrol_preavoid_door_parity.gd` + `.tscn`
+Сценарий:
+- patrol к цели за дверью.
+Проверки:
+- pre-avoid не ломает door-open flow;
+- дверь открывается и проход выполняется.
+
+5. `tests/test_patrol_preavoid_anti_jitter_contract.gd` + `.tscn`
+Сценарий:
+- узкий коридор + obstacle у входа.
+Проверки:
+- нет частой смены `preavoid_side` каждый тик;
+- нет oscillation с нулевым прогрессом.
+
+6. `tests/test_patrol_unified_movement_pipeline_contract.gd` + `.tscn`
+Сценарий:
+- `IntentType.PATROL`.
+Проверки:
+- path/repath/collision debug-поля ведут себя как у других move-intent.
+
+7. `tests/test_patrol_repath_recovery_contract.gd` + `.tscn`
+Сценарий:
+- повторный blocked-point.
+Проверки:
+- recovery feedback активен;
+- нет бесконечного упора в одну точку.
+
+8. `tests/test_patrol_mode_transition_invariance.gd` + `.tscn`
+Сценарий:
+- CALM patrol -> ALERT/COMBAT в той же obstacle геометрии.
+Проверки:
+- контракты mode/intent не нарушены;
+- `ALERT/COMBAT` не скатываются в ошибочный `PATROL`.
+
+## Фаза 6. KPI-часть: что переделать и что добавить
+
+## 6.1 KPI тесты, которые переделываются
+
+1. `tests/test_ai_long_run_stress.gd`
+Изменение:
+- расширить benchmark report новыми pre-avoid и patrol-quality счетчиками.
+
+2. `tests/test_ai_performance_gate.gd`
+Изменение:
+- включить threshold-проверки новых полей + fixture на deterministic fail.
+
+3. `tests/test_level_stealth_checklist.gd`
+Изменение:
+- добавить `patrol_obstacle_avoidance_pass`.
+
+4. `tests/test_extended_stealth_release_gate.gd`
+Изменение:
+- добавить обязательный patrol navigation gate.
+
+5. `tests/test_refactor_kpi_contract.gd`
+Изменение:
+- добавить проверки новых `kpi_*` export и новых gate сцен.
+
+6. `tests/test_game_config_reset_consistency_non_layout.gd`
+Изменение:
+- сохранить зеленым после расширения `DEFAULT_NON_LAYOUT_SCALARS`.
+
+## 6.2 Новые KPI-метрики
+
+Файлы правки:
+1. `src/systems/ai_watchdog.gd`
+2. `src/systems/enemy_pursuit_system.gd`
+3. `src/core/game_config.gd`
+
+Новые счетчики в `AIWatchdog`:
+1. `preavoid_events_total: int`
+2. `patrol_preavoid_events_total: int`
+3. `patrol_collision_repath_events_total: int`
+4. `patrol_hard_stall_events_total: int`
+
+Точки инкремента:
+1. В `EnemyPursuitSystem` при срабатывании pre-avoid инкрементировать `record_preavoid_event()`.
+2. Если `_last_intent_type == PATROL`, инкрементировать patrol-версии метрик.
+3. Existing `record_collision_repath_event()` и `record_hard_stall_event()` сохранить, но дополнить mode-aware веткой.
+
+Новые KPI-пороги в `GameConfig`:
+1. `kpi_patrol_preavoid_events_min`
+2. `kpi_patrol_collision_repath_events_max`
+3. `kpi_patrol_hard_stalls_per_min_max`
+4. `kpi_patrol_zero_progress_windows_max`
+
+Обязательные правки `GameConfig`:
+1. Добавить `@export var ...` поля.
+2. Добавить ключи в `DEFAULT_NON_LAYOUT_SCALARS`.
+3. Сохранить корректность `reset_to_defaults()` и `get_snapshot()`.
+
+## 6.3 Новый KPI gate
+
+Новая сцена/скрипт:
+1. `tests/test_patrol_navigation_kpi_gate.gd` + `.tscn`
+
+Сценарии KPI (фиксированные):
+1. `wall_detour_patrol`
+2. `prop_cluster_patrol`
+3. `door_choke_patrol_mix`
+4. `narrow_corridor_preavoid`
+
+Критерии:
+1. `patrol_preavoid_events_total >= kpi_patrol_preavoid_events_min`
+2. `patrol_collision_repath_events_total <= kpi_patrol_collision_repath_events_max`
+3. `patrol_hard_stalls_per_min <= kpi_patrol_hard_stalls_per_min_max`
+4. `patrol_zero_progress_windows <= kpi_patrol_zero_progress_windows_max`
+
+Выход:
+1. `PASS` при прохождении всех порогов.
+2. `FAIL` с явной причиной (`threshold_failed`, `metrics_contract_missing`, `scenario_bootstrap_failed`).
+
+## Фаза 7. Интеграция с release gate
+
+Файлы правки:
+1. `tests/test_extended_stealth_release_gate.gd`
+2. `tests/test_runner_node.gd`
+
+Действия:
+1. Подключить `test_patrol_navigation_kpi_gate.tscn` как обязательный sub-gate.
+2. Зафиксировать deterministic `final_reason` при падении этого sub-gate.
+
+Критерий выхода:
+1. Extended gate корректно блокирует релиз при деградации patrol-навигации.
+
+## Фаза 8. Пошаговый rollout без ломки поведения
+
+1. Шаг A: включить только Фазу 1 (unified patrol pipeline), pre-avoid выключен.
+2. Шаг B: включить pre-avoid с безопасными значениями и cooldown.
+3. Шаг C: откалибровать пороги KPI на фиксированных сценариях.
+4. Шаг D: сделать KPI hard-gate в release.
+
+Критерий выхода:
+1. Ни один шаг не ломает mode/intent/nav contracts.
+2. Метрики не хуже baseline по stall/teleport/repath stability.
+
+## Фаза 9. Приемка и стабилизация
+
+## 9.1 Полный прогон
+
+1. Целевые тесты movement/nav/contract (Фаза 0 baseline + обновленные + новые).
+2. KPI-gates:
+3. `test_ai_performance_gate.tscn`
+4. `test_patrol_navigation_kpi_gate.tscn`
+5. `test_replay_baseline_gate.tscn`
+6. `test_level_stealth_checklist.tscn`
+7. `test_extended_stealth_release_gate.tscn`
+
+## 9.2 Acceptance критерии
+
+1. Patrol использует единый path/repath/collision pipeline.
+2. В типичных сценах враги чаще обходят obstacle до физического контакта.
+3. Fallback `collision->repath` остается рабочим.
+4. Door/open поведение неизменно.
+5. Нет деградации в mode/intent контрактах.
+6. Нет роста teleport spikes.
+7. KPI и release gates проходят.
+
+## 10. Что точно НЕ делаем в v01
+
+1. Не меняем доменную логику `EnemyAwarenessSystem` и `EnemyUtilityBrain`.
+2. Не меняем формат результата `execute_intent()`.
+3. Не меняем статусы planner contract (`ok/unreachable_policy/unreachable_geometry`).
+4. Не вводим отдельный второй movement-движок вне `EnemyPursuitSystem`.
+
+## 11. Матрица \"было -> стало\"
+
+1. Было: patrol direct move обходил часть общего pipeline.
+Стало: patrol полностью в общем movement execution.
+
+2. Было: obstacle обход часто начинался после фактического удара.
+Стало: pre-avoid триггерит ранний repath/steer до удара.
+
+3. Было: визуально «уперся -> стоп -> дернулся».
+Стало: чаще «подрулил заранее -> сохранил непрерывность движения».
+
+4. Было: fallback collision-repath — единственный механизм.
+Стало: fallback сохранен, но стал second-line, а не first-line.
+
+## 12. Порядок коммитов (рекомендуемый)
+
+1. Commit 1: Фаза 1 (unified patrol pipeline) + адаптация существующих тестов.
+2. Commit 2: Фаза 2 (pre-avoid runtime + debug snapshot keys).
+3. Commit 3: Фаза 3 (obstacle contract/fallback hardening).
+4. Commit 4: Фаза 5 (новые patrol/pre-avoid тесты + runner wiring).
+5. Commit 5: Фаза 6 (AIWatchdog + GameConfig KPI + patrol KPI gate).
+6. Commit 6: Фаза 7 (release gate integration + refactor KPI contract updates).

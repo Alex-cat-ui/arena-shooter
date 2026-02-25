@@ -1,0 +1,5 @@
+res://tests/test_collision_block_forces_immediate_repath.tscn
+res://tests/test_honest_repath_without_teleport.tscn
+res://tests/test_combat_obstacle_chase_basic.tscn
+res://tests/test_enemy_pursuit_exec_result_contract.tscn
+res://tests/test_navmesh_migration.tscn

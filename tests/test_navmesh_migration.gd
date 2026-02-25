@@ -3,6 +3,7 @@ extends Node
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const NAVIGATION_SERVICE_SCRIPT := preload("res://src/systems/navigation_service.gd")
 const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
+const ENEMY_UTILITY_BRAIN_SCRIPT := preload("res://src/systems/enemy_utility_brain.gd")
 const LAYOUT_DOOR_SYSTEM_SCRIPT := preload("res://src/systems/layout_door_system.gd")
 
 var embedded_mode: bool = false
@@ -64,6 +65,27 @@ class FakeLayoutWithNavObstacles:
 		return nav_obstacles_override.duplicate()
 
 
+class FakePatrolDecision:
+	extends RefCounted
+
+	var fixed_target: Vector2 = Vector2.ZERO
+	var fixed_speed_scale: float = 1.0
+
+	func _init(target: Vector2, speed_scale: float = 1.0) -> void:
+		fixed_target = target
+		fixed_speed_scale = speed_scale
+
+	func configure(_nav_system: Node, _home_room_id: int) -> void:
+		pass
+
+	func update(_delta: float, _facing_dir: Vector2) -> Dictionary:
+		return {
+			"waiting": false,
+			"target": fixed_target,
+			"speed_scale": fixed_speed_scale,
+		}
+
+
 func _ready() -> void:
 	if embedded_mode:
 		return
@@ -80,6 +102,7 @@ func run_suite() -> Dictionary:
 	await _test_navmesh_built_from_layout()
 	await _test_nav_agent_finds_path()
 	await _test_enemy_navigates_to_target()
+	await _test_enemy_navigates_to_target_via_patrol_execute_intent()
 	await _test_door_traversal_via_navmesh()
 	_test_l1_detour_removed()
 	await _test_navmesh_single_rect_room()
@@ -88,6 +111,7 @@ func run_suite() -> Dictionary:
 	await _test_navmesh_door_overlap_connects_regions()
 	await _test_navmesh_notched_room()
 	await _test_obstacle_extraction_fallback()
+	await _test_layout_obstacle_api_priority()
 	await _test_clearance_margin_applied()
 
 	_t.summary("NAVMESH MIGRATION RESULTS")
@@ -135,6 +159,42 @@ func _test_enemy_navigates_to_target() -> void:
 		pursuit.call("_execute_move_to_target", 1.0 / 60.0, target, 1.0, false)
 		await get_tree().physics_frame
 	_t.run_test("enemy_navigates_to_target", owner.global_position.distance_to(target) <= 20.0)
+	await _cleanup_fixture(fixture)
+
+
+func _test_enemy_navigates_to_target_via_patrol_execute_intent() -> void:
+	var fixture := await _create_two_room_fixture()
+	var service = fixture.get("service")
+	var actor := await _create_actor(fixture, service, Vector2(150.0, 100.0), 0)
+	var owner := actor.get("owner") as CharacterBody2D
+	var pursuit := actor.get("pursuit") as Object
+	var target := Vector2(280.0, 100.0)
+	pursuit.set("_patrol", FakePatrolDecision.new(target, 1.0))
+
+	var initial_distance := owner.global_position.distance_to(target)
+	var moved_total := 0.0
+	var prev_pos := owner.global_position
+	var saw_plan_status_ok := false
+	for _i in range(120):
+		pursuit.execute_intent(
+			1.0 / 60.0,
+			{"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL},
+			_patrol_context(target)
+		)
+		await get_tree().physics_frame
+		var current_pos := owner.global_position
+		moved_total += current_pos.distance_to(prev_pos)
+		prev_pos = current_pos
+		var snapshot := pursuit.call("debug_get_navigation_policy_snapshot") as Dictionary
+		if String(snapshot.get("path_plan_status", "")) == "ok":
+			saw_plan_status_ok = true
+	var final_distance := owner.global_position.distance_to(target)
+
+	_t.run_test(
+		"enemy_navigates_to_target_via_patrol_execute_intent",
+		moved_total > 8.0 and final_distance < initial_distance
+	)
+	_t.run_test("patrol_execute_intent_updates_nav_plan_snapshot", saw_plan_status_ok)
 	await _cleanup_fixture(fixture)
 
 
@@ -270,6 +330,40 @@ func _test_obstacle_extraction_fallback() -> void:
 		and _has_point_near(points, grown.end)
 	)
 	_t.run_test("navmesh_scene_obstacle_fallback", ok)
+	await _cleanup_fixture(fixture)
+
+
+func _test_layout_obstacle_api_priority() -> void:
+	var room_rect := Rect2(0.0, 0.0, 220.0, 200.0)
+	var room := {
+		"center": room_rect.get_center(),
+		"rects": [room_rect],
+	}
+	var layout_obstacle := Rect2(30.0, 80.0, 24.0, 40.0)
+	var scene_obstacle := Rect2(150.0, 80.0, 24.0, 40.0)
+	var layout := FakeLayoutWithNavObstacles.new([room], [], {})
+	layout.nav_obstacles_override = [layout_obstacle]
+	var fixture := await _create_fixture(layout, false)
+	var service := fixture.get("service") as Node
+	var world := fixture.get("world") as Node2D
+	_spawn_grouped_nav_obstacle(world, scene_obstacle)
+	service.call("build_from_layout", layout, world)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+
+	var source := String(service.call("debug_get_nav_obstacle_source"))
+	var clearance := float(service.get("OBSTACLE_CLEARANCE_PX"))
+	var points := _collect_nav_outline_points(service, 0)
+	var layout_grown := layout_obstacle.grow(clearance)
+	var scene_grown := scene_obstacle.grow(clearance)
+	var ok := (
+		source == "layout_api"
+		and _has_point_near(points, layout_grown.position)
+		and _has_point_near(points, layout_grown.end)
+		and not _has_point_near(points, scene_grown.position)
+		and not _has_point_near(points, scene_grown.end)
+	)
+	_t.run_test("navmesh_layout_obstacle_api_priority", ok)
 	await _cleanup_fixture(fixture)
 
 
@@ -493,3 +587,16 @@ func _min_distance_to_rect(points: Array[Vector2], rect: Rect2) -> float:
 
 func _rect_approx_eq(a: Rect2, b: Rect2, epsilon: float = 0.01) -> bool:
 	return a.position.distance_to(b.position) <= epsilon and a.size.distance_to(b.size) <= epsilon
+
+
+func _patrol_context(player_pos: Vector2) -> Dictionary:
+	return {
+		"player_pos": player_pos,
+		"known_target_pos": Vector2.ZERO,
+		"last_seen_pos": Vector2.ZERO,
+		"investigate_anchor": Vector2.ZERO,
+		"home_position": Vector2.ZERO,
+		"alert_level": 0,
+		"los": false,
+		"combat_lock": false,
+	}

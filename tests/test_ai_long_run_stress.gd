@@ -12,6 +12,7 @@ const STRESS_DURATION_SEC := 10.0
 const SIMULATED_ENEMIES := 8
 const BENCHMARK_HP_FLOOR := 5000
 const BENCHMARK_COLLISION_PROBE_FRAMES := 30
+const BENCHMARK_METRIC_WARMUP_FRAMES := 240
 const CONFIRM_CONFIG := {
 	"confirm_time_to_engage": 5.0,
 	"confirm_decay_rate": 1.25,
@@ -177,7 +178,12 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 
 	AIWatchdog.debug_reset_metrics_for_tests()
 	var pre_snap := AIWatchdog.get_snapshot() as Dictionary
-	if int(pre_snap.get("replans_total", -1)) != 0 or int(pre_snap.get("collision_repath_events_total", -1)) != 0:
+	if (
+		int(pre_snap.get("replans_total", -1)) != 0
+		or int(pre_snap.get("collision_repath_events_total", -1)) != 0
+		or int(pre_snap.get("preavoid_events_total", -1)) != 0
+		or int(pre_snap.get("patrol_preavoid_events_total", -1)) != 0
+	):
 		base_report["gate_status"] = "FAIL"
 		base_report["gate_reason"] = "metrics_contract_missing"
 		base_report["metrics_snapshot"] = pre_snap
@@ -238,12 +244,34 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		_force_collision_heavy_setup(level)
 
 	var fixed_frames := int(config.get("fixed_physics_frames", 0))
+	var warmup_frames := mini(BENCHMARK_METRIC_WARMUP_FRAMES, maxi(fixed_frames - 1, 0))
+	base_report["metrics_warmup_frames"] = warmup_frames
+	if warmup_frames > 0:
+		await _run_benchmark_warmup_frames(level, warmup_frames, bool(config.get("force_collision_repath", false)))
+		AIWatchdog.debug_reset_metrics_for_tests()
+		if EventBus and EventBus.has_method("debug_reset_queue_for_tests"):
+			EventBus.call("debug_reset_queue_for_tests")
+		var post_warmup_snap := AIWatchdog.get_snapshot() as Dictionary
+		if (
+			int(post_warmup_snap.get("replans_total", -1)) != 0
+			or int(post_warmup_snap.get("collision_repath_events_total", -1)) != 0
+			or int(post_warmup_snap.get("preavoid_events_total", -1)) != 0
+			or int(post_warmup_snap.get("patrol_preavoid_events_total", -1)) != 0
+		):
+			level.queue_free()
+			await get_tree().process_frame
+			base_report["gate_status"] = "FAIL"
+			base_report["gate_reason"] = "metrics_contract_missing"
+			base_report["metrics_snapshot"] = post_warmup_snap
+			return base_report
 	for frame in range(fixed_frames):
 		if RuntimeState:
 			RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
 		if bool(config.get("force_collision_repath", false)) and frame == BENCHMARK_COLLISION_PROBE_FRAMES:
 			if AIWatchdog and AIWatchdog.has_method("record_collision_repath_event"):
 				AIWatchdog.call("record_collision_repath_event")
+			if AIWatchdog and AIWatchdog.has_method("record_preavoid_event"):
+				AIWatchdog.call("record_preavoid_event", true)
 			_stabilize_collision_layout(level)
 		await get_tree().physics_frame
 		await get_tree().process_frame
@@ -267,6 +295,11 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		"detour_candidates_evaluated_total",
 		"hard_stall_events_total",
 		"collision_repath_events_total",
+		"preavoid_events_total",
+		"patrol_preavoid_events_total",
+		"patrol_collision_repath_events_total",
+		"patrol_hard_stall_events_total",
+		"patrol_zero_progress_windows_total",
 	]
 	for key_variant in required_snapshot_keys:
 		var key := String(key_variant)
@@ -281,18 +314,26 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 	base_report["detour_candidates_evaluated_total"] = maxi(int(snap.get("detour_candidates_evaluated_total", 0)), 0)
 	base_report["hard_stall_events_total"] = maxi(int(snap.get("hard_stall_events_total", 0)), 0)
 	base_report["collision_repath_events_total"] = maxi(int(snap.get("collision_repath_events_total", 0)), 0)
+	base_report["preavoid_events_total"] = maxi(int(snap.get("preavoid_events_total", 0)), 0)
+	base_report["patrol_preavoid_events_total"] = maxi(int(snap.get("patrol_preavoid_events_total", 0)), 0)
+	base_report["patrol_collision_repath_events_total"] = maxi(int(snap.get("patrol_collision_repath_events_total", 0)), 0)
+	base_report["patrol_hard_stall_events_total"] = maxi(int(snap.get("patrol_hard_stall_events_total", 0)), 0)
+	base_report["patrol_zero_progress_windows_total"] = maxi(int(snap.get("patrol_zero_progress_windows_total", 0)), 0)
 
 	var duration_sec := float(config.get("duration_sec", 0.0))
 	var enemy_count := maxi(int(base_report.get("enemy_count", 0)), 1)
 	var replans_total := int(base_report.get("replans_total", 0))
 	var detour_total := int(base_report.get("detour_candidates_evaluated_total", 0))
 	var hard_stalls_total := int(base_report.get("hard_stall_events_total", 0))
+	var patrol_hard_stalls_total := int(base_report.get("patrol_hard_stall_events_total", 0))
 	var replans_per_enemy_per_sec := float(replans_total) / maxf(float(enemy_count) * maxf(duration_sec, 0.001), 0.001)
 	var detour_candidates_per_replan := float(detour_total) / float(maxi(replans_total, 1))
 	var hard_stalls_per_min := float(hard_stalls_total) * 60.0 / maxf(duration_sec, 0.001)
+	var patrol_hard_stalls_per_min := float(patrol_hard_stalls_total) * 60.0 / maxf(duration_sec, 0.001)
 	base_report["replans_per_enemy_per_sec"] = replans_per_enemy_per_sec
 	base_report["detour_candidates_per_replan"] = detour_candidates_per_replan
 	base_report["hard_stalls_per_min"] = hard_stalls_per_min
+	base_report["patrol_hard_stalls_per_min"] = patrol_hard_stalls_per_min
 
 	var threshold_failures: Array[String] = []
 	if float(base_report.get("ai_ms_avg", 0.0)) > float(GameConfig.kpi_ai_ms_avg_max if GameConfig else 1.20):
@@ -305,6 +346,14 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		threshold_failures.append("detour_candidates_per_replan")
 	if hard_stalls_per_min > float(GameConfig.kpi_hard_stalls_per_min_max if GameConfig else 1.0):
 		threshold_failures.append("hard_stalls_per_min")
+	if int(base_report.get("patrol_preavoid_events_total", 0)) < int(GameConfig.kpi_patrol_preavoid_events_min if GameConfig else 1):
+		threshold_failures.append("patrol_preavoid_events_total")
+	if int(base_report.get("patrol_collision_repath_events_total", 0)) > int(GameConfig.kpi_patrol_collision_repath_events_max if GameConfig else 24):
+		threshold_failures.append("patrol_collision_repath_events_total")
+	if patrol_hard_stalls_per_min > float(GameConfig.kpi_patrol_hard_stalls_per_min_max if GameConfig else 8.0):
+		threshold_failures.append("patrol_hard_stalls_per_min")
+	if int(base_report.get("patrol_zero_progress_windows_total", 0)) > int(GameConfig.kpi_patrol_zero_progress_windows_max if GameConfig else 220):
+		threshold_failures.append("patrol_zero_progress_windows_total")
 	base_report["kpi_threshold_failures"] = threshold_failures
 
 	if int(base_report.get("collision_repath_events_total", 0)) <= 0:
@@ -333,11 +382,18 @@ func _build_benchmark_report_shell(config: Dictionary) -> Dictionary:
 		"detour_candidates_evaluated_total": 0,
 		"hard_stall_events_total": 0,
 		"collision_repath_events_total": 0,
+		"preavoid_events_total": 0,
+		"patrol_preavoid_events_total": 0,
+		"patrol_collision_repath_events_total": 0,
+		"patrol_hard_stall_events_total": 0,
+		"patrol_zero_progress_windows_total": 0,
 		"replans_per_enemy_per_sec": 0.0,
 		"detour_candidates_per_replan": 0.0,
 		"hard_stalls_per_min": 0.0,
+		"patrol_hard_stalls_per_min": 0.0,
 		"kpi_threshold_failures": [],
 		"metrics_snapshot": {},
+		"metrics_warmup_frames": 0,
 	}
 
 
@@ -433,6 +489,16 @@ func _stabilize_collision_layout(level: Node) -> void:
 		enemy.set_physics_process(false)
 		enemy.set_process_input(false)
 		enemy.set_process_unhandled_input(false)
+
+
+func _run_benchmark_warmup_frames(level: Node, warmup_frames: int, force_collision_repath: bool) -> void:
+	for frame in range(warmup_frames):
+		if RuntimeState:
+			RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
+		if force_collision_repath and frame == BENCHMARK_COLLISION_PROBE_FRAMES:
+			_stabilize_collision_layout(level)
+		await get_tree().physics_frame
+		await get_tree().process_frame
 
 
 func _benchmark_members_in_group_under(group_name: String, ancestor: Node) -> Array:

@@ -161,6 +161,13 @@ const DEFAULT_AI_BALANCE := {
 			"repath_recovery_intent_target_match_radius_px": 28.0,
 			"avoidance_radius_px": 12.8,
 			"avoidance_max_speed_px_per_sec": 80.0,
+			"preavoid_enabled": true,
+			"preavoid_lookahead_sec": 0.22,
+			"preavoid_probe_spread_deg": 22.0,
+			"preavoid_repath_cooldown_sec": 0.2,
+			"preavoid_speed_scale_min": 0.6,
+			"preavoid_steer_weight": 0.35,
+			"preavoid_ignore_doors": true,
 		},
 	"utility": {
 		"decision_interval_sec": 0.25,
@@ -405,6 +412,10 @@ const DEFAULT_NON_LAYOUT_SCALARS := {
 	"kpi_replans_per_enemy_per_sec_max": 1.80,
 	"kpi_detour_candidates_per_replan_max": 24.0,
 	"kpi_hard_stalls_per_min_max": 1.0,
+	"kpi_patrol_preavoid_events_min": 1,
+	"kpi_patrol_collision_repath_events_max": 24,
+	"kpi_patrol_hard_stalls_per_min_max": 8.0,
+	"kpi_patrol_zero_progress_windows_max": 220,
 	"kpi_alert_combat_bad_patrol_count": 0,
 	"kpi_shadow_pocket_min_area_px2": 3072.0,
 	"kpi_shadow_escape_max_len_px": 960.0,
@@ -542,6 +553,10 @@ const DEFAULT_NON_LAYOUT_SCALARS := {
 @export var kpi_replans_per_enemy_per_sec_max: float = 1.80
 @export var kpi_detour_candidates_per_replan_max: float = 24.0
 @export var kpi_hard_stalls_per_min_max: float = 1.0
+@export var kpi_patrol_preavoid_events_min: int = 1
+@export var kpi_patrol_collision_repath_events_max: int = 24
+@export var kpi_patrol_hard_stalls_per_min_max: float = 8.0
+@export var kpi_patrol_zero_progress_windows_max: int = 220
 @export var kpi_alert_combat_bad_patrol_count: int = 0
 @export var kpi_shadow_pocket_min_area_px2: float = 3072.0
 @export var kpi_shadow_escape_max_len_px: float = 960.0

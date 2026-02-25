@@ -2,6 +2,7 @@ extends Node
 
 const TestHelpers = preload("res://tests/test_helpers.gd")
 const ENEMY_PURSUIT_SYSTEM_SCRIPT := preload("res://src/systems/enemy_pursuit_system.gd")
+const ENEMY_UTILITY_BRAIN_SCRIPT := preload("res://src/systems/enemy_utility_brain.gd")
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -24,6 +25,27 @@ class FakeNav:
 		}
 
 
+class FakePatrolDecision:
+	extends RefCounted
+
+	var fixed_target: Vector2 = Vector2.ZERO
+	var fixed_speed_scale: float = 1.0
+
+	func _init(target: Vector2, speed_scale: float = 1.0) -> void:
+		fixed_target = target
+		fixed_speed_scale = speed_scale
+
+	func configure(_nav_system: Node, _home_room_id: int) -> void:
+		pass
+
+	func update(_delta: float, _facing_dir: Vector2) -> Dictionary:
+		return {
+			"waiting": false,
+			"target": fixed_target,
+			"speed_scale": fixed_speed_scale,
+		}
+
+
 func _ready() -> void:
 	if embedded_mode:
 		return
@@ -38,6 +60,7 @@ func run_suite() -> Dictionary:
 	print("============================================================")
 
 	await _test_non_door_collision_forces_immediate_repath()
+	await _test_patrol_execute_intent_collision_forces_immediate_repath()
 
 	_t.summary("COLLISION BLOCK FORCES IMMEDIATE REPATH RESULTS")
 	return {
@@ -105,3 +128,69 @@ func _test_non_door_collision_forces_immediate_repath() -> void:
 
 	root.queue_free()
 	await get_tree().physics_frame
+
+
+func _test_patrol_execute_intent_collision_forces_immediate_repath() -> void:
+	var root := Node2D.new()
+	add_child(root)
+	TestHelpers.add_wall(root, Vector2.ZERO, Vector2(240.0, 16.0))
+	var enemy := TestHelpers.spawn_mover(root, Vector2(0.0, 56.0), 1, 1, "enemies")
+	var nav := FakeNav.new()
+	root.add_child(nav)
+
+	var pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(enemy, null, 2.4)
+	pursuit.configure_navigation(nav, 0)
+	var patrol_target := Vector2(0.0, -120.0)
+	pursuit.set("_patrol", FakePatrolDecision.new(patrol_target, 1.0))
+
+	await get_tree().process_frame
+	await get_tree().physics_frame
+
+	var collision_seen := false
+	var collision_snapshot: Dictionary = {}
+	var exec_result: Dictionary = {}
+	for _i in range(180):
+		exec_result = pursuit.execute_intent(
+			1.0 / 60.0,
+			{"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL},
+			_patrol_context(patrol_target)
+		) as Dictionary
+		collision_snapshot = pursuit.debug_get_navigation_policy_snapshot() as Dictionary
+		if String(collision_snapshot.get("collision_kind", "")) == "non_door":
+			collision_seen = true
+			break
+		await get_tree().physics_frame
+
+	var repath_timer := float(pursuit.get("_repath_timer"))
+	_t.run_test("patrol intent: non-door collision occurs against solid wall", collision_seen)
+	_t.run_test(
+		"patrol intent: collision forces immediate repath timer reset",
+		collision_seen and repath_timer <= 0.001
+	)
+	_t.run_test(
+		"patrol intent: collision marks path_failed_reason=collision_blocked",
+		collision_seen and String(exec_result.get("path_failed_reason", "")) == "collision_blocked"
+	)
+	_t.run_test(
+		"patrol intent: collision snapshot reports non_door forced repath",
+		collision_seen
+			and String(collision_snapshot.get("collision_kind", "")) == "non_door"
+			and bool(collision_snapshot.get("collision_forced_repath", false))
+			and String(collision_snapshot.get("collision_reason", "")) == "collision_blocked"
+	)
+
+	root.queue_free()
+	await get_tree().physics_frame
+
+
+func _patrol_context(player_pos: Vector2) -> Dictionary:
+	return {
+		"player_pos": player_pos,
+		"known_target_pos": Vector2.ZERO,
+		"last_seen_pos": Vector2.ZERO,
+		"investigate_anchor": Vector2.ZERO,
+		"home_position": Vector2.ZERO,
+		"alert_level": 0,
+		"los": false,
+		"combat_lock": false,
+	}

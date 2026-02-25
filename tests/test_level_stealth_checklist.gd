@@ -56,6 +56,7 @@ func _test_stealth_3zone_automatic_checks_pass() -> void:
 	_t.run_test("checklist: shadow pocket availability passes", bool(report.get("shadow_pocket_availability_pass", false)))
 	_t.run_test("checklist: shadow escape availability passes", bool(report.get("shadow_escape_availability_pass", false)))
 	_t.run_test("checklist: route variety passes", bool(report.get("route_variety_pass", false)))
+	_t.run_test("checklist: patrol obstacle avoidance passes", bool(report.get("patrol_obstacle_avoidance_pass", false)))
 	_t.run_test("checklist: chokepoint width safety passes", bool(report.get("chokepoint_width_safety_pass", false)))
 	_t.run_test("checklist: boundary scan support passes", bool(report.get("boundary_scan_support_pass", false)))
 
@@ -141,6 +142,7 @@ func _run_stealth_level_checklist(level_scene_path: String, level_name: String, 
 	var pocket_room_counts := pocket_result.get("room_counts", {}) as Dictionary
 	var shadow_escape_availability_pass := _check_shadow_escape_availability(counted_pockets, room_rects, choke_rects, shadow_zone_nodes, navigation_service)
 	var route_variety_pass := _check_route_variety(level, controller, navigation_service)
+	var patrol_obstacle_avoidance_pass := _check_patrol_obstacle_avoidance(level, navigation_service)
 	var chokepoint_width_safety_pass := _check_chokepoint_width_safety(choke_rects, wall_thickness)
 	var boundary_scan_support_result := _check_boundary_scan_support(room_rects, shadow_zone_nodes, navigation_service)
 	var boundary_scan_support_pass := bool(boundary_scan_support_result.get("pass", false))
@@ -155,7 +157,7 @@ func _run_stealth_level_checklist(level_scene_path: String, level_name: String, 
 			"pocket_count": int(pocket_room_counts.get(room_index, 0)),
 			"boundary_scan_points_ok": int((boundary_scan_support_result.get("room_sample_counts", {}) as Dictionary).get(room_index, 0)),
 		})
-	automatic_checks_pass = automatic_checks_pass and patrol_reachability_pass and shadow_pocket_availability_pass and shadow_escape_availability_pass and route_variety_pass and chokepoint_width_safety_pass and boundary_scan_support_pass
+	automatic_checks_pass = automatic_checks_pass and patrol_reachability_pass and shadow_pocket_availability_pass and shadow_escape_availability_pass and route_variety_pass and patrol_obstacle_avoidance_pass and chokepoint_width_safety_pass and boundary_scan_support_pass
 
 	report["stealth_room_count"] = room_rects.size()
 	report["room_reports"] = room_reports
@@ -164,6 +166,7 @@ func _run_stealth_level_checklist(level_scene_path: String, level_name: String, 
 	report["shadow_pocket_availability_pass"] = shadow_pocket_availability_pass
 	report["shadow_escape_availability_pass"] = shadow_escape_availability_pass
 	report["route_variety_pass"] = route_variety_pass
+	report["patrol_obstacle_avoidance_pass"] = patrol_obstacle_avoidance_pass
 	report["chokepoint_width_safety_pass"] = chokepoint_width_safety_pass
 	report["boundary_scan_support_pass"] = boundary_scan_support_pass
 	report["artifact_exists"] = FileAccess.file_exists("res://" + manual_artifact_path) or FileAccess.file_exists(manual_artifact_path)
@@ -199,6 +202,7 @@ func _empty_checklist_report(level_name: String, manual_artifact_path: String) -
 		"shadow_pocket_availability_pass": false,
 		"shadow_escape_availability_pass": false,
 		"route_variety_pass": false,
+		"patrol_obstacle_avoidance_pass": false,
 		"chokepoint_width_safety_pass": false,
 		"boundary_scan_support_pass": false,
 		"room_reports": [],
@@ -344,6 +348,35 @@ func _check_route_variety(level: Node, controller: Node, navigation_service: Nod
 	var min_len := minf(route1_len, route2_len)
 	var max_len := maxf(route1_len, route2_len)
 	return min_len > 0.0 and max_len <= float(GameConfig.kpi_alt_route_max_factor if GameConfig else 1.50) * min_len
+
+
+func _check_patrol_obstacle_avoidance(level: Node, navigation_service: Node) -> bool:
+	var path_samples := [
+		{"from": "Spawns/SpawnA1", "to": "Spawns/SpawnD", "max_factor": 2.8},
+		{"from": "Spawns/SpawnB", "to": "Spawns/SpawnC2", "max_factor": 2.6},
+		{"from": "Spawns/SpawnA2", "to": "Spawns/SpawnC1", "max_factor": 2.6},
+	]
+	for sample_variant in path_samples:
+		var sample := sample_variant as Dictionary
+		var from_node := level.get_node_or_null(String(sample.get("from", ""))) as Node2D
+		var to_node := level.get_node_or_null(String(sample.get("to", ""))) as Node2D
+		if from_node == null or to_node == null:
+			return false
+		var from_pos := from_node.global_position
+		var to_pos := to_node.global_position
+		var direct_len := from_pos.distance_to(to_pos)
+		if direct_len <= 0.001:
+			return false
+		var plan := navigation_service.call("build_policy_valid_path", from_pos, to_pos, null) as Dictionary
+		if String(plan.get("status", "")) != "ok":
+			return false
+		var path_len := _path_length_from_points(from_pos, plan.get("path_points", []) as Array)
+		if not is_finite(path_len):
+			return false
+		var max_factor := float(sample.get("max_factor", 2.6))
+		if path_len > direct_len * max_factor:
+			return false
+	return true
 
 
 func _route_length_via_policy(anchors: Array, navigation_service: Node) -> float:

@@ -28,6 +28,7 @@ var _room_to_region: Dictionary = {} # room_id -> NavigationRegion2D
 var _runtime_queries = null
 var _enemy_wiring = null
 var _shadow_policy = null
+var _last_nav_obstacle_source: String = "none"
 
 
 func _ensure_runtime_components() -> void:
@@ -189,6 +190,7 @@ func clear() -> void:
 	_room_to_region.clear()
 	_room_graph.clear()
 	_pair_doors.clear()
+	_last_nav_obstacle_source = "none"
 
 
 func build_from_layout(p_layout, parent: Node2D) -> void:
@@ -222,9 +224,7 @@ func build_from_layout(p_layout, parent: Node2D) -> void:
 					door_overlaps_per_room[room_id] = []
 				door_overlaps_per_room[room_id].append(overlap_rect)
 
-	var nav_obstacles := _extract_navigation_obstacles(layout)
-	if nav_obstacles.is_empty():
-		nav_obstacles = _extract_scene_obstacles() # build_from_layout single-owner fallback
+	var nav_obstacles := _resolve_nav_obstacles_for_build(layout)
 	var cleared_obstacles: Array[Rect2] = []
 	for obs in nav_obstacles:
 		cleared_obstacles.append((obs as Rect2).grow(OBSTACLE_CLEARANCE_PX))
@@ -249,6 +249,10 @@ func get_navigation_map_rid() -> RID:
 	if viewport and viewport.world_2d:
 		return viewport.world_2d.navigation_map
 	return RID()
+
+
+func debug_get_nav_obstacle_source() -> String:
+	return _last_nav_obstacle_source
 
 
 func room_id_at_point(p: Vector2) -> int:
@@ -598,6 +602,15 @@ func _create_region_for_room(room_id: int, rects: Array, door_overlaps: Array, p
 	_room_to_region[room_id] = region
 
 
+func _resolve_nav_obstacles_for_build(p_layout) -> Array[Rect2]:
+	var layout_obstacles := _extract_navigation_obstacles(p_layout)
+	if not layout_obstacles.is_empty():
+		_last_nav_obstacle_source = "layout_api"
+		return layout_obstacles
+	_last_nav_obstacle_source = "scene_fallback"
+	return _extract_scene_obstacles()
+
+
 func _extract_navigation_obstacles(p_layout) -> Array[Rect2]:
 	var obstacles: Array[Rect2] = []
 	if p_layout == null:
@@ -620,6 +633,11 @@ func _extract_navigation_obstacles(p_layout) -> Array[Rect2]:
 
 
 func _extract_scene_obstacles() -> Array[Rect2]:
+	# Fallback obstacle contract:
+	# - Node is in group `nav_obstacles`.
+	# - Node type is `StaticBody2D`.
+	# - One or more `CollisionShape2D` children with `RectangleShape2D`.
+	# - Obstacle rect is resolved in world space via `body.global_position + shape.position`.
 	var result: Array[Rect2] = []
 	if not is_inside_tree():
 		return result

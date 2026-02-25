@@ -40,6 +40,8 @@ const SHADOW_SCAN_SWEEP_SPEED := 2.4
 const PATH_PLAN_STATUS_OK := "ok"
 const PATH_PLAN_STATUS_UNREACHABLE_POLICY := "unreachable_policy"
 const PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY := "unreachable_geometry"
+const PREAVOID_SIDE_HOLD_SEC := 0.18
+const PREAVOID_FAILSAFE_TICKS := 6
 
 var owner: CharacterBody2D = null
 var sprite: Sprite2D = null
@@ -80,6 +82,8 @@ var _last_valid_path_node: Vector2 = Vector2.ZERO
 var _last_valid_path_node_valid: bool = false
 var _active_move_target: Vector2 = Vector2.ZERO
 var _active_move_target_valid: bool = false
+var _patrol_move_target: Vector2 = Vector2.ZERO
+var _patrol_move_target_valid: bool = false
 var _stall_clock: float = 0.0
 var _stall_check_timer: float = 0.0
 var _stall_samples: Array[Dictionary] = []
@@ -125,6 +129,14 @@ var _last_slide_collision_kind: String = "none"
 var _last_slide_collision_forced_repath: bool = false
 var _last_slide_collision_reason: String = "none"
 var _last_slide_collision_index: int = -1
+var preavoid_cooldown_left: float = 0.0
+var preavoid_last_triggered: bool = false
+var preavoid_last_kind: String = "none"
+var preavoid_last_side: String = "none"
+var preavoid_last_forced_repath: bool = false
+var _preavoid_side_lock: String = "none"
+var _preavoid_side_lock_timer: float = 0.0
+var _preavoid_fail_ticks: int = 0
 
 
 func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -> void:
@@ -205,6 +217,8 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_valid_path_node_valid = false
 	_active_move_target = Vector2.ZERO
 	_active_move_target_valid = false
+	_patrol_move_target = Vector2.ZERO
+	_patrol_move_target_valid = false
 	_plan_id = 0
 	_plan_intent_type = -1
 	_intent_target = Vector2.ZERO
@@ -231,6 +245,14 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_slide_collision_forced_repath = false
 	_last_slide_collision_reason = "none"
 	_last_slide_collision_index = -1
+	preavoid_cooldown_left = 0.0
+	preavoid_last_triggered = false
+	preavoid_last_kind = "none"
+	preavoid_last_side = "none"
+	preavoid_last_forced_repath = false
+	_preavoid_side_lock = "none"
+	_preavoid_side_lock_timer = 0.0
+	_preavoid_fail_ticks = 0
 	_blocked_point_repeat_bucket = Vector2i.ZERO
 	_blocked_point_repeat_bucket_valid = false
 	_blocked_point_repeat_count = 0
@@ -342,6 +364,7 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 	_last_slide_collision_forced_repath = false
 	_last_slide_collision_reason = "none"
 	_last_slide_collision_index = -1
+	_reset_preavoid_frame_debug()
 	_intent_target = target if has_target else Vector2.ZERO
 	_intent_target_valid = has_target
 	_reset_repath_recovery_feedback()
@@ -382,7 +405,7 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 	else:
 		match intent_type:
 			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL:
-				_update_idle_roam(normalized_delta)
+				movement_intent = _update_idle_roam(normalized_delta, context)
 			ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE:
 				if not execute_has_target:
 					_mark_missing_move_target(normalized_delta)
@@ -437,7 +460,7 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 					movement_intent = true
 					_execute_move_to_target(normalized_delta, home_target, 0.9, -1.0, true, context)
 			_:
-				_update_idle_roam(normalized_delta)
+				_update_idle_roam(normalized_delta, context)
 
 	_update_facing(normalized_delta)
 	return {
@@ -716,6 +739,7 @@ func _execute_move_to_target(
 	has_target: bool = true,
 	runtime_context: Dictionary = {}
 ) -> bool:
+	_reset_preavoid_frame_debug()
 	if not has_target:
 		_mark_missing_move_target(delta)
 		return false
@@ -805,7 +829,8 @@ func _execute_move_to_target(
 		_mark_path_failed("hard_stall")
 		_repath_timer = 0.0
 		if AIWatchdog and not _hard_stall_watchdog_reported:
-			AIWatchdog.record_hard_stall_event()
+			var is_patrol_hard_stall := _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+			AIWatchdog.record_hard_stall_event(is_patrol_hard_stall)
 			_hard_stall_watchdog_reported = true
 		if _is_repath_recovery_search_intent(_last_intent_type):
 			_set_repath_recovery_feedback(
@@ -1051,31 +1076,47 @@ func _execute_retreat_from(delta: float, danger_origin: Vector2) -> void:
 	_execute_move_to_target(delta, retreat_target, 0.95)
 
 
-func _update_idle_roam(delta: float) -> void:
+func _clear_patrol_move_target_tracking() -> void:
+	_patrol_move_target = Vector2.ZERO
+	_patrol_move_target_valid = false
+
+
+func _sync_patrol_move_target(target: Vector2, target_valid: bool) -> void:
+	if not target_valid or not _is_finite_vector2(target):
+		_clear_patrol_move_target_tracking()
+		return
+	if not _patrol_move_target_valid or _patrol_move_target.distance_to(target) > PLAN_TARGET_SWITCH_EPS_PX:
+		_repath_timer = 0.0
+	_patrol_move_target = target
+	_patrol_move_target_valid = true
+
+
+func _update_idle_roam(delta: float, runtime_context: Dictionary = {}) -> bool:
 	if _patrol:
 		var patrol_decision := _patrol.update(delta, facing_dir) as Dictionary
 		var shadow_check := bool(patrol_decision.get("shadow_check", false))
 		if owner and owner.has_method("set_shadow_check_flashlight"):
 			owner.call("set_shadow_check_flashlight", shadow_check)
 		if bool(patrol_decision.get("waiting", true)):
+			_clear_patrol_move_target_tracking()
 			_stop_motion(delta)
 			var look_dir := patrol_decision.get("look_dir", Vector2.ZERO) as Vector2
 			if look_dir.length_squared() > 0.0001:
 				_set_target_facing(look_dir)
-			return
+			return false
 		var target := patrol_decision.get("target", owner.global_position) as Vector2
-		var speed_scale := float(patrol_decision.get("speed_scale", 0.85))
-		var dir := (target - owner.global_position).normalized()
-		if dir.length_squared() > 0.0001:
-			_move_in_direction(dir, speed_scale, delta)
-		else:
+		if not _is_finite_vector2(target):
+			_clear_patrol_move_target_tracking()
 			_stop_motion(delta)
-		return
+			return false
+		var speed_scale := float(patrol_decision.get("speed_scale", 0.85))
+		_sync_patrol_move_target(target, true)
+		return _execute_move_to_target(delta, target, speed_scale, -1.0, true, runtime_context)
 
 	if _roam_wait_timer > 0.0:
 		_roam_wait_timer = maxf(0.0, _roam_wait_timer - delta)
 		_stop_motion(delta)
-		return
+		return false
 
 	if not _roam_target_valid or owner.global_position.distance_to(_roam_target) < 10.0:
 		if nav_system and nav_system.has_method("random_point_in_room"):
@@ -1085,10 +1126,14 @@ func _update_idle_roam(delta: float) -> void:
 		_roam_target_valid = true
 		_roam_wait_timer = randf_range(0.1, 0.35)
 		_stop_motion(delta)
-		return
+		return false
 
-	var dir := (_roam_target - owner.global_position).normalized()
-	_move_in_direction(dir, 0.85, delta)
+	if not _roam_target_valid:
+		_clear_patrol_move_target_tracking()
+		_stop_motion(delta)
+		return false
+	_sync_patrol_move_target(_roam_target, true)
+	return _execute_move_to_target(delta, _roam_target, 0.85, -1.0, true, runtime_context)
 
 
 func _plan_path_to(target_pos: Vector2, has_target: bool = true) -> bool:
@@ -1224,6 +1269,7 @@ func _has_active_path_to(target_pos: Vector2) -> bool:
 
 
 func _follow_waypoints(speed_scale: float, delta: float) -> bool:
+	_reset_preavoid_frame_debug()
 	if _use_navmesh and _nav_agent:
 		if _nav_agent.is_navigation_finished():
 			_stop_motion(delta)
@@ -1267,9 +1313,21 @@ func _follow_waypoints(speed_scale: float, delta: float) -> bool:
 func _move_in_direction(dir: Vector2, speed_scale: float, delta: float) -> bool:
 	if delta <= 0.0:
 		return false
+	var move_dir := dir.normalized()
+	if move_dir.length_squared() <= 0.0001:
+		return false
 	var tile_size: int = GameConfig.tile_size if GameConfig else 32
-	var speed_pixels := speed_tiles * tile_size * speed_scale
-	var target_velocity := dir * speed_pixels
+	var base_speed_pixels := speed_tiles * tile_size
+	var requested_speed_scale := maxf(speed_scale, 0.0)
+	var preavoid := _apply_preavoid(move_dir, requested_speed_scale, delta, base_speed_pixels)
+	var preavoid_dir_variant: Variant = preavoid.get("dir", move_dir)
+	if preavoid_dir_variant is Vector2:
+		move_dir = (preavoid_dir_variant as Vector2).normalized()
+	if move_dir.length_squared() <= 0.0001:
+		return false
+	var effective_speed_scale := float(preavoid.get("speed_scale", requested_speed_scale))
+	var speed_pixels := base_speed_pixels * effective_speed_scale
+	var target_velocity := move_dir * speed_pixels
 	var accel_per_sec := speed_pixels / maxf(_pursuit_cfg_float("accel_time_sec", ENEMY_ACCEL_TIME_SEC), 0.001)
 	var next_velocity := owner.velocity.move_toward(target_velocity, accel_per_sec * delta)
 	var predicted_pos := owner.global_position + next_velocity * delta
@@ -1281,8 +1339,177 @@ func _move_in_direction(dir: Vector2, speed_scale: float, delta: float) -> bool:
 		return false
 	owner.velocity = next_velocity
 	owner.move_and_slide()
-	_set_target_facing(dir)
+	_set_target_facing(move_dir)
 	return true
+
+
+func _reset_preavoid_frame_debug() -> void:
+	preavoid_last_triggered = false
+	preavoid_last_kind = "none"
+	preavoid_last_side = "none"
+	preavoid_last_forced_repath = false
+
+
+func _tick_preavoid_runtime(delta: float) -> void:
+	var safe_delta := maxf(delta, 0.0)
+	preavoid_cooldown_left = maxf(0.0, preavoid_cooldown_left - safe_delta)
+	_preavoid_side_lock_timer = maxf(0.0, _preavoid_side_lock_timer - safe_delta)
+	if _preavoid_side_lock_timer <= 0.0:
+		_preavoid_side_lock = "none"
+
+
+func _set_preavoid_debug(triggered: bool, kind: String, forced_repath: bool, side: String) -> void:
+	preavoid_last_triggered = triggered
+	preavoid_last_kind = kind
+	preavoid_last_forced_repath = forced_repath
+	preavoid_last_side = side
+
+
+func _apply_preavoid(
+	forward_dir: Vector2,
+	speed_scale: float,
+	delta: float,
+	base_speed_pixels: float
+) -> Dictionary:
+	var result := {
+		"dir": forward_dir,
+		"speed_scale": speed_scale,
+		"forced_repath": false,
+	}
+	if not _pursuit_cfg_bool("preavoid_enabled", true):
+		return result
+
+	_tick_preavoid_runtime(delta)
+	var lookahead_sec := clampf(_pursuit_cfg_float("preavoid_lookahead_sec", 0.22), 0.02, 0.8)
+	var lookahead_px := maxf(8.0, base_speed_pixels * maxf(speed_scale, 0.2) * lookahead_sec)
+	var spread_rad := deg_to_rad(clampf(_pursuit_cfg_float("preavoid_probe_spread_deg", 22.0), 5.0, 75.0))
+	var ignore_doors := _pursuit_cfg_bool("preavoid_ignore_doors", true)
+	var forward_motion := forward_dir * lookahead_px
+	var hazard_kind := "none"
+
+	if not _can_traverse_position(owner.global_position + forward_motion):
+		hazard_kind = "policy"
+	else:
+		hazard_kind = _predict_motion_collision_kind(forward_motion)
+
+	if hazard_kind == "none":
+		_preavoid_fail_ticks = 0
+		return result
+
+	if hazard_kind == "door" and ignore_doors:
+		_set_preavoid_debug(true, "door", false, "none")
+		_preavoid_fail_ticks = 0
+		return result
+
+	if preavoid_cooldown_left <= 0.0:
+		_trigger_preavoid_forced_repath(hazard_kind)
+		result["forced_repath"] = true
+		return result
+
+	var steer_pick := _resolve_preavoid_side(forward_dir, lookahead_px, spread_rad, ignore_doors)
+	var side := String(steer_pick.get("side", "none"))
+	if side == "none":
+		_set_preavoid_debug(true, hazard_kind, false, "none")
+		_preavoid_fail_ticks += 1
+		if _preavoid_fail_ticks >= PREAVOID_FAILSAFE_TICKS:
+			_trigger_preavoid_forced_repath(hazard_kind)
+			result["forced_repath"] = true
+		return result
+
+	_preavoid_fail_ticks = 0
+	_preavoid_side_lock = side
+	_preavoid_side_lock_timer = PREAVOID_SIDE_HOLD_SEC
+	var side_dir := steer_pick.get("dir", forward_dir) as Vector2
+	var steer_weight := clampf(_pursuit_cfg_float("preavoid_steer_weight", 0.35), 0.0, 1.0)
+	var steer_dir := (forward_dir * (1.0 - steer_weight) + side_dir * steer_weight).normalized()
+	if steer_dir.length_squared() <= 0.0001:
+		steer_dir = side_dir.normalized()
+	result["dir"] = steer_dir if steer_dir.length_squared() > 0.0001 else forward_dir
+	result["speed_scale"] = _preavoid_scaled_speed_scale(speed_scale, steer_weight)
+	_set_preavoid_debug(true, hazard_kind, false, side)
+	return result
+
+
+func _trigger_preavoid_forced_repath(kind: String) -> void:
+	preavoid_cooldown_left = maxf(_pursuit_cfg_float("preavoid_repath_cooldown_sec", 0.2), 0.0)
+	_repath_timer = 0.0
+	_preavoid_fail_ticks = 0
+	_set_preavoid_debug(true, kind, true, "none")
+	if AIWatchdog and AIWatchdog.has_method("record_preavoid_event"):
+		var is_patrol_preavoid := _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+		AIWatchdog.call("record_preavoid_event", is_patrol_preavoid)
+
+
+func _resolve_preavoid_side(
+	forward_dir: Vector2,
+	lookahead_px: float,
+	spread_rad: float,
+	ignore_doors: bool
+) -> Dictionary:
+	var left_dir := forward_dir.rotated(-spread_rad).normalized()
+	var right_dir := forward_dir.rotated(spread_rad).normalized()
+	var left_blocked := _is_preavoid_direction_blocked(left_dir, lookahead_px, ignore_doors)
+	var right_blocked := _is_preavoid_direction_blocked(right_dir, lookahead_px, ignore_doors)
+	var chosen_side := "none"
+
+	if _preavoid_side_lock_timer > 0.0:
+		if _preavoid_side_lock == "left" and not left_blocked:
+			chosen_side = "left"
+		elif _preavoid_side_lock == "right" and not right_blocked:
+			chosen_side = "right"
+
+	if chosen_side == "none":
+		if not left_blocked and right_blocked:
+			chosen_side = "left"
+		elif not right_blocked and left_blocked:
+			chosen_side = "right"
+		elif not left_blocked and not right_blocked:
+			if preavoid_last_side == "left":
+				chosen_side = "left"
+			elif preavoid_last_side == "right":
+				chosen_side = "right"
+			else:
+				chosen_side = "left"
+
+	var chosen_dir := forward_dir
+	if chosen_side == "left":
+		chosen_dir = left_dir
+	elif chosen_side == "right":
+		chosen_dir = right_dir
+	return {
+		"side": chosen_side,
+		"dir": chosen_dir,
+	}
+
+
+func _is_preavoid_direction_blocked(probe_dir: Vector2, lookahead_px: float, ignore_doors: bool) -> bool:
+	var motion := probe_dir * lookahead_px
+	if not _can_traverse_position(owner.global_position + motion):
+		return true
+	var collision_kind := _predict_motion_collision_kind(motion)
+	if collision_kind == "none":
+		return false
+	if collision_kind == "door" and ignore_doors:
+		return false
+	return true
+
+
+func _predict_motion_collision_kind(motion: Vector2) -> String:
+	if owner == null or motion.length_squared() <= 0.0001:
+		return "none"
+	var probe := KinematicCollision2D.new()
+	var hit := owner.test_move(owner.global_transform, motion, probe)
+	if not hit:
+		return "none"
+	var collider := probe.get_collider() as Node
+	return "door" if _is_door_body_collider(collider) else "non_door"
+
+
+func _preavoid_scaled_speed_scale(speed_scale: float, steer_weight: float) -> float:
+	var min_scale := clampf(_pursuit_cfg_float("preavoid_speed_scale_min", 0.6), 0.1, 1.0)
+	var scaled := speed_scale * (1.0 - steer_weight * 0.5)
+	var lower_bound := minf(min_scale, speed_scale)
+	return clampf(scaled, lower_bound, speed_scale)
 
 
 func _stop_motion(delta: float) -> void:
@@ -1369,6 +1596,13 @@ func _get_door_system() -> Node:
 	return _door_system_cache
 
 
+func _is_door_body_collider(collider: Node) -> bool:
+	if collider == null or collider.name != "DoorBody":
+		return false
+	var parent := collider.get_parent()
+	return parent != null and parent.has_method("command_open_enemy")
+
+
 func _handle_slide_collisions_and_repath(slide_count: int) -> Dictionary:
 	var none_result := {
 		"collision_kind": "none",
@@ -1385,9 +1619,7 @@ func _handle_slide_collisions_and_repath(slide_count: int) -> Dictionary:
 		var collision: Variant = owner.get_slide_collision(i)
 		if collision != null and collision.has_method("get_collider"):
 			var collider := collision.call("get_collider") as Node
-			if collider != null and collider.name == "DoorBody":
-				var collider_parent := collider.get_parent()
-				is_door_collision = collider_parent != null and collider_parent.has_method("command_open_enemy")
+			is_door_collision = _is_door_body_collider(collider)
 		if not is_door_collision:
 			_repath_timer = 0.0
 			_waypoints.clear()
@@ -1422,7 +1654,8 @@ func _handle_slide_collisions_and_repath(slide_count: int) -> Dictionary:
 		_path_policy_blocked = false
 		_last_policy_blocked_segment = -1
 		if AIWatchdog:
-			AIWatchdog.record_collision_repath_event()
+			var is_patrol_collision_repath := _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+			AIWatchdog.record_collision_repath_event(is_patrol_collision_repath)
 	_last_slide_collision_kind = "door"
 	_last_slide_collision_forced_repath = door_opened
 	_last_slide_collision_reason = "door_opened" if door_opened else "none"
@@ -1503,6 +1736,9 @@ func _is_stall_window_stalled(speed_avg: float, path_progress: float) -> bool:
 
 
 func _consume_stall_window_result(stalled_window: bool) -> bool:
+	var is_patrol_intent := _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+	if stalled_window and is_patrol_intent and AIWatchdog and AIWatchdog.has_method("record_patrol_zero_progress_window"):
+		AIWatchdog.call("record_patrol_zero_progress_window")
 	if stalled_window:
 		_stall_consecutive_windows += 1
 	else:
@@ -1543,6 +1779,11 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"collision_forced_repath": _last_slide_collision_forced_repath,
 		"collision_reason": _last_slide_collision_reason,
 		"collision_index": _last_slide_collision_index,
+		"preavoid_triggered": preavoid_last_triggered,
+		"preavoid_kind": preavoid_last_kind,
+		"preavoid_forced_repath": preavoid_last_forced_repath,
+		"preavoid_side": preavoid_last_side,
+		"preavoid_cooldown_left": preavoid_cooldown_left,
 		"blocked_point_repeat_bucket": Vector2(float(_blocked_point_repeat_bucket.x), float(_blocked_point_repeat_bucket.y)),
 		"blocked_point_repeat_bucket_valid": _blocked_point_repeat_bucket_valid,
 		"blocked_point_repeat_count": _blocked_point_repeat_count,
@@ -1572,4 +1813,11 @@ func _pursuit_cfg_float(key: String, fallback: float) -> float:
 	if GameConfig and GameConfig.ai_balance.has("pursuit"):
 		var section := GameConfig.ai_balance["pursuit"] as Dictionary
 		return float(section.get(key, fallback))
+	return fallback
+
+
+func _pursuit_cfg_bool(key: String, fallback: bool) -> bool:
+	if GameConfig and GameConfig.ai_balance.has("pursuit"):
+		var section := GameConfig.ai_balance["pursuit"] as Dictionary
+		return bool(section.get(key, fallback))
 	return fallback

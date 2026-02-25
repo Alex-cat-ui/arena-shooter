@@ -1,0 +1,19 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+COLLISION BLOCK FORCES IMMEDIATE REPATH TEST
+============================================================
+[PASS] non-door collision occurs against solid wall
+[PASS] collision forces immediate repath timer reset
+[PASS] collision marks path_failed_reason=collision_blocked
+[PASS] collision clears active waypoint cache in same tick
+[PASS] debug snapshot exposes collision classification contract
+[PASS] non-door collision snapshot reports forced_repath + index
+
+============================================================
+COLLISION BLOCK FORCES IMMEDIATE REPATH RESULTS: 6/6 passed
+============================================================

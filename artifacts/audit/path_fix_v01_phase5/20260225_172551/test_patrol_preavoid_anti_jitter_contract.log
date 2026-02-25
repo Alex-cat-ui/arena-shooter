@@ -1,0 +1,18 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+PATROL PREAVOID ANTI-JITTER CONTRACT TEST
+============================================================
+[PASS] preavoid anti-jitter: preavoid trigger observed
+[PASS] preavoid anti-jitter: side does not flip every tick when side-steering is used
+[PASS] preavoid anti-jitter: corridor run has non-zero progress
+[PASS] preavoid anti-jitter: movement dominates over zero-progress oscillation
+[PASS] preavoid anti-jitter: no teleport spikes
+
+============================================================
+PATROL PREAVOID ANTI-JITTER CONTRACT RESULTS: 5/5 passed
+============================================================

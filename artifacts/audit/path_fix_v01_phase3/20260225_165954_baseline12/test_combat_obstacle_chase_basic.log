@@ -1,0 +1,40 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+COMBAT OBSTACLE CHASE BASIC TEST
+============================================================
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] obstacle chase: controller exists
+[PASS] obstacle chase: player exists
+[PASS] obstacle chase: enemy exists
+[PASS] obstacle chase: navmesh path is ready
+[PASS] obstacle chase: pre-combat PATROL moves
+[PASS] obstacle chase: pre-combat PATROL reduces distance to player
+[PASS] obstacle chase: pre-combat PATROL advances while direct path is blocked
+[PASS] obstacle chase: obstacle initially blocks direct ray
+[PASS] obstacle chase: COMBAT chase reduces distance to player
+[PASS] obstacle chase: enemy is not stationary
+[PASS] obstacle chase: l1 detour removed - navmesh handles avoidance
+[PASS] obstacle chase: honest repath has no teleport spikes
+
+============================================================
+COMBAT OBSTACLE CHASE BASIC RESULTS: 12/12 passed
+============================================================

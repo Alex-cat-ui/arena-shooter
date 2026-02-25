@@ -52,6 +52,27 @@ class FakeShadowNav:
 		}
 
 
+class FakePatrolDecision:
+	extends RefCounted
+
+	var fixed_target: Vector2 = Vector2.ZERO
+	var fixed_speed_scale: float = 0.9
+
+	func _init(target: Vector2, speed_scale: float = 0.9) -> void:
+		fixed_target = target
+		fixed_speed_scale = speed_scale
+
+	func configure(_nav_system: Node, _home_room_id: int) -> void:
+		pass
+
+	func update(_delta: float, _facing_dir: Vector2) -> Dictionary:
+		return {
+			"waiting": false,
+			"target": fixed_target,
+			"speed_scale": fixed_speed_scale,
+		}
+
+
 func _ready() -> void:
 	if embedded_mode:
 		return
@@ -66,6 +87,7 @@ func run_suite() -> Dictionary:
 	print("============================================================")
 
 	await _test_exec_result_has_enemy_consumed_keys()
+	await _test_patrol_exec_result_contract_shape()
 	await _test_shadow_boundary_completion_reason_contract()
 
 	_t.summary("ENEMY PURSUIT EXEC RESULT CONTRACT RESULTS")
@@ -125,6 +147,52 @@ func _test_exec_result_has_enemy_consumed_keys() -> void:
 
 	_t.run_test("pursuit execute_intent keeps enemy-consumed key contract", has_all)
 	_t.run_test("pursuit execute_intent keeps enemy-consumed type contract", type_ok)
+
+	world.queue_free()
+	await get_tree().process_frame
+
+
+func _test_patrol_exec_result_contract_shape() -> void:
+	var harness := await _spawn_pursuit_harness()
+	var world := harness["world"] as Node2D
+	var pursuit = harness["pursuit"]
+	var target := Vector2(96.0, 0.0)
+	pursuit.set("_patrol", FakePatrolDecision.new(target, 0.95))
+	var result := pursuit.execute_intent(
+		0.1,
+		{"type": ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL},
+		_patrol_context(target)
+	) as Dictionary
+
+	var has_contract_keys := (
+		result.has("movement_intent")
+		and result.has("path_failed")
+		and result.has("path_failed_reason")
+		and result.has("policy_blocked_segment")
+	)
+	var type_ok := (
+		result.get("movement_intent", null) is bool
+		and result.get("path_failed", null) is bool
+		and result.get("path_failed_reason", null) is String
+		and result.get("policy_blocked_segment", null) is int
+	)
+	var snapshot := pursuit.debug_get_navigation_policy_snapshot() as Dictionary
+	var preavoid_keys_ok := (
+		snapshot.has("preavoid_triggered")
+		and snapshot.has("preavoid_kind")
+		and snapshot.has("preavoid_forced_repath")
+		and snapshot.has("preavoid_side")
+	)
+	var preavoid_types_ok := (
+		snapshot.get("preavoid_triggered", null) is bool
+		and snapshot.get("preavoid_kind", null) is String
+		and snapshot.get("preavoid_forced_repath", null) is bool
+		and snapshot.get("preavoid_side", null) is String
+	)
+	_t.run_test("pursuit execute_intent PATROL keeps movement/path_failed key contract", has_contract_keys)
+	_t.run_test("pursuit execute_intent PATROL keeps movement/path_failed type contract", type_ok)
+	_t.run_test("pursuit snapshot exposes preavoid key contract", preavoid_keys_ok)
+	_t.run_test("pursuit snapshot exposes preavoid type contract", preavoid_types_ok)
 
 	world.queue_free()
 	await get_tree().process_frame
@@ -201,4 +269,18 @@ func _pursuit_context(target: Vector2) -> Dictionary:
 		"los": false,
 		"dist": INF,
 		"combat_lock": true,
+	}
+
+
+func _patrol_context(target: Vector2) -> Dictionary:
+	return {
+		"player_pos": target,
+		"known_target_pos": Vector2.ZERO,
+		"last_seen_pos": Vector2.ZERO,
+		"investigate_anchor": Vector2.ZERO,
+		"home_position": Vector2.ZERO,
+		"alert_level": ENEMY_ALERT_LEVELS_SCRIPT.CALM,
+		"los": false,
+		"dist": target.length(),
+		"combat_lock": false,
 	}

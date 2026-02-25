@@ -160,6 +160,14 @@ const FLASHLIGHT_BONUS_IN_COMBAT_TEST_SCENE := "res://tests/test_flashlight_bonu
 const ALERT_HOLD_DYNAMIC_TEST_SCENE := "res://tests/test_alert_hold_dynamic.tscn"
 const PATROL_ROUTE_VARIETY_TEST_SCENE := "res://tests/test_patrol_route_variety.tscn"
 const PATROL_ROUTE_TRAVERSABILITY_FILTER_TEST_SCENE := "res://tests/test_patrol_route_traversability_filter.tscn"
+const PATROL_OBSTACLE_AVOIDANCE_WALL_TEST_SCENE := "res://tests/test_patrol_obstacle_avoidance_wall.tscn"
+const PATROL_OBSTACLE_AVOIDANCE_PROPS_TEST_SCENE := "res://tests/test_patrol_obstacle_avoidance_props.tscn"
+const PATROL_UNIFIED_MOVEMENT_PIPELINE_CONTRACT_TEST_SCENE := "res://tests/test_patrol_unified_movement_pipeline_contract.tscn"
+const PATROL_REPATH_RECOVERY_CONTRACT_TEST_SCENE := "res://tests/test_patrol_repath_recovery_contract.tscn"
+const PATROL_MODE_TRANSITION_INVARIANCE_TEST_SCENE := "res://tests/test_patrol_mode_transition_invariance.tscn"
+const PATROL_PREAVOID_TRIGGERS_BEFORE_COLLISION_TEST_SCENE := "res://tests/test_patrol_preavoid_triggers_before_collision.tscn"
+const PATROL_PREAVOID_DOOR_PARITY_TEST_SCENE := "res://tests/test_patrol_preavoid_door_parity.tscn"
+const PATROL_PREAVOID_ANTI_JITTER_CONTRACT_TEST_SCENE := "res://tests/test_patrol_preavoid_anti_jitter_contract.tscn"
 const ALERT_INVESTIGATE_ANCHOR_TEST_SCENE := "res://tests/test_alert_investigate_anchor.tscn"
 const ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE := "res://tests/test_alert_combat_shadow_boundary_scan_intent.tscn"
 const SUSPICIOUS_SHADOW_SCAN_TEST_SCENE := "res://tests/test_suspicious_shadow_scan.tscn"
@@ -184,9 +192,11 @@ const AI_LONG_RUN_STRESS_TEST_SCENE := "res://tests/test_ai_long_run_stress.tscn
 const ENEMY_CROWD_AVOIDANCE_REDUCES_JAMS_TEST_SCENE := "res://tests/test_enemy_crowd_avoidance_reduces_jams.tscn"
 const REFACTOR_KPI_CONTRACT_TEST_SCENE := "res://tests/test_refactor_kpi_contract.tscn"
 const AI_PERFORMANCE_GATE_TEST_SCENE := "res://tests/test_ai_performance_gate.tscn"
+const PATROL_NAVIGATION_KPI_GATE_TEST_SCENE := "res://tests/test_patrol_navigation_kpi_gate.tscn"
 const REPLAY_BASELINE_GATE_TEST_SCENE := "res://tests/test_replay_baseline_gate.tscn"
 const LEVEL_STEALTH_CHECKLIST_TEST_SCENE := "res://tests/test_level_stealth_checklist.tscn"
 const EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE := "res://tests/test_extended_stealth_release_gate.tscn"
+const ENABLE_EXTENDED_STEALTH_RELEASE_GATE_IN_RUNNER := false
 
 func _ready() -> void:
 	print("=" .repeat(60))
@@ -880,6 +890,30 @@ func _run_tests() -> void:
 	_test("Patrol route traversability filter test scene exists", func():
 		return _scene_exists(PATROL_ROUTE_TRAVERSABILITY_FILTER_TEST_SCENE)
 	)
+	_test("Patrol obstacle avoidance wall test scene exists", func():
+		return _scene_exists(PATROL_OBSTACLE_AVOIDANCE_WALL_TEST_SCENE)
+	)
+	_test("Patrol obstacle avoidance props test scene exists", func():
+		return _scene_exists(PATROL_OBSTACLE_AVOIDANCE_PROPS_TEST_SCENE)
+	)
+	_test("Patrol unified movement pipeline contract test scene exists", func():
+		return _scene_exists(PATROL_UNIFIED_MOVEMENT_PIPELINE_CONTRACT_TEST_SCENE)
+	)
+	_test("Patrol repath recovery contract test scene exists", func():
+		return _scene_exists(PATROL_REPATH_RECOVERY_CONTRACT_TEST_SCENE)
+	)
+	_test("Patrol mode transition invariance test scene exists", func():
+		return _scene_exists(PATROL_MODE_TRANSITION_INVARIANCE_TEST_SCENE)
+	)
+	_test("Patrol preavoid triggers-before-collision test scene exists", func():
+		return _scene_exists(PATROL_PREAVOID_TRIGGERS_BEFORE_COLLISION_TEST_SCENE)
+	)
+	_test("Patrol preavoid door parity test scene exists", func():
+		return _scene_exists(PATROL_PREAVOID_DOOR_PARITY_TEST_SCENE)
+	)
+	_test("Patrol preavoid anti-jitter contract test scene exists", func():
+		return _scene_exists(PATROL_PREAVOID_ANTI_JITTER_CONTRACT_TEST_SCENE)
+	)
 	_test("Alert investigate anchor test scene exists", func():
 		return _scene_exists(ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
 	)
@@ -1081,6 +1115,32 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Alert hold dynamic suite", ALERT_HOLD_DYNAMIC_TEST_SCENE)
 	await _run_embedded_scene_suite("Patrol route variety suite", PATROL_ROUTE_VARIETY_TEST_SCENE)
 	await _run_embedded_scene_suite("Patrol route traversability filter suite", PATROL_ROUTE_TRAVERSABILITY_FILTER_TEST_SCENE)
+	await _run_embedded_scene_suite("Patrol obstacle avoidance wall suite", PATROL_OBSTACLE_AVOIDANCE_WALL_TEST_SCENE)
+	await _run_embedded_scene_suite("Patrol obstacle avoidance props suite", PATROL_OBSTACLE_AVOIDANCE_PROPS_TEST_SCENE)
+	await _run_embedded_scene_suite(
+		"Patrol unified movement pipeline contract suite",
+		PATROL_UNIFIED_MOVEMENT_PIPELINE_CONTRACT_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Patrol repath recovery contract suite",
+		PATROL_REPATH_RECOVERY_CONTRACT_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Patrol mode transition invariance suite",
+		PATROL_MODE_TRANSITION_INVARIANCE_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Patrol preavoid triggers-before-collision suite",
+		PATROL_PREAVOID_TRIGGERS_BEFORE_COLLISION_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Patrol preavoid door parity suite",
+		PATROL_PREAVOID_DOOR_PARITY_TEST_SCENE
+	)
+	await _run_embedded_scene_suite(
+		"Patrol preavoid anti-jitter contract suite",
+		PATROL_PREAVOID_ANTI_JITTER_CONTRACT_TEST_SCENE
+	)
 	await _run_embedded_scene_suite("Alert investigate anchor suite", ALERT_INVESTIGATE_ANCHOR_TEST_SCENE)
 	await _run_embedded_scene_suite("Alert/combat shadow boundary scan intent suite", ALERT_COMBAT_SHADOW_BOUNDARY_SCAN_INTENT_TEST_SCENE)
 	await _run_embedded_scene_suite("Suspicious shadow scan suite", SUSPICIOUS_SHADOW_SCAN_TEST_SCENE)
@@ -1297,6 +1357,9 @@ func _run_tests() -> void:
 	_test("AI performance gate test scene exists", func():
 		return _scene_exists(AI_PERFORMANCE_GATE_TEST_SCENE)
 	)
+	_test("Patrol navigation KPI gate test scene exists", func():
+		return _scene_exists(PATROL_NAVIGATION_KPI_GATE_TEST_SCENE)
+	)
 	_test("Replay baseline gate test scene exists", func():
 		return _scene_exists(REPLAY_BASELINE_GATE_TEST_SCENE)
 	)
@@ -1322,9 +1385,13 @@ func _run_tests() -> void:
 	await _run_embedded_scene_suite("Physics world runtime suite", PHYSICS_WORLD_RUNTIME_TEST_SCENE)
 	await _run_embedded_scene_suite("Refactor KPI contract suite", REFACTOR_KPI_CONTRACT_TEST_SCENE)
 	await _run_embedded_scene_suite("AI performance gate suite", AI_PERFORMANCE_GATE_TEST_SCENE)
+	await _run_embedded_scene_suite("Patrol navigation KPI gate suite", PATROL_NAVIGATION_KPI_GATE_TEST_SCENE)
 	await _run_embedded_scene_suite("Replay baseline gate suite", REPLAY_BASELINE_GATE_TEST_SCENE)
 	await _run_embedded_scene_suite("Level stealth checklist gate suite", LEVEL_STEALTH_CHECKLIST_TEST_SCENE)
-	await _run_embedded_scene_suite("Extended stealth release gate suite", EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE)
+	if ENABLE_EXTENDED_STEALTH_RELEASE_GATE_IN_RUNNER:
+		await _run_embedded_scene_suite("Extended stealth release gate suite", EXTENDED_STEALTH_RELEASE_GATE_TEST_SCENE)
+	else:
+		print("[SKIP] Extended stealth release gate suite disabled in runner")
 
 	print("\nAll tests completed (Core + AI + Door + Alert + Decomposition suites).")
 

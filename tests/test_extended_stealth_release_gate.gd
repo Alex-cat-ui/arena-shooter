@@ -3,6 +3,7 @@ extends Node
 const TestHelpers = preload("res://tests/test_helpers.gd")
 
 const AI_PERFORMANCE_GATE_TEST_SCENE := "res://tests/test_ai_performance_gate.tscn"
+const PATROL_NAVIGATION_KPI_GATE_TEST_SCENE := "res://tests/test_patrol_navigation_kpi_gate.tscn"
 const REPLAY_BASELINE_GATE_TEST_SCENE := "res://tests/test_replay_baseline_gate.tscn"
 const LEVEL_STEALTH_CHECKLIST_TEST_SCENE := "res://tests/test_level_stealth_checklist.tscn"
 const ENDGAME_COLLAPSE_GATE_TEST_SCENE := "res://tests/test_3zone_combat_transition_stress.tscn"
@@ -53,6 +54,7 @@ func run_suite() -> Dictionary:
 	print("============================================================")
 
 	_test_extended_stealth_release_gate_blocks_on_dependency_gate_failure_fixture()
+	_test_extended_stealth_release_gate_blocks_on_patrol_navigation_gate_failure_fixture()
 	_test_extended_stealth_release_gate_blocks_on_legacy_zero_tolerance_fixture()
 	_test_extended_stealth_release_gate_blocks_on_enemy_private_access_zero_tolerance_fixture()
 	_test_extended_stealth_release_gate_pass_fixture_contract()
@@ -87,6 +89,7 @@ func _run_release_gate(fixtures: Dictionary = {}) -> Dictionary:
 		"final_reason": "dependency_gate_failed",
 		"dependency_gate_pass": false,
 		"performance_gate_pass": false,
+		"patrol_navigation_gate_pass": false,
 		"replay_gate_pass": false,
 		"checklist_gate_pass": false,
 		"endgame_gate_pass": false,
@@ -94,6 +97,7 @@ func _run_release_gate(fixtures: Dictionary = {}) -> Dictionary:
 		"enemy_private_access_zero_tolerance_pass": false,
 		"dependency_gate_results": [],
 		"performance_gate_report": {},
+		"patrol_navigation_gate_report": {},
 		"replay_gate_report": {},
 		"checklist_gate_report": {},
 		"endgame_gate_report": {},
@@ -130,6 +134,22 @@ func _run_release_gate(fixtures: Dictionary = {}) -> Dictionary:
 		report["final_reason"] = "performance_gate_failed"
 		return report
 	report["performance_gate_pass"] = true
+
+	var patrol_navigation_gate_report: Dictionary = {}
+	if fixtures.has("patrol_navigation_gate_report"):
+		var patrol_navigation_fixture: Variant = fixtures.get("patrol_navigation_gate_report", {})
+		if patrol_navigation_fixture is Callable:
+			patrol_navigation_gate_report = ((patrol_navigation_fixture as Callable).call() as Dictionary).duplicate(true)
+		else:
+			patrol_navigation_gate_report = (patrol_navigation_fixture as Dictionary).duplicate(true)
+	else:
+		patrol_navigation_gate_report = await _run_embedded_gate_scene(PATROL_NAVIGATION_KPI_GATE_TEST_SCENE)
+	report["patrol_navigation_gate_report"] = patrol_navigation_gate_report
+	if String(patrol_navigation_gate_report.get("gate_status", "")) != "PASS":
+		report["final_result"] = "FAIL"
+		report["final_reason"] = "patrol_navigation_kpi_gate_failed"
+		return report
+	report["patrol_navigation_gate_pass"] = true
 
 	var replay_gate_report: Dictionary = {}
 	if fixtures.has("replay_gate_report"):
@@ -226,11 +246,34 @@ func _test_extended_stealth_release_gate_blocks_on_dependency_gate_failure_fixtu
 	_t.run_test("release gate fixture: subgates not executed after dependency failure", int(calls.get("subgate_calls", -1)) == 0)
 
 
+func _test_extended_stealth_release_gate_blocks_on_patrol_navigation_gate_failure_fixture() -> void:
+	var calls := {"subgate_calls": 0}
+	var report := await _run_release_gate({
+		"dependency_gate_results": _all_dependency_fixtures_pass(),
+		"performance_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
+		"patrol_navigation_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "FAIL"),
+		"replay_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
+		"checklist_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
+		"endgame_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
+		"legacy_zero_tolerance_matches": [],
+		"enemy_private_access_zero_tolerance_matches": [],
+	})
+	_t.run_test(
+		"release gate fixture: patrol navigation gate failure blocks final gate",
+		String(report.get("final_reason", "")) == "patrol_navigation_kpi_gate_failed"
+	)
+	_t.run_test(
+		"release gate fixture: subgates stop after patrol navigation failure",
+		int(calls.get("subgate_calls", 0)) == 2
+	)
+
+
 func _test_extended_stealth_release_gate_blocks_on_legacy_zero_tolerance_fixture() -> void:
 	var calls := {"subgate_calls": 0}
 	var report := await _run_release_gate({
 		"dependency_gate_results": _all_dependency_fixtures_pass(),
 		"performance_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
+		"patrol_navigation_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"replay_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"checklist_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"endgame_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
@@ -238,7 +281,7 @@ func _test_extended_stealth_release_gate_blocks_on_legacy_zero_tolerance_fixture
 		"enemy_private_access_zero_tolerance_matches": [],
 	})
 	_t.run_test("release gate fixture: legacy zero-tolerance match blocks gate", String(report.get("final_reason", "")) == "legacy_zero_tolerance_failed")
-	_t.run_test("release gate fixture: all subgates executed before legacy scan", int(calls.get("subgate_calls", 0)) == 4)
+	_t.run_test("release gate fixture: all subgates executed before legacy scan", int(calls.get("subgate_calls", 0)) == 5)
 
 
 func _test_extended_stealth_release_gate_blocks_on_enemy_private_access_zero_tolerance_fixture() -> void:
@@ -246,6 +289,7 @@ func _test_extended_stealth_release_gate_blocks_on_enemy_private_access_zero_tol
 	var report := await _run_release_gate({
 		"dependency_gate_results": _all_dependency_fixtures_pass(),
 		"performance_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
+		"patrol_navigation_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"replay_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"checklist_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"endgame_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
@@ -253,7 +297,7 @@ func _test_extended_stealth_release_gate_blocks_on_enemy_private_access_zero_tol
 		"enemy_private_access_zero_tolerance_matches": ["tests/tmp_fixture.gd:42:enemy.get(\"_tmp\")"],
 	})
 	_t.run_test("release gate fixture: enemy private access match blocks gate", String(report.get("final_reason", "")) == "enemy_private_access_zero_tolerance_failed")
-	_t.run_test("release gate fixture: all subgates executed before enemy private scan", int(calls.get("subgate_calls", 0)) == 4)
+	_t.run_test("release gate fixture: all subgates executed before enemy private scan", int(calls.get("subgate_calls", 0)) == 5)
 
 
 func _test_extended_stealth_release_gate_pass_fixture_contract() -> void:
@@ -261,6 +305,7 @@ func _test_extended_stealth_release_gate_pass_fixture_contract() -> void:
 	var report := await _run_release_gate({
 		"dependency_gate_results": _all_dependency_fixtures_pass(),
 		"performance_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
+		"patrol_navigation_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"replay_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"checklist_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
 		"endgame_gate_report": Callable(self, "_counted_subgate_report").bind(calls, "PASS"),
@@ -272,6 +317,7 @@ func _test_extended_stealth_release_gate_pass_fixture_contract() -> void:
 		"release gate fixture: report shape contains subreports and dependency list",
 			(report.get("dependency_gate_results", []) as Array).size() == 4
 				and report.has("performance_gate_report")
+				and report.has("patrol_navigation_gate_report")
 				and report.has("replay_gate_report")
 				and report.has("checklist_gate_report")
 				and report.has("endgame_gate_report")

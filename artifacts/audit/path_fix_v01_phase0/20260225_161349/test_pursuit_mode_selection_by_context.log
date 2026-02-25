@@ -1,0 +1,21 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+PURSUIT MODE SELECTION BY CONTEXT TEST
+============================================================
+[PASS] PUSH intent maps to DIRECT_PRESSURE
+[PASS] RETREAT intent maps to DIRECT_PRESSURE
+[PASS] MOVE_TO_SLOT intent maps to CONTAIN
+[PASS] HOLD_RANGE intent maps to CONTAIN
+[PASS] ALERT shadow boundary scan intent selected
+[PASS] SHADOW_BOUNDARY_SCAN intent maps to SHADOW_AWARE_SWEEP
+[PASS] INVESTIGATE intent maps to LOST_CONTACT_SEARCH
+[PASS] PATROL intent maps to PATROL
+
+============================================================
+PURSUIT MODE SELECTION BY CONTEXT RESULTS: 8/8 passed
+============================================================

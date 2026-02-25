@@ -1299,6 +1299,10 @@ func debug_get_pursuit_navigation_policy_snapshot_for_test() -> Dictionary:
 	return {}
 
 
+func debug_get_pursuit_system_for_test():
+	return _pursuit
+
+
 func debug_set_confirm_runtime_search_metrics(progress: float, total_elapsed_sec: float, room_elapsed_sec: float, total_cap_hit: bool) -> void:
 	_combat_search_progress = progress
 	_combat_search_total_elapsed_sec = total_elapsed_sec

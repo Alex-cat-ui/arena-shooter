@@ -1,0 +1,21 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+PATROL ROUTE TRAVERSABILITY FILTER TEST
+============================================================
+[PASS] reachability filter excludes unreachable points
+[PASS] center-only route remains non-empty
+[PASS] reachability filter passes all when all ok
+[PASS] reachability filter skipped when method absent
+[PASS] reachability refill adds reachable points
+[PASS] refill path route is not empty
+[PASS] all-unreachable rebuild returns route container
+[PASS] all-unreachable rebuild does not crash
+
+============================================================
+PATROL ROUTE TRAVERSABILITY FILTER RESULTS: 8/8 passed
+============================================================

@@ -23,6 +23,11 @@ var replans_total: int = 0
 var detour_candidates_evaluated_total: int = 0
 var hard_stall_events_total: int = 0
 var collision_repath_events_total: int = 0
+var preavoid_events_total: int = 0
+var patrol_preavoid_events_total: int = 0
+var patrol_collision_repath_events_total: int = 0
+var patrol_hard_stall_events_total: int = 0
+var patrol_zero_progress_windows_total: int = 0
 var _ai_tick_samples_ms: Array[float] = []
 
 # Internal
@@ -84,12 +89,26 @@ func record_detour_candidates_evaluated(count: int) -> void:
 	detour_candidates_evaluated_total += maxi(count, 0)
 
 
-func record_hard_stall_event() -> void:
+func record_hard_stall_event(is_patrol: bool = false) -> void:
 	hard_stall_events_total += 1
+	if is_patrol:
+		patrol_hard_stall_events_total += 1
 
 
-func record_collision_repath_event() -> void:
+func record_collision_repath_event(is_patrol: bool = false) -> void:
 	collision_repath_events_total += 1
+	if is_patrol:
+		patrol_collision_repath_events_total += 1
+
+
+func record_preavoid_event(is_patrol: bool = false) -> void:
+	preavoid_events_total += 1
+	if is_patrol:
+		patrol_preavoid_events_total += 1
+
+
+func record_patrol_zero_progress_window() -> void:
+	patrol_zero_progress_windows_total += 1
 
 
 func debug_reset_metrics_for_tests() -> void:
@@ -101,6 +120,11 @@ func debug_reset_metrics_for_tests() -> void:
 	detour_candidates_evaluated_total = 0
 	hard_stall_events_total = 0
 	collision_repath_events_total = 0
+	preavoid_events_total = 0
+	patrol_preavoid_events_total = 0
+	patrol_collision_repath_events_total = 0
+	patrol_hard_stall_events_total = 0
+	patrol_zero_progress_windows_total = 0
 	_ai_tick_samples_ms.clear()
 	_tick_start_usec = 0
 	_tick_active = false
@@ -123,6 +147,11 @@ func get_snapshot() -> Dictionary:
 		"detour_candidates_evaluated_total": detour_candidates_evaluated_total,
 		"hard_stall_events_total": hard_stall_events_total,
 		"collision_repath_events_total": collision_repath_events_total,
+		"preavoid_events_total": preavoid_events_total,
+		"patrol_preavoid_events_total": patrol_preavoid_events_total,
+		"patrol_collision_repath_events_total": patrol_collision_repath_events_total,
+		"patrol_hard_stall_events_total": patrol_hard_stall_events_total,
+		"patrol_zero_progress_windows_total": patrol_zero_progress_windows_total,
 		"ai_tick_samples_count": _ai_tick_samples_ms.size(),
 	}
 
