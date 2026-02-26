@@ -171,6 +171,10 @@ func _test_navigation_queries_legacy_policy_bridge_contract() -> void:
 			and String(blocked.get("reason", "")) == "policy_blocked"
 			and int(service.legacy_calls) == 0
 	)
+	_t.run_test(
+		"navigation queries: missing traverse policy push_error is suppressed in tests",
+		not bool(queries.call("_should_emit_missing_traverse_policy_error"))
+	)
 
 	_set_allow_legacy_shadow_api_fallback(true)
 	var bridged := queries.build_policy_valid_path(from_pos, to_pos, enemy) as Dictionary

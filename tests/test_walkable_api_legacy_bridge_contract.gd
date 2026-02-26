@@ -112,6 +112,10 @@ func _test_legacy_stub_is_fail_closed_by_default() -> void:
 		"legacy bridge: transient missing-api grace allows short soft movement before block",
 		int(report.get("traverse_api_missing_soft_moves", 0)) > 0
 	)
+	_t.run_test(
+		"legacy bridge: missing traverse push_error is suppressed in tests",
+		not bool(report.get("missing_traverse_error_log_enabled", true))
+	)
 
 
 func _test_legacy_stub_opt_in_bridge_works() -> void:
@@ -257,6 +261,7 @@ func _run_case(nav: Node, allow_legacy_bridge: bool) -> Dictionary:
 		"policy_blocked": bool(snapshot.get("policy_blocked", false)),
 		"traverse_api_missing_soft_moves": int(snapshot.get("traverse_api_missing_soft_moves", 0)),
 		"traverse_runtime_mode": String(snapshot.get("traverse_runtime_mode", "")),
+		"missing_traverse_error_log_enabled": bool(pursuit.call("_should_emit_missing_traverse_api_error")),
 	}
 	await _cleanup_runtime_case(runtime)
 	return out

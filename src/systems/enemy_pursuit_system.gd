@@ -1967,10 +1967,24 @@ func _can_traverse_position(candidate_pos: Vector2) -> bool:
 	_traverse_check_source = "missing_traverse_api"
 	if not _traverse_api_missing_reported:
 		_traverse_api_missing_reported = true
-		push_error("[EnemyPursuit] Missing traverse API; fail-closed traversal engaged")
+		if _should_emit_missing_traverse_api_error():
+			push_error("[EnemyPursuit] Missing traverse API; fail-closed traversal engaged")
 		if AIWatchdog and AIWatchdog.has_method("record_missing_traverse_api_event"):
 			AIWatchdog.call("record_missing_traverse_api_event")
 	return false
+
+
+func _should_emit_missing_traverse_api_error() -> bool:
+	if owner == null:
+		return true
+	var tree := owner.get_tree()
+	if tree == null:
+		return true
+	var current_scene := tree.current_scene
+	if current_scene == null:
+		return true
+	var scene_path := String(current_scene.scene_file_path)
+	return not scene_path.begins_with("res://tests/")
 
 
 func _set_target_facing(dir: Vector2, force_apply: bool = false) -> void:

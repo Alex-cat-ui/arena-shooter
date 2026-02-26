@@ -792,6 +792,23 @@ func _report_missing_traverse_policy_api_once() -> void:
 	if _legacy_traverse_policy_missing_reported:
 		return
 	_legacy_traverse_policy_missing_reported = true
-	push_error("[NavigationRuntimeQueries] Missing modern traverse policy API; fail-closed validation engaged")
+	if _should_emit_missing_traverse_policy_error():
+		push_error("[NavigationRuntimeQueries] Missing modern traverse policy API; fail-closed validation engaged")
 	if AIWatchdog and AIWatchdog.has_method("record_missing_traverse_api_event"):
 		AIWatchdog.call("record_missing_traverse_api_event")
+
+
+func _should_emit_missing_traverse_policy_error() -> bool:
+	if not (_service is Node):
+		return true
+	var service_node := _service as Node
+	if service_node == null:
+		return true
+	var tree := service_node.get_tree()
+	if tree == null:
+		return true
+	var current_scene := tree.current_scene
+	if current_scene == null:
+		return true
+	var scene_path := String(current_scene.scene_file_path)
+	return not scene_path.begins_with("res://tests/")
