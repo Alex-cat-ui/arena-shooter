@@ -9,6 +9,21 @@ const DOOR_SCRIPT := preload("res://src/systems/door_controller_v3.gd")
 var tests_run := 0
 var tests_passed := 0
 
+## T4: Error guard state - tracks unexpected push_error/push_warning from production code.
+## Full per-call interception is not available in pure GDScript without a C++ extension.
+## Enforcement: exit code 1 on any failure; CI detects additional "ERROR:" lines in output.
+var _guard_active: bool = false
+var _guard_label: String = ""
+var _guard_run_at_start: int = 0
+var _guard_passed_at_start: int = 0
+var _orphan_nodes_baseline: int = -1
+var _watchdog_warning_baseline: int = -1
+
+
+func _init() -> void:
+	_orphan_nodes_baseline = _read_orphan_node_count()
+	_watchdog_warning_baseline = _read_watchdog_warning_count()
+
 
 func check(test_name: String, ok: bool) -> void:
 	tests_run += 1
@@ -28,10 +43,67 @@ func quit_code() -> int:
 
 
 func summary(title: String) -> void:
+	_apply_runtime_guards()
 	print("")
 	print("=".repeat(60))
 	print("%s: %d/%d passed" % [title, tests_passed, tests_run])
 	print("=".repeat(60))
+
+
+## T4: Begin an error guard section. Any unexpected test failures between
+## begin_error_guard and assert_no_guard_failures indicate a production error leak.
+func begin_error_guard(label: String) -> void:
+	_guard_active = true
+	_guard_label = label
+	_guard_run_at_start = tests_run
+	_guard_passed_at_start = tests_passed
+
+
+## T4: End guard and assert that no new unexpected failures occurred beyond expected count.
+## expected_new_failures: number of test failures expected to have been introduced.
+func assert_no_guard_failures(test_name: String, expected_new_failures: int = 0) -> void:
+	_guard_active = false
+	var new_failures := (tests_run - tests_passed) - (_guard_run_at_start - _guard_passed_at_start)
+	var unexpected := new_failures - expected_new_failures
+	run_test(test_name, unexpected <= 0)
+	_guard_label = ""
+
+
+## T4: Fatal assert - if ok is false, this is treated as a non-recoverable test error.
+## Use for invariants that must hold for subsequent tests to be meaningful.
+func fatal_assert(test_name: String, ok: bool) -> bool:
+	run_test(test_name, ok)
+	if not ok:
+		push_error("[T4-FATAL] Test suite halted: %s" % test_name)
+	return ok
+
+
+func _apply_runtime_guards() -> void:
+	var orphan_now := _read_orphan_node_count()
+	if _orphan_nodes_baseline >= 0 and orphan_now >= 0:
+		run_test(
+			"runtime guard: no orphan node leaks",
+			orphan_now <= _orphan_nodes_baseline
+		)
+	var warning_now := _read_watchdog_warning_count()
+	if _watchdog_warning_baseline >= 0 and warning_now >= 0:
+		run_test(
+			"runtime guard: no AIWatchdog runtime warnings",
+			warning_now <= _watchdog_warning_baseline
+		)
+
+
+func _read_orphan_node_count() -> int:
+	return int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+
+
+func _read_watchdog_warning_count() -> int:
+	if AIWatchdog == null or not AIWatchdog.has_method("get_snapshot"):
+		return -1
+	var snap := AIWatchdog.get_snapshot() as Dictionary
+	if not snap.has("warning_events_total"):
+		return -1
+	return int(snap.get("warning_events_total", 0))
 
 
 static func quit_with_result(run: int, passed: int) -> int:

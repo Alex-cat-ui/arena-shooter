@@ -1,0 +1,40 @@
+scene=res://tests/test_stealth_nav_polygon_hole_integrity.tscn
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+STEALTH NAV POLYGON HOLE INTEGRITY TEST
+============================================================
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+WARNING: invalid_nav_build:obstacle_center_walkable center=(1000.0, 700.0) closest=(1000.0, 700.0) distance=0.000 obstacle=[P: (950.0, 650.0), S: (100.0, 100.0)]
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _validate_nav_build_integrity (res://src/systems/navigation_service.gd:954)
+         [1] _validate_nav_build_integrity_deferred (res://src/systems/navigation_service.gd:968)
+[PASS] hole integrity: navigation service exists
+[PASS] hole integrity: obstacle source is non-empty
+[PASS] hole integrity: navigation build remains valid
+[PASS] hole integrity: every obstacle center is non-walkable
+
+============================================================
+STEALTH NAV POLYGON HOLE INTEGRITY RESULTS: 4/4 passed
+============================================================
+EXIT_CODE=0
+DURATION_SEC=3

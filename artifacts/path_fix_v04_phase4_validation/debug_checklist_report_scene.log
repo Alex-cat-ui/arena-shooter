@@ -1,0 +1,21 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+CHECKLIST_REPORT_JSON={"artifact_exists":true,"automatic_checks_pass":false,"boundary_scan_support_pass":false,"chokepoint_width_safety_pass":true,"gate_reason":"automatic_check_failed","gate_status":"FAIL","level_name":"stealth_3zone_test","manual_artifact_path":"docs/qa/stealth_level_checklist_stealth_3zone_test.md","obstacle_oracle_rect_count":6,"patrol_obstacle_avoidance_pass":false,"patrol_reachability_pass":false,"room_reports":[{"boundary_scan_points_ok":0,"pocket_count":1,"room_index":0,"room_label":"A1"},{"boundary_scan_points_ok":0,"pocket_count":1,"room_index":1,"room_label":"A2"},{"boundary_scan_points_ok":0,"pocket_count":1,"room_index":2,"room_label":"B"},{"boundary_scan_points_ok":0,"pocket_count":2,"room_index":3,"room_label":"C"},{"boundary_scan_points_ok":0,"pocket_count":1,"room_index":4,"room_label":"D"}],"route_variety_pass":false,"shadow_escape_availability_pass":false,"shadow_pocket_availability_pass":true,"stealth_room_count":5}

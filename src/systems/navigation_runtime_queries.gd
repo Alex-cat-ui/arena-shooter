@@ -383,7 +383,30 @@ func _build_geometry_path_plan(from_pos: Vector2, to_pos: Vector2) -> Dictionary
 		var out: Array[Vector2] = []
 		for p in raw_path:
 			out.append(p)
-		if out.is_empty() or out[out.size() - 1].distance_to(to_pos) > 0.5:
+		if out.is_empty():
+			return _build_path_plan_result(
+				"unreachable_geometry",
+				[],
+				"navmesh_no_path",
+				"",
+				0,
+				ROUTE_SOURCE_NAVMESH,
+				"navmesh_path_empty",
+				false
+			)
+		var closest_to_target := NavigationServer2D.map_get_closest_point(map_rid, to_pos)
+		if not _is_finite_vector2(closest_to_target) or to_pos.distance_to(closest_to_target) > 4.0:
+			return _build_path_plan_result(
+				"unreachable_geometry",
+				[],
+				"navmesh_target_unreachable",
+				"",
+				0,
+				ROUTE_SOURCE_NAVMESH,
+				"navmesh_path_not_reaching_target",
+				false
+			)
+		if out[out.size() - 1].distance_to(to_pos) > 0.5:
 			out.append(to_pos)
 		if _path_intersects_obstacle(from_pos, out):
 			return _build_path_plan_result(
@@ -498,20 +521,15 @@ func _record_path_contract_metrics(result: Dictionary) -> void:
 	if not AIWatchdog:
 		return
 	var status := String(result.get("status", ""))
-	if status == "ok" and bool(result.get("obstacle_intersection_detected", false)):
+	var reason := String(result.get("reason", ""))
+	var obstacle_intersection_detected := bool(result.get("obstacle_intersection_detected", false))
+	if obstacle_intersection_detected or reason == "path_intersects_obstacle":
 		if AIWatchdog.has_method("record_nav_path_obstacle_intersection_event"):
 			AIWatchdog.call("record_nav_path_obstacle_intersection_event")
 	var route_source := String(result.get("route_source", ""))
 	if route_source != ROUTE_SOURCE_ROOM_GRAPH:
 		return
 	if status != "ok":
-		return
-	if _service == null or not _service.has_method("get_navigation_map_rid"):
-		return
-	var map_rid: RID = _service.get_navigation_map_rid()
-	if not map_rid.is_valid():
-		return
-	if NavigationServer2D.map_get_iteration_id(map_rid) <= 0:
 		return
 	if AIWatchdog.has_method("record_room_graph_fallback_when_navmesh_available_event"):
 		AIWatchdog.call("record_room_graph_fallback_when_navmesh_available_event")
@@ -746,3 +764,7 @@ func _extract_path_points(points_variant: Variant) -> Array[Vector2]:
 	for point_variant in (points_variant as Array):
 		out.append(point_variant as Vector2)
 	return out
+
+
+static func _is_finite_vector2(value: Vector2) -> bool:
+	return is_finite(value.x) and is_finite(value.y)

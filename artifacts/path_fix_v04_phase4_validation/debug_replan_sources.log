@@ -1,0 +1,75 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+WARNING: [AIWatchdog] High repath rate: 12.4/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+CASE_no_force_collision_COUNTS_JSON={"collision_kind":{"non_door":37,"none":7163},"collision_reason":{"collision_blocked":37,"none":7163},"enemy_count":12,"hard_stall_true_samples":0,"path_failed_reason":{"<empty>":6877,"collision_blocked":37,"navmesh_target_unreachable":4,"path_unavailable":67,"policy_blocked":215},"path_plan_status":{"<empty>":296,"ok":6548,"unreachable_geometry":133,"unreachable_policy":223},"policy_blocked_true_samples":223,"samples":7200}
+CASE_no_force_collision_WATCHDOG_JSON={"ai_ms_p95":4.242,"ai_tick_samples_count":11532,"avg_ai_tick_ms":1.06755842832248,"collision_repath_events_total":82,"detour_candidates_evaluated_total":1466,"event_queue_length":0,"geometry_walkable_false_positive_total":0,"hard_stall_events_total":0,"nav_path_obstacle_intersections_total":419,"patrol_collision_repath_events_total":82,"patrol_hard_stall_events_total":0,"patrol_preavoid_events_total":15,"patrol_route_rebuilds_total":36,"patrol_zero_progress_windows_total":0,"preavoid_events_total":15,"queue_warning_events_total":0,"replan_warning_events_total":1,"replans_per_sec":43.5274187233869,"replans_total":1390,"room_graph_fallback_when_navmesh_available_total":0,"tick_warning_events_total":0,"transitions_this_tick":0,"warning_events_total":1}
+[Player] Ready
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 100 -> 99)
+WARNING: [AIWatchdog] High repath rate: 9.5/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 99 -> 98)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 98 -> 97)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 97 -> 96)
+CASE_force_collision_COUNTS_JSON={"collision_kind":{"non_door":593,"none":6607},"collision_reason":{"collision_blocked":593,"none":6607},"enemy_count":12,"hard_stall_true_samples":730,"path_failed_reason":{"<empty>":5511,"collision_blocked":593,"path_intersects_obstacle":32,"path_unavailable":724,"policy_blocked":340},"path_plan_status":{"<empty>":1502,"ok":3730,"unreachable_geometry":1363,"unreachable_policy":605},"policy_blocked_true_samples":605,"samples":7200}
+CASE_force_collision_WATCHDOG_JSON={"ai_ms_p95":3.178,"ai_tick_samples_count":12408,"avg_ai_tick_ms":0.950734012017361,"collision_repath_events_total":1012,"detour_candidates_evaluated_total":30,"event_queue_length":0,"geometry_walkable_false_positive_total":0,"hard_stall_events_total":7,"nav_path_obstacle_intersections_total":248,"patrol_collision_repath_events_total":166,"patrol_hard_stall_events_total":6,"patrol_preavoid_events_total":144,"patrol_route_rebuilds_total":25,"patrol_zero_progress_windows_total":87,"preavoid_events_total":300,"queue_warning_events_total":0,"replan_warning_events_total":1,"replans_per_sec":93.2174102225736,"replans_total":2921,"room_graph_fallback_when_navmesh_available_total":0,"tick_warning_events_total":0,"transitions_this_tick":0,"warning_events_total":1}

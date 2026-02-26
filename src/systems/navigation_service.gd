@@ -22,6 +22,7 @@ const DOOR_NAV_OVERLAP_PX := 16.0
 const NAV_CARVE_EPSILON := 0.5
 const OBSTACLE_CLEARANCE_PX := 16.0
 const OBSTACLE_INTERSECTION_SAMPLE_STEP_PX := 8.0
+const OBSTACLE_SEGMENT_INTERSECTION_EPSILON := 0.001
 const NAV_OBSTACLE_GROUP := "nav_obstacles"
 const POLICY_SAMPLE_STEP_PX := 12.0
 var _nav_regions: Array[NavigationRegion2D] = []
@@ -283,6 +284,12 @@ func path_intersects_navigation_obstacles(
 	var prev := from_pos
 	for point_variant in path_points:
 		var point := point_variant as Vector2
+		for obstacle_variant in _last_nav_obstacles:
+			var obstacle := obstacle_variant as Rect2
+			if obstacle.size.x <= NAV_CARVE_EPSILON or obstacle.size.y <= NAV_CARVE_EPSILON:
+				continue
+			if _segment_intersects_rect(prev, point, obstacle, OBSTACLE_SEGMENT_INTERSECTION_EPSILON):
+				return true
 		var seg_len := prev.distance_to(point)
 		var steps := maxi(int(ceil(seg_len / sample_step)), 1)
 		for step in range(1, steps + 1):
@@ -294,8 +301,62 @@ func path_intersects_navigation_obstacles(
 					continue
 				if obstacle.has_point(sample):
 					return true
-		prev = point
+			prev = point
 	return false
+
+
+static func _segment_intersects_rect(start: Vector2, finish: Vector2, rect: Rect2, epsilon: float) -> bool:
+	if rect.has_point(start) or rect.has_point(finish):
+		return true
+	var top_left := rect.position
+	var top_right := Vector2(rect.end.x, rect.position.y)
+	var bottom_right := rect.end
+	var bottom_left := Vector2(rect.position.x, rect.end.y)
+	if _segments_intersect(start, finish, top_left, top_right, epsilon):
+		return true
+	if _segments_intersect(start, finish, top_right, bottom_right, epsilon):
+		return true
+	if _segments_intersect(start, finish, bottom_right, bottom_left, epsilon):
+		return true
+	if _segments_intersect(start, finish, bottom_left, top_left, epsilon):
+		return true
+	return false
+
+
+static func _segments_intersect(a: Vector2, b: Vector2, c: Vector2, d: Vector2, epsilon: float) -> bool:
+	var o1 := _orientation(a, b, c)
+	var o2 := _orientation(a, b, d)
+	var o3 := _orientation(c, d, a)
+	var o4 := _orientation(c, d, b)
+	var ab_crosses_cd := (o1 > epsilon and o2 < -epsilon) or (o1 < -epsilon and o2 > epsilon)
+	var cd_crosses_ab := (o3 > epsilon and o4 < -epsilon) or (o3 < -epsilon and o4 > epsilon)
+	if ab_crosses_cd and cd_crosses_ab:
+		return true
+	if absf(o1) <= epsilon and _point_on_segment(c, a, b, epsilon):
+		return true
+	if absf(o2) <= epsilon and _point_on_segment(d, a, b, epsilon):
+		return true
+	if absf(o3) <= epsilon and _point_on_segment(a, c, d, epsilon):
+		return true
+	if absf(o4) <= epsilon and _point_on_segment(b, c, d, epsilon):
+		return true
+	return false
+
+
+static func _orientation(a: Vector2, b: Vector2, c: Vector2) -> float:
+	return (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x)
+
+
+static func _point_on_segment(point: Vector2, seg_a: Vector2, seg_b: Vector2, epsilon: float) -> bool:
+	if point.x < minf(seg_a.x, seg_b.x) - epsilon:
+		return false
+	if point.x > maxf(seg_a.x, seg_b.x) + epsilon:
+		return false
+	if point.y < minf(seg_a.y, seg_b.y) - epsilon:
+		return false
+	if point.y > maxf(seg_a.y, seg_b.y) + epsilon:
+		return false
+	return true
 
 
 func room_id_at_point(p: Vector2) -> int:
@@ -853,6 +914,9 @@ static func _merge_overlapping_outlines(existing_outlines: Array, addition: Pack
 			while j < pending.size():
 				var a := pending[i] as PackedVector2Array
 				var b := pending[j] as PackedVector2Array
+				if _outlines_form_hole_pair(a, b):
+					j += 1
+					continue
 				if not _polygons_have_area_overlap(a, b):
 					j += 1
 					continue
@@ -868,6 +932,53 @@ static func _merge_overlapping_outlines(existing_outlines: Array, addition: Pack
 				j = i + 1
 			i += 1
 	return pending
+
+
+static func _outlines_form_hole_pair(a: PackedVector2Array, b: PackedVector2Array) -> bool:
+	var area_a := _polygon_area(a)
+	var area_b := _polygon_area(b)
+	if absf(area_a) <= NAV_CARVE_EPSILON or absf(area_b) <= NAV_CARVE_EPSILON:
+		return false
+	if area_a * area_b >= 0.0:
+		return false
+	var outer := a
+	var hole := b
+	if absf(area_b) > absf(area_a):
+		outer = b
+		hole = a
+	var outer_bounds := _outline_bounds(outer)
+	var hole_bounds := _outline_bounds(hole)
+	if not outer_bounds.encloses(hole_bounds):
+		return false
+	var sample := _outline_centroid(hole)
+	if not is_finite(sample.x) or not is_finite(sample.y):
+		return false
+	return Geometry2D.is_point_in_polygon(sample, outer)
+
+
+static func _outline_bounds(outline: PackedVector2Array) -> Rect2:
+	if outline.is_empty():
+		return Rect2()
+	var min_x := outline[0].x
+	var max_x := outline[0].x
+	var min_y := outline[0].y
+	var max_y := outline[0].y
+	for idx in range(1, outline.size()):
+		var p := outline[idx]
+		min_x = minf(min_x, p.x)
+		max_x = maxf(max_x, p.x)
+		min_y = minf(min_y, p.y)
+		max_y = maxf(max_y, p.y)
+	return Rect2(Vector2(min_x, min_y), Vector2(max_x - min_x, max_y - min_y))
+
+
+static func _outline_centroid(outline: PackedVector2Array) -> Vector2:
+	if outline.is_empty():
+		return Vector2.ZERO
+	var sum := Vector2.ZERO
+	for p in outline:
+		sum += p
+	return sum / float(outline.size())
 
 
 static func _polygons_have_area_overlap(a: PackedVector2Array, b: PackedVector2Array) -> bool:
@@ -939,6 +1050,9 @@ func _validate_nav_build_integrity(nav_obstacles: Array[Rect2], attempt: int = 0
 	if iteration_id <= 0:
 		if attempt < 3:
 			call_deferred("_validate_nav_build_integrity_deferred", nav_obstacles.duplicate(), attempt + 1)
+			return
+		_nav_build_invalid = true
+		push_error("invalid_nav_build:geometry_iteration_unavailable attempts=%d" % attempt)
 		return
 	for obstacle_variant in nav_obstacles:
 		var obstacle := obstacle_variant as Rect2
@@ -951,10 +1065,12 @@ func _validate_nav_build_integrity(nav_obstacles: Array[Rect2], attempt: int = 0
 			push_error("invalid_nav_build:geometry_closest_point_invalid")
 			return
 		if center.distance_to(closest) <= 4.0:
-			push_warning(
+			_nav_build_invalid = true
+			push_error(
 				"invalid_nav_build:obstacle_center_walkable center=%s closest=%s distance=%.3f obstacle=%s"
 				% [str(center), str(closest), center.distance_to(closest), str(obstacle)]
 			)
+			return
 
 
 func _validate_nav_build_integrity_deferred(nav_obstacles_variant: Variant, attempt: int) -> void:

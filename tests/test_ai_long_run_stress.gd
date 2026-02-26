@@ -10,7 +10,6 @@ const THREE_ZONE_SCENE := preload("res://src/levels/stealth_3zone_test.tscn")
 
 const STRESS_DURATION_SEC := 10.0
 const SIMULATED_ENEMIES := 8
-const BENCHMARK_HP_FLOOR := 5000
 const BENCHMARK_COLLISION_PROBE_FRAMES := 30
 const BENCHMARK_METRIC_WARMUP_FRAMES := 240
 const CONFIRM_CONFIG := {
@@ -25,6 +24,7 @@ const CONFIRM_CONFIG := {
 const KPI_MAX_QUEUE_LENGTH := 2048
 const KPI_BACKPRESSURE_MUST_DEACTIVATE := true
 const KPI_AVOIDANCE_ENABLED := true
+const REPLANS_PER_SEC_GATE_THRESHOLD := 8.0
 
 var embedded_mode: bool = false
 var _t := TestHelpers.new()
@@ -242,10 +242,12 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		runtime_restore["player_hp"] = RuntimeState.player_hp
 		RuntimeState.is_frozen = false
 		RuntimeState.player_visibility_mul = 1.0
-		RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
 
 	if bool(config.get("force_collision_repath", false)):
 		_force_collision_heavy_setup(level)
+		# Ensure player visibility is set for live combat scenario (no HP floor - live-runtime).
+		if RuntimeState:
+			RuntimeState.player_visibility_mul = 1.0
 
 	var fixed_frames := int(config.get("fixed_physics_frames", 0))
 	var warmup_frames := mini(BENCHMARK_METRIC_WARMUP_FRAMES, maxi(fixed_frames - 1, 0))
@@ -273,14 +275,8 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 			base_report["metrics_snapshot"] = post_warmup_snap
 			return base_report
 	for frame in range(fixed_frames):
-		if RuntimeState:
-			RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
 		if bool(config.get("force_collision_repath", false)) and frame == BENCHMARK_COLLISION_PROBE_FRAMES:
-			if AIWatchdog and AIWatchdog.has_method("record_collision_repath_event"):
-				AIWatchdog.call("record_collision_repath_event")
-			if AIWatchdog and AIWatchdog.has_method("record_preavoid_event"):
-				AIWatchdog.call("record_preavoid_event", true)
-			_stabilize_collision_layout(level)
+			_refresh_collision_pressure_layout(level)
 		await get_tree().physics_frame
 		await get_tree().process_frame
 
@@ -343,11 +339,13 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 	var hard_stalls_total := int(base_report.get("hard_stall_events_total", 0))
 	var patrol_hard_stalls_total := int(base_report.get("patrol_hard_stall_events_total", 0))
 	var patrol_route_rebuilds_total := int(base_report.get("patrol_route_rebuilds_total", 0))
+	var replans_per_sec := float(replans_total) / maxf(duration_sec, 0.001)
 	var replans_per_enemy_per_sec := float(replans_total) / maxf(float(enemy_count) * maxf(duration_sec, 0.001), 0.001)
 	var detour_candidates_per_replan := float(detour_total) / float(maxi(replans_total, 1))
 	var hard_stalls_per_min := float(hard_stalls_total) * 60.0 / maxf(duration_sec, 0.001)
 	var patrol_hard_stalls_per_min := float(patrol_hard_stalls_total) * 60.0 / maxf(duration_sec, 0.001)
 	var patrol_route_rebuilds_per_min := float(patrol_route_rebuilds_total) * 60.0 / maxf(duration_sec, 0.001)
+	base_report["replans_per_sec"] = replans_per_sec
 	base_report["replans_per_enemy_per_sec"] = replans_per_enemy_per_sec
 	base_report["detour_candidates_per_replan"] = detour_candidates_per_replan
 	base_report["hard_stalls_per_min"] = hard_stalls_per_min
@@ -359,8 +357,8 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		threshold_failures.append("ai_ms_avg")
 	if float(base_report.get("ai_ms_p95", 0.0)) > float(GameConfig.kpi_ai_ms_p95_max if GameConfig else 2.50):
 		threshold_failures.append("ai_ms_p95")
-	if replans_per_enemy_per_sec > float(GameConfig.kpi_replans_per_enemy_per_sec_max if GameConfig else 1.80):
-		threshold_failures.append("replans_per_enemy_per_sec")
+	if replans_per_sec > REPLANS_PER_SEC_GATE_THRESHOLD:
+		threshold_failures.append("replans_per_sec")
 	if detour_candidates_per_replan > float(GameConfig.kpi_detour_candidates_per_replan_max if GameConfig else 24.0):
 		threshold_failures.append("detour_candidates_per_replan")
 	if hard_stalls_per_min > float(GameConfig.kpi_hard_stalls_per_min_max if GameConfig else 1.0):
@@ -418,6 +416,7 @@ func _build_benchmark_report_shell(config: Dictionary) -> Dictionary:
 			"nav_path_obstacle_intersections_total": 0,
 			"room_graph_fallback_when_navmesh_available_total": 0,
 			"patrol_route_rebuilds_total": 0,
+			"replans_per_sec": 0.0,
 			"replans_per_enemy_per_sec": 0.0,
 			"detour_candidates_per_replan": 0.0,
 			"hard_stalls_per_min": 0.0,
@@ -467,7 +466,6 @@ func _force_collision_heavy_setup(level: Node) -> void:
 	if RuntimeState:
 		RuntimeState.is_frozen = false
 		RuntimeState.player_visibility_mul = 1.0
-		RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
 	player.global_position = Vector2(638.0, 240.0)
 	player.velocity = Vector2.ZERO
 	var probe_anchor := player.global_position + Vector2(-220.0, 0.0)
@@ -492,43 +490,44 @@ func _force_collision_heavy_setup(level: Node) -> void:
 			second_enemy.global_position = probe_anchor + Vector2(0.0, 6.0)
 
 
-func _stabilize_collision_layout(level: Node) -> void:
+func _refresh_collision_pressure_layout(level: Node) -> void:
 	var player := level.get_node_or_null("Entities/Player") as CharacterBody2D
 	if player == null:
 		return
 	var enemies := _benchmark_members_in_group_under("enemies", level)
 	if enemies.is_empty():
 		return
+	# Keep visibility for live-runtime but don't enforce HP floor.
 	if RuntimeState:
-		RuntimeState.player_visibility_mul = 0.0
-	player.global_position = Vector2(96.0, 96.0)
+		RuntimeState.player_visibility_mul = 1.0
+	player.global_position = Vector2(638.0, 240.0)
 	player.velocity = Vector2.ZERO
-	var enemy_center := Vector2(900.0, 240.0)
-	var ring_radius := 220.0
+	var probe_anchor := player.global_position + Vector2(-220.0, 0.0)
+	var ring_radius := 300.0
 	for i in range(enemies.size()):
 		var enemy := enemies[i] as Enemy
 		if enemy == null:
 			continue
 		var angle := (TAU * float(i)) / float(maxi(enemies.size(), 1))
-		enemy.global_position = enemy_center + Vector2.RIGHT.rotated(angle) * ring_radius
+		enemy.global_position = player.global_position + Vector2.RIGHT.rotated(angle) * ring_radius
 		enemy.velocity = Vector2.ZERO
-		enemy.set_meta("room_id", (i + 2) % 5)
+		enemy.set_meta("room_id", i % 5)
 		if enemy.has_method("debug_force_awareness_state"):
-			enemy.call("debug_force_awareness_state", "CALM")
-		if enemy.has_method("set_paused"):
-			enemy.call("set_paused", true)
-		enemy.set_process(false)
-		enemy.set_physics_process(false)
-		enemy.set_process_input(false)
-		enemy.set_process_unhandled_input(false)
+			enemy.call("debug_force_awareness_state", "COMBAT" if i < 2 else "CALM")
+	if enemies.size() >= 1:
+		var first_enemy := enemies[0] as Enemy
+		if first_enemy:
+			first_enemy.global_position = probe_anchor + Vector2(0.0, -6.0)
+	if enemies.size() >= 2:
+		var second_enemy := enemies[1] as Enemy
+		if second_enemy:
+			second_enemy.global_position = probe_anchor + Vector2(0.0, 6.0)
 
 
 func _run_benchmark_warmup_frames(level: Node, warmup_frames: int, force_collision_repath: bool) -> void:
 	for frame in range(warmup_frames):
-		if RuntimeState:
-			RuntimeState.player_hp = maxi(int(RuntimeState.player_hp), BENCHMARK_HP_FLOOR)
 		if force_collision_repath and frame == BENCHMARK_COLLISION_PROBE_FRAMES:
-			_stabilize_collision_layout(level)
+			_refresh_collision_pressure_layout(level)
 		await get_tree().physics_frame
 		await get_tree().process_frame
 

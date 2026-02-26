@@ -1,0 +1,21 @@
+=== RUN test_patrol_navigation_kpi_gate (res://tests/test_patrol_navigation_kpi_gate.tscn) ===
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+PATROL NAVIGATION KPI GATE TEST
+============================================================
+[PASS] patrol navigation gate: returns PASS/ok
+[PASS] patrol navigation gate: includes four scenario reports
+[PASS] patrol navigation gate: report has expanded patrol KPI fields
+[PASS] patrol navigation gate fixture: threshold failure rejects
+[PASS] patrol navigation gate fixture: reason threshold_failed
+[PASS] patrol navigation gate fixture: deterministic failures include min/max patrol KPI keys
+
+============================================================
+PATROL NAVIGATION KPI GATE RESULTS: 6/6 passed
+============================================================
+EXIT_CODE=0

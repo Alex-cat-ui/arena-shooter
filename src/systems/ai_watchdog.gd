@@ -32,6 +32,10 @@ var geometry_walkable_false_positive_total: int = 0
 var nav_path_obstacle_intersections_total: int = 0
 var room_graph_fallback_when_navmesh_available_total: int = 0
 var patrol_route_rebuilds_total: int = 0
+var warning_events_total: int = 0
+var queue_warning_events_total: int = 0
+var tick_warning_events_total: int = 0
+var replan_warning_events_total: int = 0
 var _ai_tick_samples_ms: Array[float] = []
 
 # Internal
@@ -149,6 +153,10 @@ func debug_reset_metrics_for_tests() -> void:
 	nav_path_obstacle_intersections_total = 0
 	room_graph_fallback_when_navmesh_available_total = 0
 	patrol_route_rebuilds_total = 0
+	warning_events_total = 0
+	queue_warning_events_total = 0
+	tick_warning_events_total = 0
+	replan_warning_events_total = 0
 	_ai_tick_samples_ms.clear()
 	_tick_start_usec = 0
 	_tick_active = false
@@ -180,6 +188,10 @@ func get_snapshot() -> Dictionary:
 			"nav_path_obstacle_intersections_total": nav_path_obstacle_intersections_total,
 			"room_graph_fallback_when_navmesh_available_total": room_graph_fallback_when_navmesh_available_total,
 			"patrol_route_rebuilds_total": patrol_route_rebuilds_total,
+			"warning_events_total": warning_events_total,
+			"queue_warning_events_total": queue_warning_events_total,
+			"tick_warning_events_total": tick_warning_events_total,
+			"replan_warning_events_total": replan_warning_events_total,
 			"ai_tick_samples_count": _ai_tick_samples_ms.size(),
 		}
 
@@ -189,12 +201,18 @@ func _check_thresholds() -> void:
 		return
 	if _queue_warn_elapsed >= WARN_MIN_SUSTAIN_SEC:
 		push_warning("[AIWatchdog] EventBus queue high: %d (threshold %d)" % [event_queue_length, QUEUE_WARN_THRESHOLD])
+		warning_events_total += 1
+		queue_warning_events_total += 1
 		_warn_cooldown = WARN_COOLDOWN_SEC
 	elif _tick_warn_elapsed >= WARN_MIN_SUSTAIN_SEC:
 		push_warning("[AIWatchdog] AI tick slow: %.2fms (threshold %.1fms)" % [avg_ai_tick_ms, TICK_MS_WARN_THRESHOLD])
+		warning_events_total += 1
+		tick_warning_events_total += 1
 		_warn_cooldown = WARN_COOLDOWN_SEC
 	elif _replan_warn_elapsed >= WARN_MIN_SUSTAIN_SEC:
 		push_warning("[AIWatchdog] High repath rate: %.1f/sec (threshold %.1f)" % [replans_per_sec, REPLANS_PER_SEC_WARN])
+		warning_events_total += 1
+		replan_warning_events_total += 1
 		_warn_cooldown = WARN_COOLDOWN_SEC
 
 

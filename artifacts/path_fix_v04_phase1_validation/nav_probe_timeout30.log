@@ -1,0 +1,200 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ERROR: BUG: Unreferenced static string to 0: Variant
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @warning_ignore_restore
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @warning_ignore_start
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @warning_ignore
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @export_group
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @export_category
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @export_flags
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @export_node_path
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @export_range
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @export_placeholder
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @export_multiline
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @export
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: @icon
+   at: unref (core/string/string_name.cpp:116)
+WARNING: A Thread object is being destroyed without its completion having been realized.
+Please call wait_to_finish() on it to ensure correct cleanup.
+     at: ~Thread (core/os/thread.cpp:102)
+ERROR: 7 RID allocations of type '23NavMeshGeometryParser2D' were leaked at exit.
+ERROR: 6 RID allocations of type '23NavMeshGeometryParser3D' were leaked at exit.
+ERROR: Pages in use exist at exit in PagedAllocator: N7Variant5Pools11BucketLargeE
+   at: ~PagedAllocator (./core/templates/paged_allocator.h:169)
+ERROR: Pages in use exist at exit in PagedAllocator: N7Variant5Pools12BucketMediumE
+   at: ~PagedAllocator (./core/templates/paged_allocator.h:169)
+ERROR: Pages in use exist at exit in PagedAllocator: N7Variant5Pools11BucketSmallE
+   at: ~PagedAllocator (./core/templates/paged_allocator.h:169)
+SCRIPT ERROR: Invalid cast: could not convert value to 'PackedVector2Array'.
+          at: _merge_overlapping_outlines (res://src/systems/navigation_service.gd:854)
+          GDScript backtrace (most recent call first):
+              [0] _merge_overlapping_outlines (res://src/systems/navigation_service.gd:854)
+              [1] _create_region_for_room (res://src/systems/navigation_service.gd:676)
+              [2] build_from_layout (res://src/systems/navigation_service.gd:250)
+              [3] _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:493)
+              [4] _ready (res://src/levels/stealth_3zone_test_controller.gd:214)
+              [5] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+SCRIPT ERROR: Invalid cast: could not convert value to 'Rect2'.
+          at: NavigationService._create_region_for_room (res://src/systems/navigation_service.gd:676)
+          GDScript backtrace (most recent call first):
+              [0] _create_region_for_room (res://src/systems/navigation_service.gd:676)
+              [1] build_from_layout (res://src/systems/navigation_service.gd:250)
+              [2] _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:493)
+              [3] _ready (res://src/levels/stealth_3zone_test_controller.gd:214)
+              [4] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: Condition "ce.error != Callable::CallError::CALL_OK" is true. Returning: Variant()
+   at: _get_default_variant_for_data_type (modules/gdscript/gdscript_vm.cpp:145)
+   GDScript backtrace (most recent call first):
+       [0] _create_region_for_room (res://src/systems/navigation_service.gd:676)
+       [1] build_from_layout (res://src/systems/navigation_service.gd:250)
+       [2] _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:493)
+       [3] _ready (res://src/levels/stealth_3zone_test_controller.gd:214)
+       [4] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+SCRIPT ERROR: Invalid cast: could not convert value to 'Dictionary'.
+          at: NavigationService.build_from_layout (res://src/systems/navigation_service.gd:245)
+          GDScript backtrace (most recent call first):
+              [0] build_from_layout (res://src/systems/navigation_service.gd:245)
+              [1] _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:493)
+              [2] _ready (res://src/levels/stealth_3zone_test_controller.gd:214)
+              [3] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: Condition "ce.error != Callable::CallError::CALL_OK" is true. Returning: Variant()
+   at: _get_default_variant_for_data_type (modules/gdscript/gdscript_vm.cpp:145)
+   GDScript backtrace (most recent call first):
+       [0] build_from_layout (res://src/systems/navigation_service.gd:245)
+       [1] _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:493)
+       [2] _ready (res://src/levels/stealth_3zone_test_controller.gd:214)
+       [3] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: BUG: Unreferenced static string to 0: node_changed
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: animation_player_changed
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: current_animation_changed
+   at: unref (core/string/string_name.cpp:116)
+ERROR: Condition "ce.error != Callable::CallError::CALL_OK" is true. Returning: Variant()
+   at: _get_default_variant_for_data_type (modules/gdscript/gdscript_vm.cpp:145)
+   GDScript backtrace (most recent call first):
+       [0] _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:499)
+       [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:214)
+       [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: BUG: Unreferenced static string to 0: animation_list_changed
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: animation_libraries_updated
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: caches_cleared
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: mixer_applied
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: mixer_updated
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: autoshrink_changed
+   at: unref (core/string/string_name.cpp:116)
+SCRIPT ERROR: Invalid type in function 'initialize' in base 'Node (EnemySquadSystem)'. The Object-derived class of argument 1 (CharacterBody2D (player.gd)) is not a subclass of the expected argument class.
+          at: _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:499)
+          GDScript backtrace (most recent call first):
+              [0] _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:499)
+              [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:214)
+              [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: Condition "ce.error != Callable::CallError::CALL_OK" is true. Returning: Variant()
+   at: _get_default_variant_for_data_type (modules/gdscript/gdscript_vm.cpp:145)
+   GDScript backtrace (most recent call first):
+       [0] _setup_layout_and_systems (res://src/levels/stealth_3zone_test_controller.gd:499)
+       [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:214)
+       [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+SCRIPT ERROR: Invalid cast: could not convert value to 'Dictionary'.
+          at: _spawn_enemies (res://src/levels/stealth_3zone_test_controller.gd:626)
+          GDScript backtrace (most recent call first):
+              [0] _spawn_enemies (res://src/levels/stealth_3zone_test_controller.gd:626)
+              [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:215)
+              [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: Condition "ce.error != Callable::CallError::CALL_OK" is true. Returning: Variant()
+   at: _get_default_variant_for_data_type (modules/gdscript/gdscript_vm.cpp:145)
+ERROR: BUG: Unreferenced static string to 0: _get_minimum_size
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: _unhandled_key_input
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: _shortcut_input
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: _input
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: _enter_tree
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: fallback_changed
+   at: unref (core/string/string_name.cpp:116)
+   GDScript backtrace (most recent call first):
+       [0] _spawn_enemies (res://src/levels/stealth_3zone_test_controller.gd:626)
+       [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:215)
+       [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+SCRIPT ERROR: Invalid assignment of property or key 'text' with value of type 'String' on a base object of type 'Label'.
+          at: _update_hint_text (res://src/levels/stealth_3zone_test_controller.gd:991)
+          GDScript backtrace (most recent call first):
+              [0] _update_hint_text (res://src/levels/stealth_3zone_test_controller.gd:991)
+              [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:216)
+              [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: Condition "ce.error != Callable::CallError::CALL_OK" is true. Returning: Variant()
+   at: _get_default_variant_for_data_type (modules/gdscript/gdscript_vm.cpp:145)
+   GDScript backtrace (most recent call first):
+       [0] _update_hint_text (res://src/levels/stealth_3zone_test_controller.gd:991)
+       [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:216)
+       [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: /root: The caller thread can't call the function `propagate_notification()` on this node. Use `call_deferred()` or `call_deferred_thread_group()` instead.
+   at: propagate_notification (scene/main/node.cpp:2597)
+
+================================================================
+handle_crash: Program crashed with signal 11
+Engine version: Godot Engine v4.6.1.stable.mono.official (14d19694e0c88a3f9e82d899a0400f27a24c176e)
+Dumping the backtrace. Please include this when reporting the bug on: https://github.com/godotengine/godot/issues
+SCRIPT ERROR: Invalid access to property or key 'visible' on a base object of type 'CanvasLayer'.
+          at: _refresh_debug_label (res://src/levels/stealth_3zone_test_controller.gd:1002)
+          GDScript backtrace (most recent call first):
+              [0] _refresh_debug_label (res://src/levels/stealth_3zone_test_controller.gd:1002)
+              [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:217)
+              [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: Condition "ce.error != Callable::CallError::CALL_OK" is true. Returning: Variant()
+   at: _get_default_variant_for_data_type (modules/gdscript/gdscript_vm.cpp:145)
+   GDScript backtrace (most recent call first):
+       [0] _refresh_debug_label (res://src/levels/stealth_3zone_test_controller.gd:1002)
+       [1] _ready (res://src/levels/stealth_3zone_test_controller.gd:217)
+       [2] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: Can't emit non-existing signal "ready".
+   at: emit_signalp (core/object/object.cpp:1296)
+   GDScript backtrace (most recent call first):
+       [0] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+ERROR: Can't emit non-existing signal "".
+   at: emit_signalp (core/object/object.cpp:1296)
+   GDScript backtrace (most recent call first):
+       [0] _ready (res://artifacts/nav_probe_3zone_scene.gd:38)
+SCRIPT ERROR: Invalid access to property or key 'process_frame' on a base object of type 'SceneTree'.
+          at: _ready (res://artifacts/nav_probe_3zone_scene.gd:39)
+          GDScript backtrace (most recent call first):
+              [0] _ready (res://artifacts/nav_probe_3zone_scene.gd:39)
+ERROR: Condition "ce.error != Callable::CallError::CALL_OK" is true. Returning: Variant()
+   at: _get_default_variant_for_data_type (modules/gdscript/gdscript_vm.cpp:145)
+   GDScript backtrace (most recent call first):
+       [0] _ready (res://artifacts/nav_probe_3zone_scene.gd:39)
+ERROR: Can't emit non-existing signal "ready".
+   at: emit_signalp (core/object/object.cpp:1296)
+ERROR: BUG: Unreferenced static string to 0: bus_layout_changed
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: bus_renamed
+   at: unref (core/string/string_name.cpp:116)
+ERROR: BUG: Unreferenced static string to 0: _shaped_text_get_line_breaks
+ERROR: FATAL: Index p_index = 1 is out of bounds (size() = 0).
+   at: get (./core/templates/cowdata.h:193)

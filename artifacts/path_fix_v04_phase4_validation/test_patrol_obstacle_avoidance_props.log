@@ -1,0 +1,43 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+PATROL OBSTACLE AVOIDANCE PROPS TEST
+============================================================
+[PASS] patrol props: distance to target decreases
+[PASS] patrol props: movement remains continuous
+[PASS] patrol props: no long stall near prop cluster
+[PASS] patrol props: no teleport spikes
+[PASS] patrol props: planner called on patrol path
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] integration props: navigation service available on 3zone scene
+[PASS] integration props: independent prop oracle has collision rects
+[PASS] integration props: spawn nodes SpawnB->SpawnC2 exist
+[PASS] integration props: SpawnB->SpawnC2 path status is contract-valid
+[PASS] integration props: SpawnB->SpawnC2 non-ok plan has explicit reason
+[PASS] integration props: spawn nodes SpawnA2->SpawnC1 exist
+[PASS] integration props: SpawnA2->SpawnC1 path status is contract-valid
+[PASS] integration props: SpawnA2->SpawnC1 non-ok plan has explicit reason
+[PASS] runtime guard: no orphan node leaks
+[PASS] runtime guard: no AIWatchdog runtime warnings
+
+============================================================
+PATROL OBSTACLE AVOIDANCE PROPS RESULTS: 15/15 passed
+============================================================

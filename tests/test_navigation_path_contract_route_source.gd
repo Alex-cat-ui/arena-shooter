@@ -67,6 +67,8 @@ func run_suite() -> Dictionary:
 	await _test_path_intersection_sets_unreachable_geometry_reason()
 	await _test_navmesh_source_reported_when_map_exists()
 	await _test_fallback_disabled_without_navmesh_reports_contract_reason()
+	await _test_obstacle_intersection_metric_counts_unreachable_events()
+	await _test_room_graph_fallback_metric_is_not_dead()
 
 	_t.summary("NAVIGATION PATH CONTRACT ROUTE SOURCE RESULTS")
 	return {
@@ -128,6 +130,42 @@ func _test_fallback_disabled_without_navmesh_reports_contract_reason() -> void:
 	_restore_room_graph_fallback_only(original)
 
 
+func _test_obstacle_intersection_metric_counts_unreachable_events() -> void:
+	var original := _set_room_graph_fallback_only(true)
+	_reset_watchdog_metrics()
+	var service := FakeService.new()
+	service.force_valid_map = false
+	service.force_obstacle_intersection = true
+	var nav = NAV_RUNTIME_QUERIES_SCRIPT.new(service)
+	var plan := nav.build_policy_valid_path(Vector2.ZERO, Vector2(96.0, 0.0), null) as Dictionary
+	var intersections_total := _watchdog_metric("nav_path_obstacle_intersections_total")
+	_t.run_test(
+		"path contract: obstacle metric increments for unreachable_geometry intersection",
+		String(plan.get("status", "")) == "unreachable_geometry"
+			and String(plan.get("reason", "")) == "path_intersects_obstacle"
+			and intersections_total > 0
+	)
+	_restore_room_graph_fallback_only(original)
+
+
+func _test_room_graph_fallback_metric_is_not_dead() -> void:
+	var original := _set_room_graph_fallback_only(true)
+	_reset_watchdog_metrics()
+	var service := FakeService.new()
+	service.force_valid_map = false
+	service.force_obstacle_intersection = false
+	var nav = NAV_RUNTIME_QUERIES_SCRIPT.new(service)
+	var plan := nav.build_policy_valid_path(Vector2.ZERO, Vector2(96.0, 0.0), null) as Dictionary
+	var fallback_total := _watchdog_metric("room_graph_fallback_when_navmesh_available_total")
+	_t.run_test(
+		"path contract: room-graph fallback metric increments on fallback plan",
+		String(plan.get("status", "")) == "ok"
+			and String(plan.get("route_source", "")) == "room_graph"
+			and fallback_total > 0
+	)
+	_restore_room_graph_fallback_only(original)
+
+
 func _set_room_graph_fallback_only(value: bool) -> bool:
 	if not GameConfig:
 		return true
@@ -148,3 +186,15 @@ func _restore_room_graph_fallback_only(value: bool) -> void:
 	var nav_cost := GameConfig.ai_balance.get("nav_cost", {}) as Dictionary
 	nav_cost["allow_room_graph_fallback_without_navmesh_only"] = value
 	GameConfig.ai_balance["nav_cost"] = nav_cost
+
+
+func _reset_watchdog_metrics() -> void:
+	if AIWatchdog and AIWatchdog.has_method("debug_reset_metrics_for_tests"):
+		AIWatchdog.call("debug_reset_metrics_for_tests")
+
+
+func _watchdog_metric(key: String) -> int:
+	if not AIWatchdog or not AIWatchdog.has_method("get_snapshot"):
+		return 0
+	var snap := AIWatchdog.call("get_snapshot") as Dictionary
+	return int(snap.get(key, 0))

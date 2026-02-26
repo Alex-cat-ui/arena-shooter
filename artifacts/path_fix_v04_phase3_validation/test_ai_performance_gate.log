@@ -1,0 +1,61 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+AI PERFORMANCE GATE TEST
+============================================================
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 5000 -> 4999)
+WARNING: [AIWatchdog] High repath rate: 17.5/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:197)
+         [1] _process (res://src/systems/ai_watchdog.gd:62)
+[PASS] performance gate: fixed benchmark config is exact
+[PASS] performance gate: derived formulas match contract
+ERROR: [FAIL] performance gate: fixed benchmark report verdict is PASS/ok
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] check (res://tests/test_helpers.gd:19)
+       [1] run_test (res://tests/test_helpers.gd:23)
+       [2] _test_performance_gate_metrics_formulas_and_thresholds (res://tests/test_ai_performance_gate.gd:82)
+       [3] _get_or_run_fixed_benchmark_report (res://tests/test_ai_performance_gate.gd:171)
+[PASS] performance gate: threshold verdict is enforced
+[PASS] performance gate: collision_repath_events_total > 0 in forced collision stress
+[PASS] performance gate fixture: threshold failure rejects
+[PASS] performance gate fixture: reason threshold_failed
+[PASS] performance gate fixture: deterministic failure order includes expanded patrol KPI keys
+
+============================================================
+AI PERFORMANCE GATE RESULTS: 7/8 passed
+============================================================
+EXIT_CODE=1

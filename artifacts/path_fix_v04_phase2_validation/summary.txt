@@ -1,0 +1,40 @@
+# Phase2 validation summary
+generated_at=2026-02-25T23:16:59Z
+## nav_probe_3zone_scene
+21:NAV|build_valid=true|obst_source=layout_api
+23:PLAN|around_shadowC1_horizontal|status=unreachable_geometry|reason=navmesh_target_unreachable|route_source=navmesh|route_reason=navmesh_path_not_reaching_target|pts=0|len=0.00|intersects=false|obst_inter=false
+28:PLAN|to_outside_navmesh|status=unreachable_geometry|reason=navmesh_target_unreachable|route_source=navmesh|route_reason=navmesh_path_not_reaching_target|pts=0|len=0.00|intersects=false|obst_inter=false
+38:OBS|idx=3|center=(1000.0, 700.0)|closest=(1000.0, 776.0)|dist=76.000
+73:EXIT_CODE=0
+## test_stealth_nav_path_segments_avoid_props
+25:[PASS] segments avoid props: navigation service exists
+26:[PASS] segments avoid props: spawns root exists
+27:[PASS] segments avoid props: required spawn chain exists
+28:[PASS] segments avoid props: spawn chain plans are ok
+29:[PASS] segments avoid props: path segments do not intersect props
+30:[PASS] segments avoid props: outside-navmesh target is unreachable_geometry
+31:[PASS] segments avoid props: outside-navmesh reason is navmesh_target_unreachable
+32:[PASS] segments avoid props: coarse-step segment intersection is detected
+37:EXIT_CODE=0
+## test_navigation_path_contract_route_source
+10:[PASS] path contract: fallback status ok
+11:[PASS] path contract: route_source is room_graph on no-navmesh fallback
+12:[PASS] path contract: route_source_reason is present
+13:[PASS] path contract: obstacle_intersection_detected false on clean fallback
+14:[PASS] path contract: obstacle intersection returns unreachable_geometry
+15:[PASS] path contract: obstacle intersection reason is explicit
+16:[PASS] path contract: obstacle_intersection_detected true on intersection
+17:[PASS] path contract: navmesh map uses navmesh route_source
+18:[PASS] path contract: navmesh no path keeps reason
+19:[PASS] path contract: disabling fallback yields unreachable_geometry
+20:[PASS] path contract: disabling fallback reason is room_graph_fallback_disabled
+21:[PASS] path contract: disabling fallback keeps room_graph route_source
+29:EXIT_CODE=0
+## test_stealth_nav_polygon_hole_integrity
+25:[PASS] hole integrity: navigation service exists
+26:[PASS] hole integrity: obstacle source is non-empty
+27:[PASS] hole integrity: navigation build remains valid
+28:[PASS] hole integrity: navigation map rid is valid
+29:[PASS] hole integrity: navigation map iteration is ready
+30:[PASS] hole integrity: every obstacle center is non-walkable
+35:EXIT_CODE=0

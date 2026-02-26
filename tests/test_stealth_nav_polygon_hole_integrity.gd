@@ -60,13 +60,36 @@ func _test_obstacle_centers_are_not_walkable_after_bake() -> void:
 		await get_tree().process_frame
 		return
 
+	var map_rid: RID = nav.call("get_navigation_map_rid") as RID
+	_t.run_test("hole integrity: navigation map rid is valid", map_rid.is_valid())
+	if not map_rid.is_valid():
+		level.queue_free()
+		await get_tree().process_frame
+		return
+
+	var iteration_id := NavigationServer2D.map_get_iteration_id(map_rid)
+	if iteration_id <= 0:
+		await get_tree().process_frame
+		await get_tree().physics_frame
+		iteration_id = NavigationServer2D.map_get_iteration_id(map_rid)
+	_t.run_test("hole integrity: navigation map iteration is ready", iteration_id > 0)
+	if iteration_id <= 0:
+		level.queue_free()
+		await get_tree().process_frame
+		return
+
 	var centers_blocked := true
+	var tolerance := 4.0
 	for obstacle_variant in obstacles:
 		var obstacle := obstacle_variant as Rect2
 		if obstacle == Rect2():
 			continue
 		var center := obstacle.get_center()
-		if bool(nav.call("is_point_on_navigation_map", center, 4.0)):
+		var closest := NavigationServer2D.map_get_closest_point(map_rid, center)
+		if not _is_finite_vector2(closest):
+			centers_blocked = false
+			break
+		if center.distance_to(closest) <= tolerance:
 			centers_blocked = false
 			break
 
@@ -74,3 +97,7 @@ func _test_obstacle_centers_are_not_walkable_after_bake() -> void:
 
 	level.queue_free()
 	await get_tree().process_frame
+
+
+func _is_finite_vector2(value: Vector2) -> bool:
+	return is_finite(value.x) and is_finite(value.y)

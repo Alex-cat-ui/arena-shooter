@@ -1,0 +1,14 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+SCRIPT ERROR: Compile Error: Identifier not found: GameConfig
+          at: GDScript::reload (res://tests/test_level_stealth_checklist.gd:266)
+          GDScript backtrace (most recent call first):
+              [0] _init (res://.tmp_debug_checklist.gd:4)
+ERROR: Failed to load script "res://tests/test_level_stealth_checklist.gd" with error "Compilation failed".
+   at: load (modules/gdscript/gdscript.cpp:2907)
+   GDScript backtrace (most recent call first):
+       [0] _init (res://.tmp_debug_checklist.gd:4)
+ERR: run_gate_report missing

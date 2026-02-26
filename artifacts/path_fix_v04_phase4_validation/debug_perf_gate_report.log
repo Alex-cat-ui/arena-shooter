@@ -1,0 +1,226 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 100 -> 99)
+WARNING: [AIWatchdog] High repath rate: 8.1/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 99 -> 98)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 98 -> 97)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 97 -> 96)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 96 -> 95)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 95 -> 94)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 94 -> 93)
+WARNING: [AIWatchdog] High repath rate: 14.0/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 93 -> 92)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 92 -> 91)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 91 -> 90)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 90 -> 89)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 89 -> 88)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 88 -> 87)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 87 -> 86)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 86 -> 85)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 85 -> 84)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 84 -> 83)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 83 -> 82)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 82 -> 81)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 81 -> 80)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 80 -> 79)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 79 -> 78)
+WARNING: [AIWatchdog] High repath rate: 114.4/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 78 -> 77)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 77 -> 76)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 76 -> 75)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 75 -> 74)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 74 -> 73)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 73 -> 72)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 72 -> 71)
+WARNING: [AIWatchdog] High repath rate: 162.1/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 71 -> 70)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 70 -> 69)
+WARNING: [AIWatchdog] High repath rate: 157.2/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 69 -> 68)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 68 -> 67)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 67 -> 66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 66 -> 65)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 65 -> 64)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 64 -> 63)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 63 -> 62)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 62 -> 61)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 61 -> 60)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 60 -> 59)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 59 -> 58)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 58 -> 57)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 57 -> 56)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 56 -> 55)
+WARNING: [AIWatchdog] High repath rate: 178.6/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 55 -> 54)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 54 -> 53)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 53 -> 52)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 52 -> 51)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 51 -> 50)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 50 -> 49)
+WARNING: [AIWatchdog] High repath rate: 202.5/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+WARNING: [AIWatchdog] High repath rate: 194.1/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 49 -> 48)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 48 -> 47)
+WARNING: [AIWatchdog] High repath rate: 205.1/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 47 -> 46)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 46 -> 45)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 45 -> 44)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 44 -> 43)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 43 -> 42)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 42 -> 41)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 41 -> 40)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 40 -> 39)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 39 -> 38)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 38 -> 37)
+WARNING: [AIWatchdog] High repath rate: 209.9/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 37 -> 36)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 36 -> 35)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 35 -> 34)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 34 -> 33)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 33 -> 32)
+WARNING: [AIWatchdog] High repath rate: 205.0/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 32 -> 31)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 31 -> 30)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 30 -> 29)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 29 -> 28)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 28 -> 27)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 27 -> 26)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 26 -> 25)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 25 -> 24)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 24 -> 23)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 23 -> 22)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 22 -> 21)
+WARNING: [AIWatchdog] High repath rate: 207.7/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 21 -> 20)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 20 -> 19)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 19 -> 18)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 18 -> 17)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 17 -> 16)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 16 -> 15)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 15 -> 14)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 14 -> 13)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 13 -> 12)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 12 -> 11)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 11 -> 10)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 10 -> 9)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 9 -> 8)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 8 -> 7)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 7 -> 6)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 6 -> 5)
+WARNING: [AIWatchdog] High repath rate: 211.2/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 5 -> 4)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 4 -> 3)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 3 -> 2)
+WARNING: [AIWatchdog] High repath rate: 214.2/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 2 -> 1)
+WARNING: [AIWatchdog] High repath rate: 220.6/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+[CombatSystem] Player took 1 damage from contact_enemy_shotgun (HP: 1 -> 0)
+[CombatSystem] Player died!
+[StateManager] PLAYING -> GAME_OVER
+[GameOver] Ready
+WARNING: [AIWatchdog] High repath rate: 91.1/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+WARNING: [AIWatchdog] High repath rate: 32.7/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+WARNING: [AIWatchdog] High repath rate: 11.7/sec (threshold 8.0)
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _check_thresholds (res://src/systems/ai_watchdog.gd:213)
+         [1] _process (res://src/systems/ai_watchdog.gd:66)
+PERF_GATE_REPORT_JSON={"ai_ms_avg":1.09065871761662,"ai_ms_p95":3.661,"collision_repath_events_total":22277,"detour_candidates_evaluated_total":0,"detour_candidates_per_replan":0.0,"duration_sec":180.0,"enemy_count":12,"fixed_physics_frames":10800,"gate_reason":"threshold_failed","gate_status":"FAIL","geometry_walkable_false_positive_total":0,"hard_stall_events_total":185,"hard_stalls_per_min":61.6666666666667,"kpi_threshold_failures":["ai_ms_p95","replans_per_sec","hard_stalls_per_min","patrol_collision_repath_events_total","patrol_hard_stalls_per_min","patrol_zero_progress_windows_total","nav_path_obstacle_intersections_total"],"metrics_snapshot":{"ai_ms_p95":3.661,"ai_tick_samples_count":32768,"avg_ai_tick_ms":1.09065871761662,"collision_repath_events_total":22277,"detour_candidates_evaluated_total":0,"event_queue_length":0,"geometry_walkable_false_positive_total":0,"hard_stall_events_total":185,"nav_path_obstacle_intersections_total":10135,"patrol_collision_repath_events_total":9767,"patrol_hard_stall_events_total":175,"patrol_preavoid_events_total":3448,"patrol_route_rebuilds_total":47,"patrol_zero_progress_windows_total":1900,"preavoid_events_total":5747,"queue_warning_events_total":0,"replan_warning_events_total":17,"replans_per_sec":0.142126125282925,"replans_total":52969,"room_graph_fallback_when_navmesh_available_total":0,"tick_warning_events_total":0,"transitions_this_tick":0,"warning_events_total":17},"metrics_warmup_frames":240,"nav_path_obstacle_intersections_total":10135,"patrol_collision_repath_events_total":9767,"patrol_hard_stall_events_total":175,"patrol_hard_stalls_per_min":58.3333333333333,"patrol_preavoid_events_total":3448,"patrol_route_rebuilds_per_min":15.6666666666667,"patrol_route_rebuilds_total":47,"patrol_zero_progress_windows_total":1900,"preavoid_events_total":5747,"replans_per_enemy_per_sec":24.5226851851852,"replans_per_sec":294.272222222222,"replans_total":52969,"room_graph_fallback_when_navmesh_available_total":0,"seed":1337}

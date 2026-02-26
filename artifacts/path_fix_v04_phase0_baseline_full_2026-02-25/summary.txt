@@ -1,0 +1,56 @@
+# Phase0 baseline summary
+## test_ai_performance_gate
+26:WARNING: invalid_nav_build:obstacle_center_walkable center=(1000.0, 700.0) closest=(1000.0, 700.0) distance=0.000 obstacle=[P: (950.0, 650.0), S: (100.0, 100.0)]
+43:WARNING: [AIWatchdog] High repath rate: 15.6/sec (threshold 8.0)
+48:[PASS] performance gate: fixed benchmark config is exact
+49:[PASS] performance gate: derived formulas match contract
+50:[PASS] performance gate: fixed benchmark report verdict is PASS/ok
+51:[PASS] performance gate: threshold verdict is enforced
+52:[PASS] performance gate: collision_repath_events_total > 0 in forced collision stress
+53:[PASS] performance gate fixture: threshold failure rejects
+54:[PASS] performance gate fixture: reason threshold_failed
+55:[PASS] performance gate fixture: deterministic failure order includes expanded patrol KPI keys
+60:EXIT_CODE=0
+61:DURATION_SEC=219
+## test_level_stealth_checklist
+26:WARNING: invalid_nav_build:obstacle_center_walkable center=(1000.0, 700.0) closest=(1000.0, 700.0) distance=0.000 obstacle=[P: (950.0, 650.0), S: (100.0, 100.0)]
+31:[PASS] checklist: automatic checks pass on 3-zone fixture
+32:[PASS] checklist: patrol reachability passes
+33:[PASS] checklist: shadow pocket availability passes
+34:[PASS] checklist: shadow escape availability passes
+35:[PASS] checklist: route variety passes
+36:[PASS] checklist: patrol obstacle avoidance passes
+37:[PASS] checklist: chokepoint width safety passes
+38:[PASS] checklist: boundary scan support passes
+52:[PASS] checklist: manual artifact exists
+53:[PASS] checklist fixture: missing artifact fails
+54:[PASS] checklist fixture: reason manual_artifact_missing
+55:[PASS] checklist fixture: automatic checks still pass
+60:EXIT_CODE=0
+61:DURATION_SEC=4
+## test_stealth_nav_path_segments_avoid_props
+26:WARNING: invalid_nav_build:obstacle_center_walkable center=(1000.0, 700.0) closest=(1000.0, 700.0) distance=0.000 obstacle=[P: (950.0, 650.0), S: (100.0, 100.0)]
+31:[PASS] segments avoid props: navigation service exists
+32:[PASS] segments avoid props: spawns root exists
+33:[PASS] segments avoid props: required spawn chain exists
+34:[PASS] segments avoid props: spawn chain plans are ok
+35:[PASS] segments avoid props: path segments do not intersect props
+40:EXIT_CODE=0
+41:DURATION_SEC=3
+## test_stealth_nav_polygon_hole_integrity
+26:WARNING: invalid_nav_build:obstacle_center_walkable center=(1000.0, 700.0) closest=(1000.0, 700.0) distance=0.000 obstacle=[P: (950.0, 650.0), S: (100.0, 100.0)]
+31:[PASS] hole integrity: navigation service exists
+32:[PASS] hole integrity: obstacle source is non-empty
+33:[PASS] hole integrity: navigation build remains valid
+34:[PASS] hole integrity: every obstacle center is non-walkable
+39:EXIT_CODE=0
+40:DURATION_SEC=3
+## test_patrol_navigation_kpi_gate
+11:[PASS] patrol navigation gate: returns PASS/ok
+12:[PASS] patrol navigation gate: includes four scenario reports
+13:[PASS] patrol navigation gate: report has expanded patrol KPI fields
+14:[PASS] patrol navigation gate fixture: threshold failure rejects
+15:[PASS] patrol navigation gate fixture: reason threshold_failed
+16:[PASS] patrol navigation gate fixture: deterministic failures include min/max patrol KPI keys
+21:EXIT_CODE=0
+22:DURATION_SEC=19

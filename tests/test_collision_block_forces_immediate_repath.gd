@@ -80,6 +80,12 @@ func _test_non_door_collision_forces_immediate_repath() -> void:
 
 	var pursuit = ENEMY_PURSUIT_SYSTEM_SCRIPT.new(enemy, null, 2.4)
 	pursuit.configure_navigation(nav, 0)
+	var collision_repath_before := 0
+	if AIWatchdog and AIWatchdog.has_method("debug_reset_metrics_for_tests"):
+		AIWatchdog.call("debug_reset_metrics_for_tests")
+	if AIWatchdog and AIWatchdog.has_method("get_snapshot"):
+		var before_snapshot := AIWatchdog.call("get_snapshot") as Dictionary
+		collision_repath_before = int(before_snapshot.get("collision_repath_events_total", 0))
 
 	await get_tree().process_frame
 	await get_tree().physics_frame
@@ -125,6 +131,14 @@ func _test_non_door_collision_forces_immediate_repath() -> void:
 			and String(collision_snapshot.get("collision_reason", "")) == "collision_blocked"
 			and int(collision_snapshot.get("collision_index", -1)) >= 0
 	)
+	var collision_repath_after := collision_repath_before
+	if AIWatchdog and AIWatchdog.has_method("get_snapshot"):
+		var after_snapshot := AIWatchdog.call("get_snapshot") as Dictionary
+		collision_repath_after = int(after_snapshot.get("collision_repath_events_total", collision_repath_before))
+	_t.run_test(
+		"non-door collision increments collision_repath_events_total",
+		collision_seen and collision_repath_after > collision_repath_before
+	)
 
 	root.queue_free()
 	await get_tree().physics_frame
@@ -142,6 +156,12 @@ func _test_patrol_execute_intent_collision_forces_immediate_repath() -> void:
 	pursuit.configure_navigation(nav, 0)
 	var patrol_target := Vector2(0.0, -120.0)
 	pursuit.set("_patrol", FakePatrolDecision.new(patrol_target, 1.0))
+	var patrol_collision_repath_before := 0
+	if AIWatchdog and AIWatchdog.has_method("debug_reset_metrics_for_tests"):
+		AIWatchdog.call("debug_reset_metrics_for_tests")
+	if AIWatchdog and AIWatchdog.has_method("get_snapshot"):
+		var before_snapshot := AIWatchdog.call("get_snapshot") as Dictionary
+		patrol_collision_repath_before = int(before_snapshot.get("patrol_collision_repath_events_total", 0))
 
 	await get_tree().process_frame
 	await get_tree().physics_frame
@@ -177,6 +197,14 @@ func _test_patrol_execute_intent_collision_forces_immediate_repath() -> void:
 			and String(collision_snapshot.get("collision_kind", "")) == "non_door"
 			and bool(collision_snapshot.get("collision_forced_repath", false))
 			and String(collision_snapshot.get("collision_reason", "")) == "collision_blocked"
+	)
+	var patrol_collision_repath_after := patrol_collision_repath_before
+	if AIWatchdog and AIWatchdog.has_method("get_snapshot"):
+		var after_snapshot := AIWatchdog.call("get_snapshot") as Dictionary
+		patrol_collision_repath_after = int(after_snapshot.get("patrol_collision_repath_events_total", patrol_collision_repath_before))
+	_t.run_test(
+		"patrol intent: non-door collision increments patrol_collision_repath_events_total",
+		collision_seen and patrol_collision_repath_after > patrol_collision_repath_before
 	)
 
 	root.queue_free()

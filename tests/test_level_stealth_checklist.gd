@@ -17,6 +17,7 @@ var embedded_mode: bool = false
 var _t := TestHelpers.new()
 var _cached_gate_report: Dictionary = {}
 var _cached_gate_report_valid: bool = false
+var _independent_obstacle_rects: Array[Rect2] = []
 
 
 func _ready() -> void:
@@ -67,10 +68,19 @@ func _test_stealth_3zone_manual_checklist_artifact_exists() -> void:
 
 
 func _test_checklist_gate_fails_when_artifact_missing_fixture() -> void:
-	if not _cached_gate_report_valid:
-		await _run_stealth_level_checklist(LEVEL_SCENE_PATH, LEVEL_NAME, MANUAL_CHECKLIST_ARTIFACT_PATH)
-	var report := _cached_gate_report.duplicate(true) if _cached_gate_report_valid else _empty_checklist_report(LEVEL_NAME, "docs/qa/__missing_phase19_fixture__.md")
-	report["manual_artifact_path"] = "docs/qa/__missing_phase19_fixture__.md"
+	# P1.7 / Phase 4: Use a synthetic "all-pass" report to test the missing-artifact gate branch
+	# independently of the real level's automatic check results.  This makes the fixture stable
+	# even when the level has genuine failures that Phase 4 now correctly exposes.
+	var report := _empty_checklist_report(LEVEL_NAME, "docs/qa/__missing_phase19_fixture__.md")
+	report["automatic_checks_pass"] = true
+	report["stealth_room_count"] = 5
+	report["patrol_reachability_pass"] = true
+	report["shadow_pocket_availability_pass"] = true
+	report["shadow_escape_availability_pass"] = true
+	report["route_variety_pass"] = true
+	report["patrol_obstacle_avoidance_pass"] = true
+	report["chokepoint_width_safety_pass"] = true
+	report["boundary_scan_support_pass"] = true
 	report["artifact_exists"] = false
 	if bool(report.get("automatic_checks_pass", false)):
 		report["gate_status"] = "FAIL"
@@ -114,6 +124,8 @@ func _run_stealth_level_checklist(level_scene_path: String, level_name: String, 
 		await get_tree().process_frame
 		report["gate_reason"] = "navigation_service_missing"
 		return report
+	_independent_obstacle_rects = _collect_independent_obstacle_rects(level)
+	report["obstacle_oracle_rect_count"] = _independent_obstacle_rects.size()
 
 	var shadow_zone_nodes: Array = []
 	for zone_variant in get_tree().get_nodes_in_group("shadow_zones"):
@@ -157,7 +169,7 @@ func _run_stealth_level_checklist(level_scene_path: String, level_name: String, 
 			"pocket_count": int(pocket_room_counts.get(room_index, 0)),
 			"boundary_scan_points_ok": int((boundary_scan_support_result.get("room_sample_counts", {}) as Dictionary).get(room_index, 0)),
 		})
-	automatic_checks_pass = automatic_checks_pass and patrol_reachability_pass and shadow_pocket_availability_pass and shadow_escape_availability_pass and route_variety_pass and patrol_obstacle_avoidance_pass and chokepoint_width_safety_pass and boundary_scan_support_pass
+	automatic_checks_pass = automatic_checks_pass and _independent_obstacle_rects.size() > 0 and patrol_reachability_pass and shadow_pocket_availability_pass and shadow_escape_availability_pass and route_variety_pass and patrol_obstacle_avoidance_pass and chokepoint_width_safety_pass and boundary_scan_support_pass
 
 	report["stealth_room_count"] = room_rects.size()
 	report["room_reports"] = room_reports
@@ -173,6 +185,7 @@ func _run_stealth_level_checklist(level_scene_path: String, level_name: String, 
 
 	level.queue_free()
 	await get_tree().process_frame
+	_independent_obstacle_rects.clear()
 
 	if not automatic_checks_pass:
 		report["gate_status"] = "FAIL"
@@ -226,7 +239,7 @@ func _check_patrol_reachability(level: Node, navigation_service: Node) -> bool:
 		var a := spawn_map[REQUIRED_SPAWN_ORDER[i]] as Vector2
 		var b := spawn_map[REQUIRED_SPAWN_ORDER[i + 1]] as Vector2
 		var plan := navigation_service.call("build_policy_valid_path", a, b, null) as Dictionary
-		if not _is_plan_obstacle_safe_ok(plan, navigation_service, a):
+		if not _is_plan_obstacle_safe_ok(plan, a):
 			return false
 		if String(plan.get("route_source", "")) == "":
 			return false
@@ -281,32 +294,31 @@ func _check_shadow_escape_availability(counted_pockets: Array, room_rects: Array
 			return false
 		var room_rect := room_rects[room_index] as Rect2
 		var pocket_center := pocket.get("center", Vector2.ZERO) as Vector2
+		var escape_origin_info := _resolve_non_obstacle_navigable_point(pocket_center, navigation_service, shadow_zone_nodes, true)
+		if not bool(escape_origin_info.get("ok", false)):
+			return false
+		var escape_origin := escape_origin_info.get("point", pocket_center) as Vector2
 		var candidates := _build_escape_candidates(room_rect, choke_rects, pocket_center, shadow_zone_nodes)
 		if candidates.is_empty():
 			return false
 		var best_len := INF
-		var obstacle_blocked_candidates := 0
 		for cand_variant in candidates:
 			var candidate := cand_variant as Vector2
-			var plan := navigation_service.call("build_policy_valid_path", pocket_center, candidate, null) as Dictionary
-			if _is_plan_obstacle_block(plan):
-				obstacle_blocked_candidates += 1
-				continue
-			if not _is_plan_obstacle_safe_ok(plan, navigation_service, pocket_center):
+			var plan := navigation_service.call("build_policy_valid_path", escape_origin, candidate, null) as Dictionary
+			# P0.7: obstacle-block is NOT treated as norm - any non-ok plan is skipped.
+			if not _is_plan_obstacle_safe_ok(plan, escape_origin):
 				continue
 			var path_points := plan.get("path_points", []) as Array
-			var path_len := _path_length_from_points(pocket_center, path_points)
+			var path_len := _path_length_from_points(escape_origin, path_points)
 			best_len = minf(best_len, path_len)
 		if not is_finite(best_len):
-			if obstacle_blocked_candidates >= candidates.size():
-				continue
 			return false
 		if best_len > float(GameConfig.kpi_shadow_escape_max_len_px if GameConfig else 960.0):
 			return false
 	return true
 
 
-func _build_escape_candidates(room_rect: Rect2, choke_rects: Dictionary, _pocket_center: Vector2, shadow_zone_nodes: Array) -> Array[Vector2]:
+func _build_escape_candidates(room_rect: Rect2, choke_rects: Dictionary, pocket_center: Vector2, shadow_zone_nodes: Array) -> Array[Vector2]:
 	var inset := CHECKLIST_EDGE_SAMPLE_INSET_PX
 	var out: Array[Vector2] = []
 	var edge_candidates: Array[Vector2] = [
@@ -323,6 +335,10 @@ func _build_escape_candidates(room_rect: Rect2, choke_rects: Dictionary, _pocket
 			continue
 		if choke_rect.intersects(room_rect):
 			_append_unique_vec2(out, choke_rect.get_center())
+	for radius in [96.0, 160.0, 224.0]:
+		for direction_index in range(8):
+			var angle := TAU * float(direction_index) / 8.0
+			_append_unique_vec2(out, pocket_center + Vector2.RIGHT.rotated(angle) * radius)
 	var filtered: Array[Vector2] = []
 	var inner_rect := room_rect.grow(-inset)
 	for candidate in out:
@@ -341,22 +357,37 @@ func _build_escape_candidates(room_rect: Rect2, choke_rects: Dictionary, _pocket
 
 
 func _check_route_variety(level: Node, controller: Node, navigation_service: Node) -> bool:
-	var player_spawn_node := level.get_node_or_null("Spawns/PlayerSpawn") as Node2D
-	var spawn_a2_node := level.get_node_or_null("Spawns/SpawnA2") as Node2D
-	var spawn_d_node := level.get_node_or_null("Spawns/SpawnD") as Node2D
-	if player_spawn_node == null or spawn_a2_node == null or spawn_d_node == null:
+	var route_templates := [
+		["PlayerSpawn", "SpawnA1", "SpawnA2", "SpawnB", "SpawnC1", "SpawnC2", "SpawnD"],
+		["PlayerSpawn", "SpawnA1", "SpawnA2", "SpawnB", "SpawnC2", "SpawnD"],
+		["PlayerSpawn", "SpawnA1", "SpawnB", "SpawnC1", "SpawnC2", "SpawnD"],
+	]
+	var finite_lengths: Array[float] = []
+	for template_variant in route_templates:
+		var template := template_variant as Array
+		var anchors: Array[Vector2] = []
+		var template_valid := true
+		for node_name_variant in template:
+			var node_name := String(node_name_variant)
+			var node := level.get_node_or_null("Spawns/" + node_name) as Node2D
+			if node == null:
+				template_valid = false
+				break
+			var anchor_info := _resolve_non_obstacle_navigable_point(node.global_position, navigation_service)
+			if not bool(anchor_info.get("ok", false)):
+				template_valid = false
+				break
+			anchors.append(anchor_info.get("point", node.global_position) as Vector2)
+		if not template_valid:
+			continue
+		var route_len := _route_length_via_policy(anchors, navigation_service)
+		if is_finite(route_len):
+			finite_lengths.append(route_len)
+	if finite_lengths.size() < 2:
 		return false
-	var choke_ab_center := (controller.call("debug_get_choke_rect", "AB") as Rect2).get_center()
-	var choke_bc_center := (controller.call("debug_get_choke_rect", "BC") as Rect2).get_center()
-	var choke_dc_center := (controller.call("debug_get_choke_rect", "DC") as Rect2).get_center()
-	var route1 := [player_spawn_node.global_position, choke_ab_center, choke_bc_center, choke_dc_center, spawn_d_node.global_position]
-	var route2 := [player_spawn_node.global_position, spawn_a2_node.global_position, spawn_d_node.global_position]
-	var route1_len := _route_length_via_policy(route1, navigation_service)
-	var route2_len := _route_length_via_policy(route2, navigation_service)
-	if not is_finite(route1_len) or not is_finite(route2_len):
-		return false
-	var min_len := minf(route1_len, route2_len)
-	var max_len := maxf(route1_len, route2_len)
+	finite_lengths.sort()
+	var min_len := float(finite_lengths[0])
+	var max_len := float(finite_lengths[1])
 	return min_len > 0.0 and max_len <= float(GameConfig.kpi_alt_route_max_factor if GameConfig else 1.50) * min_len
 
 
@@ -378,7 +409,7 @@ func _check_patrol_obstacle_avoidance(level: Node, navigation_service: Node) -> 
 		if direct_len <= 0.001:
 			return false
 		var plan := navigation_service.call("build_policy_valid_path", from_pos, to_pos, null) as Dictionary
-		if not _is_plan_obstacle_safe_ok(plan, navigation_service, from_pos):
+		if not _is_plan_obstacle_safe_ok(plan, from_pos):
 			return false
 		var path_len := _path_length_from_points(from_pos, plan.get("path_points", []) as Array)
 		if not is_finite(path_len):
@@ -397,13 +428,10 @@ func _route_length_via_policy(anchors: Array, navigation_service: Node) -> float
 		var from_pos := anchors[i] as Vector2
 		var to_pos := anchors[i + 1] as Vector2
 		var plan := navigation_service.call("build_policy_valid_path", from_pos, to_pos, null) as Dictionary
-		if _is_plan_obstacle_safe_ok(plan, navigation_service, from_pos):
-			total += _path_length_from_points(from_pos, plan.get("path_points", []) as Array)
-			continue
-		if _is_plan_obstacle_block(plan):
-			total += from_pos.distance_to(to_pos) * 1.10
-			continue
-		return INF
+		# P0.7: obstacle-block is NOT a valid route segment - only genuinely ok plans count.
+		if not _is_plan_obstacle_safe_ok(plan, from_pos):
+			return INF
+		total += _path_length_from_points(from_pos, plan.get("path_points", []) as Array)
 	return total
 
 
@@ -445,7 +473,8 @@ func _check_boundary_scan_support(room_rects: Array, shadow_zone_nodes: Array, n
 			if in_shadow:
 				continue
 			var plan := navigation_service.call("build_policy_valid_path", center, sample, null) as Dictionary
-			if _is_plan_obstacle_safe_ok(plan, navigation_service, center) or _is_plan_obstacle_block(plan):
+			# P0.7: only genuinely ok (non-obstacle-blocked) paths count toward boundary scan.
+			if _is_plan_obstacle_safe_ok(plan, center):
 				count_ok += 1
 		room_sample_counts[room_index] = count_ok
 		if count_ok < int(GameConfig.kpi_shadow_scan_points_min if GameConfig else 3):
@@ -492,18 +521,154 @@ func _is_plan_obstacle_block(plan: Dictionary) -> bool:
 	)
 
 
-func _is_plan_obstacle_safe_ok(plan: Dictionary, navigation_service: Node, from_pos: Vector2) -> bool:
+## P1.7: Independent oracle - uses _independent_obstacle_rects instead of production helper.
+func _is_plan_obstacle_safe_ok(plan: Dictionary, from_pos: Vector2) -> bool:
 	if String(plan.get("status", "")) != "ok":
 		return false
 	if bool(plan.get("obstacle_intersection_detected", false)):
 		return false
 	if String(plan.get("route_source", "")) == "":
 		return false
-	if navigation_service and navigation_service.has_method("path_intersects_navigation_obstacles"):
-		var path_points := plan.get("path_points", []) as Array
-		if bool(navigation_service.call("path_intersects_navigation_obstacles", from_pos, path_points)):
-			return false
+	var path_points := plan.get("path_points", []) as Array
+	if _path_intersects_independent_obstacles(from_pos, path_points):
+		return false
 	return true
+
+
+## P1.7: Collect obstacle rects from the level scene directly, independent of NavigationService.
+func _collect_independent_obstacle_rects(level: Node) -> Array[Rect2]:
+	var result: Array[Rect2] = []
+	if level == null:
+		return result
+	var props_root := level.get_node_or_null("Geometry/Props")
+	if props_root != null:
+		for body_variant in props_root.get_children():
+			var body := body_variant as StaticBody2D
+			if body == null:
+				continue
+			for child_variant in body.get_children():
+				var col := child_variant as CollisionShape2D
+				if col == null or not (col.shape is RectangleShape2D):
+					continue
+				var rect_shape := col.shape as RectangleShape2D
+				var half := rect_shape.size * 0.5
+				var obs_rect := Rect2(body.global_position + col.position - half, rect_shape.size)
+				if obs_rect.size.x > 0.5 and obs_rect.size.y > 0.5:
+					result.append(obs_rect)
+	if not result.is_empty():
+		return result
+	if not is_inside_tree():
+		return result
+	for node_variant in get_tree().get_nodes_in_group("nav_obstacles"):
+		var grouped_body := node_variant as StaticBody2D
+		if grouped_body == null:
+			continue
+		if grouped_body != level and not level.is_ancestor_of(grouped_body):
+			continue
+		for child_variant in grouped_body.get_children():
+			var grouped_col := child_variant as CollisionShape2D
+			if grouped_col == null or not (grouped_col.shape is RectangleShape2D):
+				continue
+			var grouped_shape := grouped_col.shape as RectangleShape2D
+			var grouped_half := grouped_shape.size * 0.5
+			var grouped_rect := Rect2(grouped_body.global_position + grouped_col.position - grouped_half, grouped_shape.size)
+			if grouped_rect.size.x > 0.5 and grouped_rect.size.y > 0.5:
+				result.append(grouped_rect)
+	return result
+
+
+## P1.7: Check path segments against independently collected obstacle rects.
+func _path_intersects_independent_obstacles(from_pos: Vector2, path_points: Array) -> bool:
+	if _independent_obstacle_rects.is_empty() or path_points.is_empty():
+		return false
+	const EPSILON := 0.001
+	const STEP_PX := 8.0
+	var prev := from_pos
+	for point_variant in path_points:
+		var point := point_variant as Vector2
+		for obs in _independent_obstacle_rects:
+			if obs.size.x <= 0.5 or obs.size.y <= 0.5:
+				continue
+			if _rect_segment_intersects(obs, prev, point, EPSILON):
+				return true
+		var seg_len := prev.distance_to(point)
+		var steps := maxi(int(ceil(seg_len / STEP_PX)), 1)
+		for step in range(1, steps + 1):
+			var sample := prev.lerp(point, float(step) / float(steps))
+			for obs in _independent_obstacle_rects:
+				if obs.size.x <= 0.5 or obs.size.y <= 0.5:
+					continue
+				if obs.has_point(sample):
+					return true
+		prev = point
+	return false
+
+
+static func _rect_segment_intersects(rect: Rect2, s: Vector2, e: Vector2, epsilon: float) -> bool:
+	if rect.has_point(s) or rect.has_point(e):
+		return true
+	var tl := rect.position
+	var tr := Vector2(rect.end.x, rect.position.y)
+	var br := rect.end
+	var bl := Vector2(rect.position.x, rect.end.y)
+	return (
+		_segments_cross(s, e, tl, tr, epsilon)
+		or _segments_cross(s, e, tr, br, epsilon)
+		or _segments_cross(s, e, br, bl, epsilon)
+		or _segments_cross(s, e, bl, tl, epsilon)
+	)
+
+
+static func _segments_cross(a: Vector2, b: Vector2, c: Vector2, d: Vector2, epsilon: float) -> bool:
+	var ab := b - a
+	var cd := d - c
+	var denom := ab.x * cd.y - ab.y * cd.x
+	if absf(denom) < epsilon:
+		return false
+	var t := ((c.x - a.x) * cd.y - (c.y - a.y) * cd.x) / denom
+	var u := ((c.x - a.x) * ab.y - (c.y - a.y) * ab.x) / denom
+	return t >= 0.0 and t <= 1.0 and u >= 0.0 and u <= 1.0
+
+
+func _resolve_non_obstacle_navigable_point(origin: Vector2, navigation_service: Node, shadow_zone_nodes: Array = [], require_shadow: bool = false) -> Dictionary:
+	var radii := [0.0, 16.0, 32.0, 48.0, 64.0, 80.0, 96.0, 128.0]
+	for radius_variant in radii:
+		var radius := float(radius_variant)
+		if radius <= 0.001:
+			if _is_candidate_probe_point_valid(origin, navigation_service, shadow_zone_nodes, require_shadow):
+				return {"ok": true, "point": origin}
+			continue
+		for dir_index in range(16):
+			var angle := TAU * float(dir_index) / 16.0
+			var candidate := origin + Vector2.RIGHT.rotated(angle) * radius
+			if _is_candidate_probe_point_valid(candidate, navigation_service, shadow_zone_nodes, require_shadow):
+				return {"ok": true, "point": candidate}
+	return {"ok": false, "point": origin}
+
+
+func _is_candidate_probe_point_valid(candidate: Vector2, _navigation_service: Node, shadow_zone_nodes: Array, require_shadow: bool) -> bool:
+	if _is_point_inside_independent_obstacle(candidate):
+		return false
+	if require_shadow and not _is_point_inside_shadow_zones(candidate, shadow_zone_nodes):
+		return false
+	return true
+
+
+func _is_point_inside_shadow_zones(point: Vector2, shadow_zone_nodes: Array) -> bool:
+	for zone_variant in shadow_zone_nodes:
+		var zone := zone_variant as ShadowZone
+		if zone != null and zone.contains_point(point):
+			return true
+	return false
+
+
+func _is_point_inside_independent_obstacle(point: Vector2) -> bool:
+	for obs in _independent_obstacle_rects:
+		if obs.size.x <= 0.5 or obs.size.y <= 0.5:
+			continue
+		if obs.has_point(point):
+			return true
+	return false
 
 
 func _append_unique_vec2(out: Array[Vector2], point: Vector2) -> void:

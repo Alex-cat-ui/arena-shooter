@@ -1,0 +1,4 @@
+res://tests/test_patrol_obstacle_avoidance_wall.tscn EXIT:0
+res://tests/test_patrol_obstacle_avoidance_props.tscn EXIT:0
+res://tests/test_stealth_nav_path_segments_avoid_props.tscn EXIT:0
+res://tests/test_level_stealth_checklist.tscn EXIT:1

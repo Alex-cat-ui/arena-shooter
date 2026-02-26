@@ -1444,6 +1444,7 @@ func _test(name: String, test_func: Callable) -> void:
 
 func _run_embedded_scene_suite(name: String, scene_path: String) -> void:
 	_tests_run += 1
+	var guard_baseline := _capture_runtime_guard_baseline()
 	if not _scene_exists(scene_path):
 		print("[FAIL] %s (scene missing: %s)" % [name, scene_path])
 		return
@@ -1470,14 +1471,17 @@ func _run_embedded_scene_suite(name: String, scene_path: String) -> void:
 	var result_variant: Variant = await node.run_suite()
 	var result := result_variant as Dictionary
 	var ok := bool(result.get("ok", false))
-	if ok:
+	node.queue_free()
+	await get_tree().process_frame
+	var guard_ok := _runtime_guard_passes(guard_baseline, name)
+	if ok and guard_ok:
 		_tests_passed += 1
 		print("[PASS] %s (%d/%d)" % [name, int(result.get("passed", 0)), int(result.get("run", 0))])
 	else:
-		print("[FAIL] %s (%d/%d)" % [name, int(result.get("passed", 0)), int(result.get("run", 0))])
-
-	node.queue_free()
-	await get_tree().process_frame
+		if ok and not guard_ok:
+			print("[FAIL] %s (%d/%d) [runtime guard]" % [name, int(result.get("passed", 0)), int(result.get("run", 0))])
+		else:
+			print("[FAIL] %s (%d/%d)" % [name, int(result.get("passed", 0)), int(result.get("run", 0))])
 
 
 func _has_property(obj: Object, property_name: String) -> bool:
@@ -1490,3 +1494,33 @@ func _has_property(obj: Object, property_name: String) -> bool:
 
 func _scene_exists(scene_path: String) -> bool:
 	return ResourceLoader.exists(scene_path, "PackedScene")
+
+
+func _capture_runtime_guard_baseline() -> Dictionary:
+	return {
+		"orphan_nodes": int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT)),
+		"watchdog_warnings": _watchdog_warning_count(),
+	}
+
+
+func _runtime_guard_passes(baseline: Dictionary, suite_name: String) -> bool:
+	var orphan_before := int(baseline.get("orphan_nodes", -1))
+	var warnings_before := int(baseline.get("watchdog_warnings", -1))
+	var orphan_now := int(Performance.get_monitor(Performance.OBJECT_ORPHAN_NODE_COUNT))
+	var warnings_now := _watchdog_warning_count()
+	var orphan_ok := orphan_before < 0 or orphan_now <= orphan_before
+	var warning_ok := warnings_before < 0 or warnings_now <= warnings_before
+	if not orphan_ok:
+		print("[FAIL] %s runtime guard: orphan node leak (%d -> %d)" % [suite_name, orphan_before, orphan_now])
+	if not warning_ok:
+		print("[FAIL] %s runtime guard: AIWatchdog warnings (%d -> %d)" % [suite_name, warnings_before, warnings_now])
+	return orphan_ok and warning_ok
+
+
+func _watchdog_warning_count() -> int:
+	if AIWatchdog == null or not AIWatchdog.has_method("get_snapshot"):
+		return -1
+	var snap := AIWatchdog.get_snapshot() as Dictionary
+	if not snap.has("warning_events_total"):
+		return -1
+	return int(snap.get("warning_events_total", 0))

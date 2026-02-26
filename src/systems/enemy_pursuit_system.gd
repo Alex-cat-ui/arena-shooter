@@ -42,6 +42,18 @@ const PATH_PLAN_STATUS_UNREACHABLE_POLICY := "unreachable_policy"
 const PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY := "unreachable_geometry"
 const PREAVOID_SIDE_HOLD_SEC := 0.18
 const PREAVOID_FAILSAFE_TICKS := 6
+const ADAPTIVE_REPATH_COMBAT_SEC := 0.60
+const ADAPTIVE_REPATH_ALERT_SEC := 1.00
+const ADAPTIVE_REPATH_PATROL_SEC := 1.80
+const ADAPTIVE_REPATH_MAX_SEC := 2.40
+const ADAPTIVE_REPATH_POLICY_BACKOFF_STEP_SEC := 0.20
+const ADAPTIVE_REPATH_POLICY_BACKOFF_STEPS_MAX := 3
+const ADAPTIVE_REPATH_HARD_STALL_MIN_SEC := 0.75
+const ADAPTIVE_REPATH_COLLISION_WORLD_MIN_SEC := 0.35
+const ADAPTIVE_REPATH_PLAYER_CONTACT_MIN_SEC := 0.90
+const ADAPTIVE_REPATH_TARGET_SHIFT_PX := 28.0
+const PLAYER_CONTACT_REACHED_PX := 32.0
+const COLLISION_REPATH_COOLDOWN_SEC := 0.22
 
 var owner: CharacterBody2D = null
 var sprite: Sprite2D = null
@@ -141,6 +153,7 @@ var preavoid_last_forced_repath: bool = false
 var _preavoid_side_lock: String = "none"
 var _preavoid_side_lock_timer: float = 0.0
 var _preavoid_fail_ticks: int = 0
+var _collision_repath_cooldown_left: float = 0.0
 
 
 func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -> void:
@@ -261,6 +274,7 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_preavoid_side_lock = "none"
 	_preavoid_side_lock_timer = 0.0
 	_preavoid_fail_ticks = 0
+	_collision_repath_cooldown_left = 0.0
 	_blocked_point_repeat_bucket = Vector2i.ZERO
 	_blocked_point_repeat_bucket_valid = false
 	_blocked_point_repeat_count = 0
@@ -315,6 +329,7 @@ func _is_same_or_adjacent_room(room_a: int, room_b: int) -> bool:
 
 func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Dictionary:
 	var normalized_delta := _normalize_nonnegative_delta(delta)
+	_collision_repath_cooldown_left = maxf(0.0, _collision_repath_cooldown_left - normalized_delta)
 	_cost_profile = _build_nav_cost_profile(context)
 	var request_fire := false
 	var intent_type := _normalize_execute_intent_type(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
@@ -740,6 +755,79 @@ func _update_blocked_point_repeat_tracker() -> void:
 	_repath_recovery_repeat_count = _blocked_point_repeat_count
 
 
+func _apply_blocked_point_repeat_feedback(movement_target: Vector2) -> void:
+	if not (_path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY):
+		return
+	_update_blocked_point_repeat_tracker()
+	var repeat_threshold := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
+	if not _is_repath_recovery_search_intent(_last_intent_type):
+		return
+	if _blocked_point_repeat_count < repeat_threshold or not _last_path_plan_blocked_point_valid:
+		return
+	var repeat_count_for_feedback := _blocked_point_repeat_count
+	_set_repath_recovery_feedback(
+		"blocked_point_repeat",
+		movement_target,
+		true,
+		_last_path_plan_blocked_point,
+		true,
+		repeat_count_for_feedback
+	)
+	_blocked_point_repeat_bucket = Vector2i.ZERO
+	_blocked_point_repeat_bucket_valid = false
+	_blocked_point_repeat_count = 0
+
+
+func _adaptive_base_repath_interval_sec(runtime_context: Dictionary, repath_interval_override_sec: float) -> float:
+	var base_interval := repath_interval_override_sec
+	if base_interval <= 0.0:
+		var alert_level := int(runtime_context.get("alert_level", ENEMY_ALERT_LEVELS_SCRIPT.CALM))
+		var combat_lock := bool(runtime_context.get("combat_lock", false))
+		if _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL:
+			base_interval = ADAPTIVE_REPATH_PATROL_SEC
+		elif combat_lock or alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.COMBAT:
+			base_interval = ADAPTIVE_REPATH_COMBAT_SEC
+		elif (
+			alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.ALERT
+			or _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+			or _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
+			or _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SHADOW_BOUNDARY_SCAN
+		):
+			base_interval = ADAPTIVE_REPATH_ALERT_SEC
+		else:
+			base_interval = ADAPTIVE_REPATH_PATROL_SEC
+	return clampf(base_interval, ADAPTIVE_REPATH_COMBAT_SEC, ADAPTIVE_REPATH_MAX_SEC)
+
+
+func _adaptive_repath_interval_sec(runtime_context: Dictionary, base_interval_sec: float, reason: String) -> float:
+	var interval := _adaptive_base_repath_interval_sec(runtime_context, base_interval_sec)
+	match reason:
+		"policy_blocked", "path_unavailable", "path_intersects_obstacle":
+			var repeat_steps := clampi(_blocked_point_repeat_count - 1, 0, ADAPTIVE_REPATH_POLICY_BACKOFF_STEPS_MAX)
+			interval += float(repeat_steps) * ADAPTIVE_REPATH_POLICY_BACKOFF_STEP_SEC
+		"hard_stall":
+			interval = maxf(interval, ADAPTIVE_REPATH_HARD_STALL_MIN_SEC)
+		"collision_blocked":
+			interval = maxf(interval, ADAPTIVE_REPATH_COLLISION_WORLD_MIN_SEC)
+		"player_contact":
+			interval = maxf(interval, ADAPTIVE_REPATH_PLAYER_CONTACT_MIN_SEC)
+		_:
+			pass
+	return clampf(interval, ADAPTIVE_REPATH_COMBAT_SEC, ADAPTIVE_REPATH_MAX_SEC)
+
+
+func _schedule_next_repath(runtime_context: Dictionary, base_interval_sec: float, reason: String) -> void:
+	_repath_timer = _adaptive_repath_interval_sec(runtime_context, base_interval_sec, reason)
+
+
+func _movement_target_reached_px(movement_target: Vector2, runtime_context: Dictionary) -> float:
+	var base := _pursuit_cfg_float("waypoint_reached_px", 12.0)
+	var player_pos := _context_vec2_or_zero(runtime_context, "player_pos")
+	if _is_finite_vector2(player_pos) and movement_target.distance_to(player_pos) <= 4.0:
+		return maxf(base, PLAYER_CONTACT_REACHED_PX)
+	return base
+
+
 func _execute_move_to_target(
 	delta: float,
 	target: Vector2,
@@ -753,37 +841,26 @@ func _execute_move_to_target(
 		_mark_missing_move_target(delta)
 		return false
 	var movement_target := target
-	if not _active_move_target_valid or _active_move_target.distance_to(movement_target) > 0.5:
+	var target_switched := not _active_move_target_valid or _active_move_target.distance_to(movement_target) > 0.5
+	if target_switched:
 		_reset_stall_monitor()
+	if not _active_move_target_valid or _active_move_target.distance_to(movement_target) > ADAPTIVE_REPATH_TARGET_SHIFT_PX:
+		_repath_timer = 0.0
 	_active_move_target = movement_target
 	_active_move_target_valid = true
-	var repath_interval := repath_interval_override_sec
-	if repath_interval <= 0.0:
-		repath_interval = _pursuit_cfg_float("path_repath_interval_sec", PATH_REPATH_INTERVAL_SEC)
-	_repath_timer -= delta
-	if _repath_timer <= 0.0 or _path_policy_blocked:
-		_repath_timer = repath_interval
+	var base_repath_interval := _adaptive_base_repath_interval_sec(runtime_context, repath_interval_override_sec)
+	var target_reached_px := _movement_target_reached_px(movement_target, runtime_context)
+	_repath_timer = maxf(0.0, _repath_timer - maxf(delta, 0.0))
+	if _repath_timer <= 0.0:
 		if not _attempt_replan_with_policy(movement_target):
-			if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
-				_update_blocked_point_repeat_tracker()
-				var repeat_threshold := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
-				if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold and _last_path_plan_blocked_point_valid:
-					var repeat_count_for_feedback := _blocked_point_repeat_count
-					_set_repath_recovery_feedback(
-						"blocked_point_repeat",
-						movement_target,
-						true,
-						_last_path_plan_blocked_point,
-						true,
-						repeat_count_for_feedback
-					)
-					_repath_timer = 0.0
-					_blocked_point_repeat_bucket = Vector2i.ZERO
-					_blocked_point_repeat_bucket_valid = false
-					_blocked_point_repeat_count = 0
+			_apply_blocked_point_repeat_feedback(movement_target)
+			_schedule_next_repath(runtime_context, base_repath_interval, _last_path_plan_reason)
 			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
-	if not _has_active_path_to(movement_target):
+		_schedule_next_repath(runtime_context, base_repath_interval, "ok")
+	if not _has_active_path_to(movement_target, target_reached_px):
 		_mark_path_failed("path_unavailable")
+		_apply_blocked_point_repeat_feedback(movement_target)
+		_schedule_next_repath(runtime_context, base_repath_interval, "path_unavailable")
 		_stop_motion(delta)
 		return false
 	var moved := _follow_waypoints(speed_scale, delta)
@@ -795,48 +872,16 @@ func _execute_move_to_target(
 			_last_path_plan_blocked_point,
 			_last_path_plan_blocked_point_valid
 		)
+		_schedule_next_repath(runtime_context, base_repath_interval, "collision_blocked")
+	elif _last_path_failed_reason == "player_contact":
+		_schedule_next_repath(runtime_context, base_repath_interval, "player_contact")
 	if not moved and _path_policy_blocked:
 		_mark_path_failed("policy_blocked")
-		_repath_timer = 0.0
-		if not _attempt_replan_with_policy(movement_target):
-			if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
-				_update_blocked_point_repeat_tracker()
-				var repeat_threshold2 := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
-				if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold2 and _last_path_plan_blocked_point_valid:
-					var repeat_count_for_feedback2 := _blocked_point_repeat_count
-					_set_repath_recovery_feedback(
-						"blocked_point_repeat",
-						movement_target,
-						true,
-						_last_path_plan_blocked_point,
-						true,
-						repeat_count_for_feedback2
-					)
-					_repath_timer = 0.0
-					_blocked_point_repeat_bucket = Vector2i.ZERO
-					_blocked_point_repeat_bucket_valid = false
-					_blocked_point_repeat_count = 0
-			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
-		if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
-			_update_blocked_point_repeat_tracker()
-			var repeat_threshold3 := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
-			if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold3 and _last_path_plan_blocked_point_valid:
-				var repeat_count_for_feedback3 := _blocked_point_repeat_count
-				_set_repath_recovery_feedback(
-					"blocked_point_repeat",
-					movement_target,
-					true,
-					_last_path_plan_blocked_point,
-					true,
-					repeat_count_for_feedback3
-				)
-				_repath_timer = 0.0
-				_blocked_point_repeat_bucket = Vector2i.ZERO
-				_blocked_point_repeat_bucket_valid = false
-				_blocked_point_repeat_count = 0
+		_apply_blocked_point_repeat_feedback(movement_target)
+		_schedule_next_repath(runtime_context, base_repath_interval, "policy_blocked")
+		return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
 	if _update_stall_monitor(delta, movement_target, has_target):
 		_mark_path_failed("hard_stall")
-		_repath_timer = 0.0
 		if AIWatchdog and not _hard_stall_watchdog_reported:
 			var is_patrol_hard_stall := _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
 			AIWatchdog.record_hard_stall_event(is_patrol_hard_stall)
@@ -849,46 +894,14 @@ func _execute_move_to_target(
 				_repath_recovery_blocked_point,
 				_repath_recovery_blocked_point_valid
 			)
-		if not _attempt_replan_with_policy(movement_target):
-			if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
-				_update_blocked_point_repeat_tracker()
-				var repeat_threshold4 := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
-				if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold4 and _last_path_plan_blocked_point_valid:
-					var repeat_count_for_feedback4 := _blocked_point_repeat_count
-					_set_repath_recovery_feedback(
-						"blocked_point_repeat",
-						movement_target,
-						true,
-						_last_path_plan_blocked_point,
-						true,
-						repeat_count_for_feedback4
-					)
-					_repath_timer = 0.0
-					_blocked_point_repeat_bucket = Vector2i.ZERO
-					_blocked_point_repeat_bucket_valid = false
-					_blocked_point_repeat_count = 0
-			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
-		if _path_policy_blocked or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY:
-			_update_blocked_point_repeat_tracker()
-			var repeat_threshold5 := maxi(int(_pursuit_cfg_float("repath_recovery_blocked_point_repeat_threshold", 2.0)), 1)
-			if _is_repath_recovery_search_intent(_last_intent_type) and _blocked_point_repeat_count >= repeat_threshold5 and _last_path_plan_blocked_point_valid:
-				var repeat_count_for_feedback5 := _blocked_point_repeat_count
-				_set_repath_recovery_feedback(
-					"blocked_point_repeat",
-					movement_target,
-					true,
-					_last_path_plan_blocked_point,
-					true,
-					repeat_count_for_feedback5
-				)
-				_repath_timer = 0.0
-				_blocked_point_repeat_bucket = Vector2i.ZERO
-				_blocked_point_repeat_bucket_valid = false
-				_blocked_point_repeat_count = 0
-	if owner.global_position.distance_to(movement_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
+		_apply_blocked_point_repeat_feedback(movement_target)
+		_schedule_next_repath(runtime_context, base_repath_interval, "hard_stall")
+		return false
+	if owner.global_position.distance_to(movement_target) <= target_reached_px:
 		_stop_motion(delta)
 		_active_move_target_valid = false
 		_reset_stall_monitor()
+		_repath_timer = maxf(_repath_timer, base_repath_interval)
 	return not _last_path_failed
 
 
@@ -1218,9 +1231,20 @@ func _normalize_path_plan_contract(contract: Dictionary, target_pos: Vector2) ->
 	if status != PATH_PLAN_STATUS_OK and status != PATH_PLAN_STATUS_UNREACHABLE_POLICY and status != PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY:
 		status = PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY
 	var path_points := _extract_vector2_path_points(contract.get("path_points", []))
+	var path_tail_unreachable := false
 	if status == PATH_PLAN_STATUS_OK and not path_points.is_empty() and path_points[path_points.size() - 1].distance_to(target_pos) > 0.5:
-		path_points.append(target_pos)
+		var target_reachable := true
+		if nav_system != null and nav_system.has_method("is_point_on_navigation_map"):
+			target_reachable = bool(nav_system.call("is_point_on_navigation_map", target_pos, 4.0))
+		if target_reachable:
+			path_points.append(target_pos)
+		else:
+			status = PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY
+			path_points.clear()
+			path_tail_unreachable = true
 	var reason := String(contract.get("reason", ""))
+	if path_tail_unreachable and (reason == "" or reason == "ok"):
+		reason = "navmesh_target_unreachable"
 	if reason == "":
 		match status:
 			PATH_PLAN_STATUS_OK:
@@ -1272,10 +1296,10 @@ func _extract_vector2_path_points(points_variant: Variant) -> Array[Vector2]:
 	return out
 
 
-func _has_active_path_to(target_pos: Vector2) -> bool:
+func _has_active_path_to(target_pos: Vector2, reached_px_override: float = -1.0) -> bool:
 	if _path_policy_blocked:
 		return false
-	var arrive_px := _pursuit_cfg_float("waypoint_reached_px", 12.0)
+	var arrive_px := reached_px_override if reached_px_override > 0.0 else _pursuit_cfg_float("waypoint_reached_px", 12.0)
 	if owner.global_position.distance_to(target_pos) <= arrive_px:
 		return true
 	if _use_navmesh and _nav_agent:
@@ -1622,6 +1646,14 @@ func _is_door_body_collider(collider: Node) -> bool:
 	return parent != null and parent.has_method("command_open_enemy")
 
 
+func _is_player_body_collider(collider: Node) -> bool:
+	if collider == null:
+		return false
+	if collider.is_in_group("player"):
+		return true
+	return collider.name == "Player"
+
+
 func _handle_slide_collisions_and_repath(slide_count: int) -> Dictionary:
 	var none_result := {
 		"collision_kind": "none",
@@ -1635,27 +1667,40 @@ func _handle_slide_collisions_and_repath(slide_count: int) -> Dictionary:
 	var first_door_index := -1
 	for i in range(slide_count):
 		var is_door_collision := false
+		var is_player_collision := false
 		var collision: Variant = owner.get_slide_collision(i)
+		var collider: Node = null
 		if collision != null and collision.has_method("get_collider"):
-			var collider := collision.call("get_collider") as Node
+			collider = collision.call("get_collider") as Node
 			is_door_collision = _is_door_body_collider(collider)
+			is_player_collision = _is_player_body_collider(collider)
 		if not is_door_collision:
-			_repath_timer = 0.0
-			_waypoints.clear()
-			if _use_navmesh and _nav_agent != null:
-				_nav_agent.target_position = owner.global_position
-			_last_path_failed = true
-			_last_path_failed_reason = "collision_blocked"
-			_path_policy_blocked = false
-			_last_policy_blocked_segment = -1
-			_last_slide_collision_kind = "non_door"
-			_last_slide_collision_forced_repath = true
-			_last_slide_collision_reason = "collision_blocked"
+			var collision_kind := "player_contact" if is_player_collision else "non_door"
+			var forced_repath := not is_player_collision and _collision_repath_cooldown_left <= 0.0
+			var collision_reason := "player_contact" if is_player_collision else ("collision_blocked" if forced_repath else "collision_blocked_cooldown")
+			if forced_repath:
+				_repath_timer = 0.0
+				_waypoints.clear()
+				if _use_navmesh and _nav_agent != null:
+					_nav_agent.target_position = owner.global_position
+				_last_path_failed = true
+				_last_path_failed_reason = "collision_blocked"
+				_path_policy_blocked = false
+				_last_policy_blocked_segment = -1
+				_collision_repath_cooldown_left = COLLISION_REPATH_COOLDOWN_SEC
+				if AIWatchdog:
+					var is_patrol_collision_repath := _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+					AIWatchdog.record_collision_repath_event(is_patrol_collision_repath)
+			elif is_player_collision:
+				_last_path_failed_reason = "player_contact"
+			_last_slide_collision_kind = collision_kind
+			_last_slide_collision_forced_repath = forced_repath
+			_last_slide_collision_reason = collision_reason
 			_last_slide_collision_index = i
 			return {
-				"collision_kind": "non_door",
-				"forced_repath": true,
-				"reason": "collision_blocked",
+				"collision_kind": collision_kind,
+				"forced_repath": forced_repath,
+				"reason": collision_reason,
 				"collision_index": i,
 			}
 		if first_door_index < 0:

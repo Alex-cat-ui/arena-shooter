@@ -1,0 +1,61 @@
+scene=res://tests/test_level_stealth_checklist.tscn
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+STEALTH LEVEL CHECKLIST GATE TEST
+============================================================
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+WARNING: invalid_nav_build:obstacle_center_walkable center=(1000.0, 700.0) closest=(1000.0, 700.0) distance=0.000 obstacle=[P: (950.0, 650.0), S: (100.0, 100.0)]
+     at: push_warning (core/variant/variant_utility.cpp:1034)
+     GDScript backtrace (most recent call first):
+         [0] _validate_nav_build_integrity (res://src/systems/navigation_service.gd:954)
+         [1] _validate_nav_build_integrity_deferred (res://src/systems/navigation_service.gd:968)
+[PASS] checklist: automatic checks pass on 3-zone fixture
+[PASS] checklist: patrol reachability passes
+[PASS] checklist: shadow pocket availability passes
+[PASS] checklist: shadow escape availability passes
+[PASS] checklist: route variety passes
+[PASS] checklist: patrol obstacle avoidance passes
+[PASS] checklist: chokepoint width safety passes
+[PASS] checklist: boundary scan support passes
+[Player] Ready
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] checklist: manual artifact exists
+[PASS] checklist fixture: missing artifact fails
+[PASS] checklist fixture: reason manual_artifact_missing
+[PASS] checklist fixture: automatic checks still pass
+
+============================================================
+STEALTH LEVEL CHECKLIST GATE RESULTS: 12/12 passed
+============================================================
+EXIT_CODE=0
+DURATION_SEC=4

@@ -1,0 +1,73 @@
+Godot Engine v4.6.1.stable.mono.official.14d19694e - https://godotengine.org
+WARNING: Started the engine as `root`/superuser. This is a security risk, and subsystems like audio may not work correctly.
+Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this warning.
+     at: setup2 (main/main.cpp:3445)
+
+
+============================================================
+STEALTH LEVEL CHECKLIST GATE TEST
+============================================================
+[Player] Ready
+[StateManager] MAIN_MENU -> LEVEL_SETUP
+[StateManager] LEVEL_SETUP -> PLAYING
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ERROR: [FAIL] checklist: automatic checks pass on 3-zone fixture
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] check (res://tests/test_helpers.gd:34)
+       [1] run_test (res://tests/test_helpers.gd:38)
+       [2] _test_stealth_3zone_automatic_checks_pass (res://tests/test_level_stealth_checklist.gd:55)
+       [3] _run_stealth_level_checklist (res://tests/test_level_stealth_checklist.gd:202)
+[PASS] checklist: patrol reachability passes
+[PASS] checklist: shadow pocket availability passes
+ERROR: [FAIL] checklist: shadow escape availability passes
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] check (res://tests/test_helpers.gd:34)
+       [1] run_test (res://tests/test_helpers.gd:38)
+       [2] _test_stealth_3zone_automatic_checks_pass (res://tests/test_level_stealth_checklist.gd:58)
+       [3] _run_stealth_level_checklist (res://tests/test_level_stealth_checklist.gd:202)
+ERROR: [FAIL] checklist: route variety passes
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] check (res://tests/test_helpers.gd:34)
+       [1] run_test (res://tests/test_helpers.gd:38)
+       [2] _test_stealth_3zone_automatic_checks_pass (res://tests/test_level_stealth_checklist.gd:59)
+       [3] _run_stealth_level_checklist (res://tests/test_level_stealth_checklist.gd:202)
+[PASS] checklist: patrol obstacle avoidance passes
+[PASS] checklist: chokepoint width safety passes
+[PASS] checklist: boundary scan support passes
+[Player] Ready
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+ENEMY_RUNTIME_MARKER_v20260216
+RING_POLICY_ACTIVE_v20260216
+[PASS] checklist: manual artifact exists
+[PASS] checklist fixture: missing artifact fails
+[PASS] checklist fixture: reason manual_artifact_missing
+[PASS] checklist fixture: automatic checks still pass
+[PASS] runtime guard: no orphan node leaks
+[PASS] runtime guard: no AIWatchdog runtime warnings
+
+============================================================
+STEALTH LEVEL CHECKLIST GATE RESULTS: 11/14 passed
+============================================================
