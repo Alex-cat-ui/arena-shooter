@@ -223,7 +223,8 @@ func build_policy_valid_path(
 	from_pos: Vector2,
 	to_pos: Vector2,
 	enemy: Node = null,
-	cost_profile: Dictionary = {}
+	cost_profile: Dictionary = {},
+	track_metrics: bool = true
 ) -> Dictionary:
 	var geometry_plan := _build_geometry_path_plan(from_pos, to_pos)
 	var geometry_status := String(geometry_plan.get("status", "unreachable_geometry"))
@@ -240,7 +241,7 @@ func build_policy_valid_path(
 			route_source,
 			route_source_reason,
 			obstacle_intersection_detected
-		))
+		), track_metrics)
 	var direct_pts := _extract_path_points(geometry_plan.get("path_points", []))
 	if direct_pts.is_empty():
 		return _finalize_path_plan_result(_build_path_plan_result(
@@ -252,7 +253,7 @@ func build_policy_valid_path(
 			route_source,
 			route_source_reason,
 			obstacle_intersection_detected
-		))
+		), track_metrics)
 	var direct_intersects_obstacle := _path_intersects_obstacle(from_pos, direct_pts)
 	if direct_intersects_obstacle:
 		return _finalize_path_plan_result(_build_path_plan_result(
@@ -264,7 +265,7 @@ func build_policy_valid_path(
 			route_source,
 			route_source_reason,
 			true
-		))
+		), track_metrics)
 	if enemy == null:
 		return _finalize_path_plan_result(_build_path_plan_result(
 			"ok",
@@ -275,7 +276,7 @@ func build_policy_valid_path(
 			route_source,
 			route_source_reason,
 			false
-		))
+		), track_metrics)
 	var direct_valid := _validate_enemy_policy_path(enemy, from_pos, direct_pts)
 	if bool(direct_valid.get("valid", false)):
 		return _finalize_path_plan_result(_build_path_plan_result(
@@ -287,7 +288,7 @@ func build_policy_valid_path(
 			route_source,
 			route_source_reason,
 			false
-		))
+		), track_metrics)
 	var from_room := room_id_at_point(from_pos)
 	var to_room := room_id_at_point(to_pos)
 	if from_room < 0 or to_room < 0:
@@ -300,7 +301,7 @@ func build_policy_valid_path(
 			route_source,
 			route_source_reason,
 			false
-		))
+		), track_metrics)
 	var candidates := _build_detour_candidates(from_pos, to_pos, from_room, to_room)
 	var detour_candidate_count := maxi(candidates.size(), 0)
 	var best_valid: Dictionary = {}
@@ -327,7 +328,7 @@ func build_policy_valid_path(
 			route_source,
 			route_source_reason,
 			false
-		))
+		), track_metrics)
 	if detour_intersection_detected:
 		return _finalize_path_plan_result(_build_path_plan_result(
 			"unreachable_geometry",
@@ -338,7 +339,7 @@ func build_policy_valid_path(
 			route_source,
 			route_source_reason,
 			true
-		))
+		), track_metrics)
 	return _finalize_path_plan_result(_build_path_plan_result(
 		"unreachable_policy",
 		[],
@@ -348,7 +349,7 @@ func build_policy_valid_path(
 		route_source,
 		route_source_reason,
 		false
-	))
+	), track_metrics)
 
 
 func _build_geometry_path_plan(from_pos: Vector2, to_pos: Vector2) -> Dictionary:
@@ -512,8 +513,9 @@ func _build_path_plan_result(
 	}
 
 
-func _finalize_path_plan_result(result: Dictionary) -> Dictionary:
-	_record_path_contract_metrics(result)
+func _finalize_path_plan_result(result: Dictionary, track_metrics: bool = true) -> Dictionary:
+	if track_metrics:
+		_record_path_contract_metrics(result)
 	return result
 
 

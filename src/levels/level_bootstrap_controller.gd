@@ -32,7 +32,7 @@ func init_systems(
 	layout_controller,
 	transition_controller,
 	camera_controller
-) -> void:
+) -> bool:
 	print("MAIN_BOOTSTRAP_v20260216")
 	ctx.combat_system = CombatSystem.new()
 	ctx.combat_system.name = "CombatSystem"
@@ -117,6 +117,11 @@ func init_systems(
 		ctx.navigation_service.initialize(ctx.layout, ctx.entities_container, ctx.player)
 	if ctx.navigation_service and ctx.navigation_service.has_method("build_from_layout"):
 		ctx.navigation_service.build_from_layout(ctx.layout, ctx.level)
+	var traverse_preflight := validate_traverse_preflight_contract(ctx.navigation_service, "level_bootstrap")
+	if not bool(traverse_preflight.get("ok", false)):
+		if RuntimeState:
+			RuntimeState.is_frozen = true
+		return false
 
 	ctx.enemy_alert_system = ENEMY_ALERT_SYSTEM_SCRIPT.new()
 	ctx.enemy_alert_system.name = "EnemyAlertSystem"
@@ -161,6 +166,67 @@ func init_systems(
 			ctx.player.collision_mask |= 1
 
 	print("[LevelMVP] Systems initialized (Weapons + Arena Polish)")
+	return true
+
+
+func debug_validate_traverse_preflight_contract(nav_service: Node, force_strict_mode: int = -1) -> Dictionary:
+	return validate_traverse_preflight_contract(nav_service, "level_bootstrap_debug", force_strict_mode, false)
+
+
+func validate_traverse_preflight_contract(
+	nav_service: Node,
+	source_label: String,
+	force_strict_mode: int = -1,
+	emit_log: bool = true
+) -> Dictionary:
+	var strict := _is_traverse_preflight_strict_mode(force_strict_mode)
+	var has_geometry_api := nav_service != null and nav_service.has_method("can_enemy_traverse_geometry_point")
+	if has_geometry_api:
+		return {
+			"ok": true,
+			"strict": strict,
+			"reason": "ok",
+			"source": source_label,
+		}
+	var reason := "missing_geometry_api"
+	var message := "[TraversePreflight] %s: %s" % [source_label, reason]
+	if emit_log:
+		if strict:
+			push_error(message)
+		else:
+			push_warning(message)
+	if AIWatchdog and AIWatchdog.has_method("record_missing_traverse_api_event"):
+		AIWatchdog.call("record_missing_traverse_api_event")
+	return {
+		"ok": not strict,
+		"strict": strict,
+		"reason": reason,
+		"source": source_label,
+	}
+
+
+func _validate_traverse_preflight_contract(
+	nav_service: Node,
+	source_label: String,
+	force_strict_mode: int = -1,
+	emit_log: bool = true
+) -> Dictionary:
+	return validate_traverse_preflight_contract(nav_service, source_label, force_strict_mode, emit_log)
+
+
+func _is_traverse_preflight_strict_mode(force_strict_mode: int = -1) -> bool:
+	if force_strict_mode > 0:
+		return true
+	if force_strict_mode == 0:
+		return false
+	return OS.is_debug_build() or _is_ci_environment()
+
+
+func _is_ci_environment() -> bool:
+	var ci := String(OS.get_environment("CI")).strip_edges().to_lower()
+	if ci == "":
+		return false
+	return ci != "0" and ci != "false" and ci != "no"
 
 
 func _initialize_zone_director(ctx) -> void:

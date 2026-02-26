@@ -32,6 +32,7 @@ var geometry_walkable_false_positive_total: int = 0
 var nav_path_obstacle_intersections_total: int = 0
 var room_graph_fallback_when_navmesh_available_total: int = 0
 var patrol_route_rebuilds_total: int = 0
+var missing_traverse_api_events_total: int = 0
 var warning_events_total: int = 0
 var queue_warning_events_total: int = 0
 var tick_warning_events_total: int = 0
@@ -135,6 +136,10 @@ func record_patrol_route_rebuild_event(count: int = 1) -> void:
 	patrol_route_rebuilds_total += maxi(count, 0)
 
 
+func record_missing_traverse_api_event(count: int = 1) -> void:
+	missing_traverse_api_events_total += maxi(count, 0)
+
+
 func debug_reset_metrics_for_tests() -> void:
 	event_queue_length = 0
 	transitions_this_tick = 0
@@ -153,6 +158,7 @@ func debug_reset_metrics_for_tests() -> void:
 	nav_path_obstacle_intersections_total = 0
 	room_graph_fallback_when_navmesh_available_total = 0
 	patrol_route_rebuilds_total = 0
+	missing_traverse_api_events_total = 0
 	warning_events_total = 0
 	queue_warning_events_total = 0
 	tick_warning_events_total = 0
@@ -179,21 +185,22 @@ func get_snapshot() -> Dictionary:
 		"detour_candidates_evaluated_total": detour_candidates_evaluated_total,
 		"hard_stall_events_total": hard_stall_events_total,
 		"collision_repath_events_total": collision_repath_events_total,
-			"preavoid_events_total": preavoid_events_total,
-			"patrol_preavoid_events_total": patrol_preavoid_events_total,
-			"patrol_collision_repath_events_total": patrol_collision_repath_events_total,
-			"patrol_hard_stall_events_total": patrol_hard_stall_events_total,
-			"patrol_zero_progress_windows_total": patrol_zero_progress_windows_total,
-			"geometry_walkable_false_positive_total": geometry_walkable_false_positive_total,
-			"nav_path_obstacle_intersections_total": nav_path_obstacle_intersections_total,
-			"room_graph_fallback_when_navmesh_available_total": room_graph_fallback_when_navmesh_available_total,
-			"patrol_route_rebuilds_total": patrol_route_rebuilds_total,
-			"warning_events_total": warning_events_total,
-			"queue_warning_events_total": queue_warning_events_total,
-			"tick_warning_events_total": tick_warning_events_total,
-			"replan_warning_events_total": replan_warning_events_total,
-			"ai_tick_samples_count": _ai_tick_samples_ms.size(),
-		}
+		"preavoid_events_total": preavoid_events_total,
+		"patrol_preavoid_events_total": patrol_preavoid_events_total,
+		"patrol_collision_repath_events_total": patrol_collision_repath_events_total,
+		"patrol_hard_stall_events_total": patrol_hard_stall_events_total,
+		"patrol_zero_progress_windows_total": patrol_zero_progress_windows_total,
+		"geometry_walkable_false_positive_total": geometry_walkable_false_positive_total,
+		"nav_path_obstacle_intersections_total": nav_path_obstacle_intersections_total,
+		"room_graph_fallback_when_navmesh_available_total": room_graph_fallback_when_navmesh_available_total,
+		"patrol_route_rebuilds_total": patrol_route_rebuilds_total,
+		"missing_traverse_api_events_total": missing_traverse_api_events_total,
+		"warning_events_total": warning_events_total,
+		"queue_warning_events_total": queue_warning_events_total,
+		"tick_warning_events_total": tick_warning_events_total,
+		"replan_warning_events_total": replan_warning_events_total,
+		"ai_tick_samples_count": _ai_tick_samples_ms.size(),
+	}
 
 
 func _check_thresholds() -> void:

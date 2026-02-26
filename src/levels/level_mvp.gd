@@ -58,12 +58,15 @@ func _ready() -> void:
 
 	_bootstrap_controller.init_runtime_state(_ctx, _transition_controller.current_mission_index(_ctx))
 	_runtime_guard.enforce_on_start(_ctx)
-	_bootstrap_controller.init_systems(
+	var systems_ok := _bootstrap_controller.init_systems(
 		_ctx,
 		_layout_controller,
 		_transition_controller,
 		_camera_controller
 	)
+	if not systems_ok:
+		push_error("[LevelMVP] Bootstrap systems preflight failed; runtime frozen")
+		return
 	_bootstrap_controller.init_visual_polish(_ctx, _hud_controller)
 
 	if _ctx.player and _ctx.ability_system:

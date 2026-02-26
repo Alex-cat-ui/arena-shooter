@@ -316,7 +316,11 @@ func _rebuild_route(apply_hysteresis: bool = false) -> void:
 			if nav_system.has_method("build_policy_valid_path"):
 				var reach_pass: Array[Vector2] = []
 				for pt in candidates:
-					var r_variant: Variant = nav_system.call("build_policy_valid_path", owner.global_position, pt, null)
+					var r_variant: Variant = null
+					if nav_system.has_method("build_policy_valid_path_probe"):
+						r_variant = nav_system.call("build_policy_valid_path_probe", owner.global_position, pt, null)
+					else:
+						r_variant = nav_system.call("build_policy_valid_path", owner.global_position, pt, null)
 					if not (r_variant is Dictionary):
 						continue
 					var r := r_variant as Dictionary
@@ -336,7 +340,11 @@ func _rebuild_route(apply_hysteresis: bool = false) -> void:
 					if nav_system.has_method("is_point_in_shadow") and bool(nav_system.call("is_point_in_shadow", rp)):
 						continue
 					if nav_system.has_method("build_policy_valid_path"):
-						var rr_variant: Variant = nav_system.call("build_policy_valid_path", owner.global_position, rp, null)
+						var rr_variant: Variant = null
+						if nav_system.has_method("build_policy_valid_path_probe"):
+							rr_variant = nav_system.call("build_policy_valid_path_probe", owner.global_position, rp, null)
+						else:
+							rr_variant = nav_system.call("build_policy_valid_path", owner.global_position, rp, null)
 						if not (rr_variant is Dictionary):
 							continue
 						var rr := rr_variant as Dictionary

@@ -573,6 +573,16 @@ func build_policy_valid_path(
 	return _runtime_queries.build_policy_valid_path(from_pos, to_pos, enemy, cost_profile)
 
 
+func build_policy_valid_path_probe(
+	from_pos: Vector2,
+	to_pos: Vector2,
+	enemy: Node = null,
+	cost_profile: Dictionary = {}
+) -> Dictionary:
+	_ensure_runtime_components()
+	return _runtime_queries.build_policy_valid_path(from_pos, to_pos, enemy, cost_profile, false)
+
+
 func build_reachable_path_points(from_pos: Vector2, to_pos: Vector2, enemy: Node = null) -> Array[Vector2]:
 	_ensure_runtime_components()
 	return _runtime_queries.build_reachable_path_points(from_pos, to_pos, enemy)

@@ -39,8 +39,6 @@ const AWARENESS_ALERT := "ALERT"
 const AWARENESS_COMBAT := "COMBAT"
 const TEST_LOOK_LOS_GRACE_SEC := 0.25
 const TEST_FACING_LOG_DELTA_RAD := 0.35
-const INTENT_STABILITY_LOCK_SEC := 0.45
-const INTENT_STABILITY_SUSPICION_MIN := 0.05
 const COMBAT_LAST_SEEN_GRACE_SEC := 1.5
 const COMBAT_ROOM_MIGRATION_HYSTERESIS_SEC := 0.2
 const COMBAT_FIRST_ATTACK_DELAY_MIN_SEC := 1.2
@@ -217,8 +215,7 @@ var _debug_last_logged_intent_type: int = -1
 var _debug_last_logged_target_facing: Vector2 = Vector2.ZERO
 var _test_last_stable_look_dir: Vector2 = Vector2.RIGHT
 var _test_los_look_grace_timer: float = 0.0
-var _intent_stability_lock_timer: float = 0.0
-var _intent_stability_last_type: int = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+var _intent_stability_runtime_missing_reported: bool = false
 
 ## Modular AI systems
 var _perception = null
@@ -409,8 +406,7 @@ func initialize(id: int, type: String) -> void:
 	_reaction_warmup_timer = 0.0
 	_had_visual_los_last_frame = false
 	_test_los_look_grace_timer = 0.0
-	_intent_stability_lock_timer = 0.0
-	_intent_stability_last_type = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+	_intent_stability_runtime_missing_reported = false
 	_test_last_stable_look_dir = Vector2.RIGHT
 	_debug_last_logged_intent_type = -1
 	_debug_last_logged_target_facing = Vector2.ZERO
@@ -1630,46 +1626,10 @@ func _record_runtime_tick_debug_state(payload: Dictionary) -> void:
 func _apply_runtime_intent_stability_policy(intent: Dictionary, context: Dictionary, suspicion_now: float, delta: float) -> Dictionary:
 	if _detection_runtime and _detection_runtime.has_method("apply_runtime_intent_stability_policy"):
 		return _detection_runtime.call("apply_runtime_intent_stability_policy", intent, context, suspicion_now, delta) as Dictionary
-	var out := intent.duplicate(true)
-	var intent_type := int(out.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
-	var has_los := bool(context.get("los", false))
-	var active_suspicion := suspicion_now >= INTENT_STABILITY_SUSPICION_MIN
-	var should_stabilize := has_los or active_suspicion
-	_intent_stability_lock_timer = maxf(0.0, _intent_stability_lock_timer - maxf(delta, 0.0))
-	var blocked_intent := (
-		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT
-	)
-	if should_stabilize and blocked_intent and _intent_stability_lock_timer > 0.0:
-		if (
-			_intent_stability_last_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT
-			or _intent_stability_last_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT
-		):
-			_intent_stability_last_type = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
-		intent_type = _intent_stability_last_type
-		out["type"] = intent_type
-		if not out.has("target") or (out.get("target", Vector2.ZERO) as Vector2) == Vector2.ZERO:
-			out["target"] = context.get("known_target_pos", context.get("player_pos", global_position)) as Vector2
-		return out
-
-	if should_stabilize and blocked_intent:
-		var dist := float(context.get("dist", INF))
-		var hold_range_max := _utility_cfg_float("hold_range_max_px", 610.0)
-		intent_type = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE if dist <= hold_range_max else ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
-		out["type"] = intent_type
-		out["target"] = context.get("known_target_pos", context.get("player_pos", global_position)) as Vector2
-
-	if should_stabilize and (
-		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
-		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.INVESTIGATE
-	):
-		_intent_stability_last_type = intent_type
-		_intent_stability_lock_timer = INTENT_STABILITY_LOCK_SEC
-	elif not should_stabilize and _intent_stability_lock_timer <= 0.0:
-		_intent_stability_last_type = intent_type
-
-	return out
+	if not _intent_stability_runtime_missing_reported:
+		_intent_stability_runtime_missing_reported = true
+		push_error("[Enemy] Missing detection_runtime.apply_runtime_intent_stability_policy; using passthrough intent")
+	return intent.duplicate(true)
 
 
 func _emit_stealth_debug_trace_if_needed(context: Dictionary, suspicion_now: float) -> void:

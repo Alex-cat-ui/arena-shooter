@@ -5,33 +5,25 @@ Set the environment variable `GODOT_SILENCE_ROOT_WARNING` to 1 to silence this w
 
 
 ============================================================
-COLLISION BLOCK FORCES IMMEDIATE REPATH TEST
+PREAVOID WALL CONTRACT TEST
 ============================================================
-[PASS] non-door collision occurs against solid wall
-ERROR: [FAIL] collision forces immediate repath timer reset
-   at: push_error (core/variant/variant_utility.cpp:1024)
-   GDScript backtrace (most recent call first):
-       [0] check (res://tests/test_helpers.gd:34)
-       [1] run_test (res://tests/test_helpers.gd:38)
-       [2] _test_non_door_collision_forces_immediate_repath (res://tests/test_collision_block_forces_immediate_repath.gd:108)
-[PASS] collision marks path_failed_reason=collision_blocked
-[PASS] collision clears active waypoint cache in same tick
-[PASS] debug snapshot exposes collision classification contract
-[PASS] non-door collision snapshot reports forced_repath + index
-[PASS] non-door collision increments collision_repath_events_total
-[PASS] patrol intent: non-door collision occurs against solid wall
-ERROR: [FAIL] patrol intent: collision forces immediate repath timer reset
-   at: push_error (core/variant/variant_utility.cpp:1024)
-   GDScript backtrace (most recent call first):
-       [0] check (res://tests/test_helpers.gd:34)
-       [1] run_test (res://tests/test_helpers.gd:38)
-       [2] _test_patrol_execute_intent_collision_forces_immediate_repath (res://tests/test_collision_block_forces_immediate_repath.gd:186)
-[PASS] patrol intent: collision marks path_failed_reason=collision_blocked
-[PASS] patrol intent: collision snapshot reports non_door forced repath
-[PASS] patrol intent: non-door collision increments patrol_collision_repath_events_total
+[PASS] direct move: preavoid detects wall hazard before contact
+[PASS] direct move: preavoid can trigger forced repath
+[PASS] direct move: non-door collision against wall is prevented
+[PASS] direct move: policy_blocked feedback appears while halted
+[PASS] direct move: collision_repath_events_total does not increment
+[PASS] direct move: preavoid_events_total increments
+[PASS] direct move: no collision_blocked reason in snapshot
+[PASS] patrol intent: preavoid detects wall hazard before contact
+[PASS] patrol intent: preavoid can trigger forced repath
+[PASS] patrol intent: non-door collision against wall is prevented
+[PASS] patrol intent: policy_blocked feedback appears while halted
+[PASS] patrol intent: patrol_collision_repath_events_total does not increment
+[PASS] patrol intent: patrol_preavoid_events_total increments
+[PASS] patrol intent: no collision_blocked reason in execute result
 [PASS] runtime guard: no orphan node leaks
 [PASS] runtime guard: no AIWatchdog runtime warnings
 
 ============================================================
-COLLISION BLOCK FORCES IMMEDIATE REPATH RESULTS: 12/14 passed
+PREAVOID WALL CONTRACT RESULTS: 16/16 passed
 ============================================================

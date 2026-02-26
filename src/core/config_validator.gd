@@ -226,12 +226,13 @@ static func _validate_ai_balance(result: ValidationResult) -> void:
 		_validate_number_key(result, pursuit, "combat_dark_search_node_uncovered_bonus", "ai_balance.pursuit", 0.0, 1000000.0)
 		_validate_number_key(result, pursuit, "combat_dark_search_node_tactical_priority_weight", "ai_balance.pursuit", 0.0, 1000000.0)
 		_validate_number_key(result, pursuit, "repath_recovery_blocked_point_bucket_px", "ai_balance.pursuit", 1.0, 2000.0)
-		_validate_number_key(result, pursuit, "repath_recovery_blocked_point_repeat_threshold", "ai_balance.pursuit", 1.0, 100.0)
-		_validate_number_key(result, pursuit, "repath_recovery_intent_target_match_radius_px", "ai_balance.pursuit", 1.0, 2000.0)
-		_validate_number_key(result, pursuit, "avoidance_radius_px", "ai_balance.pursuit", 1.0, 64.0)
-		_validate_number_key(result, pursuit, "avoidance_max_speed_px_per_sec", "ai_balance.pursuit", 20.0, 400.0)
-		if not is_nan(attack_range_pref_min) and not is_nan(attack_range_max) and attack_range_pref_min > attack_range_max:
-			result.add_error("ai_balance.pursuit.attack_range_pref_min_px must be <= attack_range_max_px")
+			_validate_number_key(result, pursuit, "repath_recovery_blocked_point_repeat_threshold", "ai_balance.pursuit", 1.0, 100.0)
+			_validate_number_key(result, pursuit, "repath_recovery_intent_target_match_radius_px", "ai_balance.pursuit", 1.0, 2000.0)
+			_validate_number_key(result, pursuit, "avoidance_radius_px", "ai_balance.pursuit", 1.0, 64.0)
+			_validate_number_key(result, pursuit, "avoidance_max_speed_px_per_sec", "ai_balance.pursuit", 20.0, 400.0)
+			_validate_bool_key(result, pursuit, "allow_legacy_shadow_api_fallback", "ai_balance.pursuit")
+			if not is_nan(attack_range_pref_min) and not is_nan(attack_range_max) and attack_range_pref_min > attack_range_max:
+				result.add_error("ai_balance.pursuit.attack_range_pref_min_px must be <= attack_range_max_px")
 		if not is_nan(search_min) and not is_nan(search_max) and search_min > search_max:
 			result.add_error("ai_balance.pursuit.search_min_sec must be <= search_max_sec")
 

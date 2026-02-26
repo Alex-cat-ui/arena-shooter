@@ -331,6 +331,10 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 	base_report["nav_path_obstacle_intersections_total"] = maxi(int(snap.get("nav_path_obstacle_intersections_total", 0)), 0)
 	base_report["room_graph_fallback_when_navmesh_available_total"] = maxi(int(snap.get("room_graph_fallback_when_navmesh_available_total", 0)), 0)
 	base_report["patrol_route_rebuilds_total"] = maxi(int(snap.get("patrol_route_rebuilds_total", 0)), 0)
+	base_report["collision_pressure_events_total"] = (
+		int(base_report.get("collision_repath_events_total", 0))
+		+ int(base_report.get("preavoid_events_total", 0))
+	)
 
 	var duration_sec := float(config.get("duration_sec", 0.0))
 	var enemy_count := maxi(int(base_report.get("enemy_count", 0)), 1)
@@ -363,7 +367,11 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		threshold_failures.append("detour_candidates_per_replan")
 	if hard_stalls_per_min > float(GameConfig.kpi_hard_stalls_per_min_max if GameConfig else 1.0):
 		threshold_failures.append("hard_stalls_per_min")
-	if int(base_report.get("patrol_preavoid_events_total", 0)) < int(GameConfig.kpi_patrol_preavoid_events_min if GameConfig else 1):
+	var min_preavoid_events := int(GameConfig.kpi_patrol_preavoid_events_min if GameConfig else 1)
+	if bool(config.get("force_collision_repath", false)):
+		if int(base_report.get("preavoid_events_total", 0)) < min_preavoid_events:
+			threshold_failures.append("preavoid_events_total")
+	elif int(base_report.get("patrol_preavoid_events_total", 0)) < min_preavoid_events:
 		threshold_failures.append("patrol_preavoid_events_total")
 	if int(base_report.get("patrol_collision_repath_events_total", 0)) > int(GameConfig.kpi_patrol_collision_repath_events_max if GameConfig else 24):
 		threshold_failures.append("patrol_collision_repath_events_total")
@@ -381,7 +389,7 @@ func run_benchmark_contract(config: Dictionary) -> Dictionary:
 		threshold_failures.append("patrol_route_rebuilds_per_min")
 	base_report["kpi_threshold_failures"] = threshold_failures
 
-	if int(base_report.get("collision_repath_events_total", 0)) <= 0:
+	if int(base_report.get("collision_pressure_events_total", 0)) <= 0:
 		base_report["gate_status"] = "FAIL"
 		base_report["gate_reason"] = "collision_repath_metric_dead"
 	elif threshold_failures.is_empty():
@@ -408,6 +416,7 @@ func _build_benchmark_report_shell(config: Dictionary) -> Dictionary:
 		"hard_stall_events_total": 0,
 		"collision_repath_events_total": 0,
 		"preavoid_events_total": 0,
+		"collision_pressure_events_total": 0,
 			"patrol_preavoid_events_total": 0,
 			"patrol_collision_repath_events_total": 0,
 			"patrol_hard_stall_events_total": 0,

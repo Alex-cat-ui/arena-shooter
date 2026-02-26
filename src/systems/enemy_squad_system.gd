@@ -319,7 +319,11 @@ func _build_slot_policy_eval(enemy: Node2D, slot_pos: Vector2) -> Dictionary:
 		return out
 
 	# Slot path policy contract owner call: build_policy_valid_path(...)
-	var plan_variant: Variant = navigation_service.call("build_policy_valid_path", enemy.global_position, slot_pos, enemy)
+	var plan_variant: Variant = null
+	if navigation_service.has_method("build_policy_valid_path_probe"):
+		plan_variant = navigation_service.call("build_policy_valid_path_probe", enemy.global_position, slot_pos, enemy)
+	else:
+		plan_variant = navigation_service.call("build_policy_valid_path", enemy.global_position, slot_pos, enemy)
 	if not (plan_variant is Dictionary):
 		out["path_reason"] = "invalid_path_contract"
 		return out

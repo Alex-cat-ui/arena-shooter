@@ -9,6 +9,7 @@ const ENEMY_ALERT_LEVELS_SCRIPT := preload("res://src/systems/enemy_alert_levels
 const ABILITY_SYSTEM_SCRIPT := preload("res://src/systems/ability_system.gd")
 const COMBAT_SYSTEM_SCRIPT := preload("res://src/systems/combat_system.gd")
 const PROJECTILE_SYSTEM_SCRIPT := preload("res://src/systems/projectile_system.gd")
+const LEVEL_BOOTSTRAP_CONTROLLER_SCRIPT := preload("res://src/levels/level_bootstrap_controller.gd")
 const PAUSE_MENU_SCENE := preload("res://scenes/ui/pause_menu.tscn")
 const GAME_OVER_SCENE := preload("res://scenes/ui/game_over.tscn")
 const LEVEL_COMPLETE_SCENE := preload("res://scenes/ui/level_complete.tscn")
@@ -171,6 +172,7 @@ var _main_menu_transition_pending: bool = false
 var _level_restart_pending: bool = false
 var _prop_obstacle_rects: Array[Rect2] = []
 var _event_log: Array[String] = []
+var _bootstrap_controller := LEVEL_BOOTSTRAP_CONTROLLER_SCRIPT.new()
 
 @onready var _level_root := get_parent() as Node2D
 @onready var _navigation_root := _level_root.get_node("Navigation") as Node2D
@@ -211,7 +213,12 @@ func _ready() -> void:
 	_build_door()
 	_setup_door_system()
 	_setup_player()
-	_setup_layout_and_systems()
+	var systems_ok := _setup_layout_and_systems()
+	if not systems_ok:
+		push_error("[Stealth3ZoneTest] Systems preflight failed; runtime frozen")
+		_update_hint_text()
+		_refresh_debug_label(true)
+		return
 	_spawn_enemies()
 	_update_hint_text()
 	_refresh_debug_label(true)
@@ -474,7 +481,7 @@ func debug_get_wall_thickness() -> float:
 	return WALL_THICKNESS
 
 
-func _setup_layout_and_systems() -> void:
+func _setup_layout_and_systems() -> bool:
 	_layout = ThreeZoneLayout.new(
 		[ROOM_A1, ROOM_A2, ROOM_B, ROOM_C, ROOM_D],
 		DOOR_A1A2_OPENING,
@@ -491,6 +498,14 @@ func _setup_layout_and_systems() -> void:
 		_navigation_service.initialize(_layout, _entities_root, _player)
 	if _navigation_service and _navigation_service.has_method("build_from_layout"):
 		_navigation_service.build_from_layout(_layout, _navigation_root)
+	var traverse_preflight := _bootstrap_controller.validate_traverse_preflight_contract(
+		_navigation_service,
+		"stealth_3zone_test"
+	)
+	if not bool(traverse_preflight.get("ok", false)):
+		if RuntimeState:
+			RuntimeState.is_frozen = true
+		return false
 
 	if _enemy_alert_system and _enemy_alert_system.has_method("initialize"):
 		_enemy_alert_system.initialize(_navigation_service)
@@ -519,6 +534,7 @@ func _setup_layout_and_systems() -> void:
 		_enemy_aggro_coordinator.set_zone_director(_zone_director)
 
 	_ensure_combat_pipeline_ready()
+	return true
 
 
 func _setup_player() -> void:

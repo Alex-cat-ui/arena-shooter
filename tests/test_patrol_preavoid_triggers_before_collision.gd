@@ -17,6 +17,9 @@ class FakeNav:
 	func can_enemy_traverse_point(_enemy: Node, _point: Vector2) -> bool:
 		return true
 
+	func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+		return true
+
 	func build_policy_valid_path(_from_pos: Vector2, to_pos: Vector2, _enemy: Node = null, _cost_profile: Dictionary = {}) -> Dictionary:
 		return {
 			"status": "ok",
@@ -152,7 +155,3 @@ func _patrol_context(player_pos: Vector2) -> Dictionary:
 		"los": false,
 		"combat_lock": false,
 	}
-
-
-func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
-	return true

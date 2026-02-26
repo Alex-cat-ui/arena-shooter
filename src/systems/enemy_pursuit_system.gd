@@ -21,7 +21,6 @@ const TARGET_FACING_LOCK_WINDOW_SEC := 0.22
 const TARGET_FACING_SHARP_DELTA_RAD := 1.8
 const ENEMY_ACCEL_TIME_SEC := 1.0 / 3.0
 const ENEMY_DECEL_TIME_SEC := 1.0 / 3.0
-const COMBAT_REPATH_INTERVAL_NO_LOS_SEC := 0.2
 const STALL_WINDOW_SEC := 0.6
 const STALL_CHECK_INTERVAL_SEC := 0.1
 const STALL_SPEED_THRESHOLD_PX_PER_SEC := 8.0
@@ -42,7 +41,7 @@ const PATH_PLAN_STATUS_UNREACHABLE_POLICY := "unreachable_policy"
 const PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY := "unreachable_geometry"
 const PREAVOID_SIDE_HOLD_SEC := 0.18
 const PREAVOID_FAILSAFE_TICKS := 6
-const ADAPTIVE_REPATH_COMBAT_SEC := 0.60
+const ADAPTIVE_REPATH_COMBAT_SEC := 0.75
 const ADAPTIVE_REPATH_ALERT_SEC := 1.00
 const ADAPTIVE_REPATH_PATROL_SEC := 1.80
 const ADAPTIVE_REPATH_MAX_SEC := 2.40
@@ -52,8 +51,21 @@ const ADAPTIVE_REPATH_HARD_STALL_MIN_SEC := 0.75
 const ADAPTIVE_REPATH_COLLISION_WORLD_MIN_SEC := 0.35
 const ADAPTIVE_REPATH_PLAYER_CONTACT_MIN_SEC := 0.90
 const ADAPTIVE_REPATH_TARGET_SHIFT_PX := 28.0
+const ADAPTIVE_REPATH_TARGET_SHIFT_PUSH_PX := 96.0
+const ADAPTIVE_REPATH_TARGET_SHIFT_SOFT_SEC := 0.25
+const ADAPTIVE_REPATH_DEFER_MAX_STREAK := 2
+const ADAPTIVE_REPATH_DEFER_STEP_SEC := 0.25
+const RETREAT_TARGET_HOLD_SEC := 1.00
 const PLAYER_CONTACT_REACHED_PX := 32.0
 const COLLISION_REPATH_COOLDOWN_SEC := 0.22
+const COLLISION_REPATH_COOLDOWN_PATROL_SEC := 8.00
+const TRAVERSE_API_MISSING_GRACE_SEC := 0.60
+const TRAVERSE_API_MISSING_MAX_STEP_PX := 16.0
+const TRAVERSE_API_MISSING_PATH_ALIGN_DOT_MIN := 0.70
+const TRAVERSE_API_REBIND_RETRY_SEC := 0.25
+const TRAVERSE_RUNTIME_MODE_OK := "ok"
+const TRAVERSE_RUNTIME_MODE_MISSING_GRACE := "missing_grace"
+const TRAVERSE_RUNTIME_MODE_DEGRADED := "degraded"
 
 var owner: CharacterBody2D = null
 var sprite: Sprite2D = null
@@ -97,6 +109,9 @@ var _last_valid_path_node: Vector2 = Vector2.ZERO
 var _last_valid_path_node_valid: bool = false
 var _active_move_target: Vector2 = Vector2.ZERO
 var _active_move_target_valid: bool = false
+var _retreat_target: Vector2 = Vector2.ZERO
+var _retreat_target_valid: bool = false
+var _retreat_target_hold_left: float = 0.0
 var _patrol_move_target: Vector2 = Vector2.ZERO
 var _patrol_move_target_valid: bool = false
 var _stall_clock: float = 0.0
@@ -154,6 +169,18 @@ var _preavoid_side_lock: String = "none"
 var _preavoid_side_lock_timer: float = 0.0
 var _preavoid_fail_ticks: int = 0
 var _collision_repath_cooldown_left: float = 0.0
+var _repath_defer_streak: int = 0
+var _last_repath_anchor_target: Vector2 = Vector2.ZERO
+var _last_repath_anchor_valid: bool = false
+var _traverse_api_missing_runtime_sec: float = 0.0
+var _traverse_api_missing_reported: bool = false
+var _traverse_api_missing_soft_moves: int = 0
+var _traverse_runtime_mode: String = TRAVERSE_RUNTIME_MODE_OK
+var _traverse_rebind_retry_left: float = 0.0
+var _traverse_rebind_attempts: int = 0
+var _traverse_degrade_anchor: Vector2 = Vector2.ZERO
+var _traverse_degrade_anchor_valid: bool = false
+var _traverse_degrade_intent_remapped: bool = false
 
 
 func _init(p_owner: CharacterBody2D, p_sprite: Sprite2D, p_speed_tiles: float) -> void:
@@ -237,6 +264,9 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_valid_path_node_valid = false
 	_active_move_target = Vector2.ZERO
 	_active_move_target_valid = false
+	_retreat_target = Vector2.ZERO
+	_retreat_target_valid = false
+	_retreat_target_hold_left = 0.0
 	_patrol_move_target = Vector2.ZERO
 	_patrol_move_target_valid = false
 	_plan_id = 0
@@ -266,6 +296,7 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_last_slide_collision_reason = "none"
 	_last_slide_collision_index = -1
 	_traverse_check_source = "geometry_api"
+	_traverse_api_missing_reported = false
 	preavoid_cooldown_left = 0.0
 	preavoid_last_triggered = false
 	preavoid_last_kind = "none"
@@ -275,6 +306,17 @@ func configure_navigation(p_nav_system: Node, p_home_room_id: int) -> void:
 	_preavoid_side_lock_timer = 0.0
 	_preavoid_fail_ticks = 0
 	_collision_repath_cooldown_left = 0.0
+	_repath_defer_streak = 0
+	_last_repath_anchor_target = Vector2.ZERO
+	_last_repath_anchor_valid = false
+	_traverse_api_missing_runtime_sec = 0.0
+	_traverse_api_missing_soft_moves = 0
+	_traverse_runtime_mode = TRAVERSE_RUNTIME_MODE_OK
+	_traverse_rebind_retry_left = 0.0
+	_traverse_rebind_attempts = 0
+	_traverse_degrade_anchor = Vector2.ZERO
+	_traverse_degrade_anchor_valid = false
+	_traverse_degrade_intent_remapped = false
 	_blocked_point_repeat_bucket = Vector2i.ZERO
 	_blocked_point_repeat_bucket_valid = false
 	_blocked_point_repeat_count = 0
@@ -330,6 +372,8 @@ func _is_same_or_adjacent_room(room_a: int, room_b: int) -> bool:
 func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Dictionary:
 	var normalized_delta := _normalize_nonnegative_delta(delta)
 	_collision_repath_cooldown_left = maxf(0.0, _collision_repath_cooldown_left - normalized_delta)
+	_update_traverse_runtime_state(normalized_delta)
+	_traverse_degrade_intent_remapped = false
 	_cost_profile = _build_nav_cost_profile(context)
 	var request_fire := false
 	var intent_type := _normalize_execute_intent_type(intent.get("type", ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL))
@@ -367,11 +411,27 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 	if alert_level >= ENEMY_ALERT_LEVELS_SCRIPT.ALERT and active_target_context and (
 		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
 		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME
-	):
-		intent_type = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
-		var guard_target := _pick_guard_target_from_context(known_target_pos, last_seen_anchor, investigate_anchor, home_pos)
-		has_target = _is_finite_vector2(guard_target)
-		target = guard_target if has_target else Vector2.ZERO
+		):
+			intent_type = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+			var guard_target := _pick_guard_target_from_context(known_target_pos, last_seen_anchor, investigate_anchor, home_pos)
+			has_target = _is_finite_vector2(guard_target)
+			target = guard_target if has_target else Vector2.ZERO
+
+	var degraded_intent_policy := _apply_traverse_degrade_intent_policy(
+		intent_type,
+		has_target,
+		target,
+		has_los,
+		player_pos,
+		known_target_pos,
+		last_seen_anchor,
+		investigate_anchor,
+		home_pos
+	)
+	intent_type = int(degraded_intent_policy.get("intent_type", intent_type))
+	has_target = bool(degraded_intent_policy.get("has_target", has_target))
+	target = degraded_intent_policy.get("target", target) as Vector2
+	_traverse_degrade_intent_remapped = bool(degraded_intent_policy.get("remapped", false))
 
 	# Reset search sub-state when effective intent type changes.
 	if intent_type != _last_intent_type:
@@ -379,6 +439,8 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 		_search_phase = 0.0
 		_in_hold_listen = false
 		_hold_listen_timer = 0.0
+	if intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT:
+		_clear_retreat_target_runtime()
 
 	_last_path_failed = false
 	_last_path_failed_reason = ""
@@ -464,7 +526,7 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 					_mark_missing_move_target(normalized_delta)
 				else:
 					movement_intent = true
-					var repath_override := _combat_no_los_repath_interval_sec() if combat_no_los else -1.0
+					var repath_override := _combat_no_los_repath_interval_sec(context) if combat_no_los else -1.0
 					_execute_move_to_target(normalized_delta, push_target, 1.0, repath_override, true, context)
 					face_towards(push_target)
 				request_fire = has_los and dist <= _pursuit_cfg_float("attack_range_max_px", ATTACK_RANGE_MAX_PX)
@@ -492,7 +554,11 @@ func execute_intent(delta: float, intent: Dictionary, context: Dictionary) -> Di
 		"path_failed_reason": _last_path_failed_reason,
 		"policy_blocked_segment": _last_policy_blocked_segment,
 		"movement_intent": movement_intent,
+		"effective_intent_type": intent_type,
 		"traverse_check_source": _traverse_check_source,
+		"traverse_runtime_mode": _traverse_runtime_mode,
+		"traverse_degrade_intent_remapped": _traverse_degrade_intent_remapped,
+		"traverse_rebind_attempts": _traverse_rebind_attempts,
 		"shadow_scan_status": _shadow_scan_exec_status,
 		"shadow_scan_complete_reason": _shadow_scan_exec_complete_reason,
 		"shadow_scan_target": shadow_scan_result_target,
@@ -608,6 +674,178 @@ func _intent_uses_move_target(intent_type: int) -> bool:
 		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
 		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETURN_HOME
 	)
+
+
+func _is_aggressive_traverse_degrade_intent(intent_type: int) -> bool:
+	return (
+		intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT
+		or intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT
+	)
+
+
+func _apply_traverse_degrade_intent_policy(
+	intent_type: int,
+	has_target: bool,
+	target: Vector2,
+	has_los: bool,
+	player_pos: Vector2,
+	known_target_pos: Vector2,
+	last_seen_anchor: Vector2,
+	investigate_anchor: Vector2,
+	home_pos: Vector2
+) -> Dictionary:
+	if _traverse_runtime_mode != TRAVERSE_RUNTIME_MODE_DEGRADED:
+		return {
+			"intent_type": intent_type,
+			"has_target": has_target,
+			"target": target,
+			"remapped": false,
+		}
+	if not _is_aggressive_traverse_degrade_intent(intent_type):
+		return {
+			"intent_type": intent_type,
+			"has_target": has_target,
+			"target": target,
+			"remapped": false,
+		}
+	var out_intent := intent_type
+	var out_target := target
+	var out_has_target := has_target
+	if has_los:
+		out_intent = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
+		var hold_target := _pick_guard_target_from_context(
+			known_target_pos,
+			last_seen_anchor,
+			investigate_anchor,
+			home_pos
+		)
+		if _is_finite_vector2(player_pos) and player_pos != Vector2.ZERO:
+			hold_target = player_pos
+		if _is_finite_vector2(hold_target):
+			out_target = hold_target
+			out_has_target = hold_target != Vector2.ZERO
+	else:
+		out_intent = ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.SEARCH
+		if not _traverse_degrade_anchor_valid and owner != null and _is_finite_vector2(owner.global_position):
+			_traverse_degrade_anchor = owner.global_position
+			_traverse_degrade_anchor_valid = true
+		var search_target := _traverse_degrade_anchor if _traverse_degrade_anchor_valid else _pick_guard_target_from_context(
+			known_target_pos,
+			last_seen_anchor,
+			investigate_anchor,
+			home_pos
+		)
+		out_target = search_target
+		out_has_target = _is_finite_vector2(search_target)
+	return {
+		"intent_type": out_intent,
+		"has_target": out_has_target,
+		"target": out_target,
+		"remapped": true,
+	}
+
+
+func _set_traverse_runtime_mode(next_mode: String) -> void:
+	if _traverse_runtime_mode == next_mode:
+		return
+	_traverse_runtime_mode = next_mode
+	match next_mode:
+		TRAVERSE_RUNTIME_MODE_OK:
+			_clear_missing_traverse_api_runtime()
+			_traverse_rebind_retry_left = 0.0
+			_traverse_degrade_anchor = Vector2.ZERO
+			_traverse_degrade_anchor_valid = false
+		TRAVERSE_RUNTIME_MODE_DEGRADED:
+			if not _traverse_degrade_anchor_valid and owner != null and _is_finite_vector2(owner.global_position):
+				_traverse_degrade_anchor = owner.global_position
+				_traverse_degrade_anchor_valid = true
+		_:
+			pass
+
+
+func _has_geometry_traverse_api(provider: Node) -> bool:
+	return provider != null and is_instance_valid(provider) and provider.has_method("can_enemy_traverse_geometry_point")
+
+
+func _has_allowed_legacy_traverse_api(provider: Node) -> bool:
+	return (
+		provider != null
+		and is_instance_valid(provider)
+		and provider.has_method("can_enemy_traverse_point")
+		and _can_use_legacy_shadow_api_fallback()
+	)
+
+
+func _resolve_scene_navigation_service() -> Node:
+	if owner == null or owner.get_tree() == null:
+		return null
+	var scene := owner.get_tree().current_scene
+	if scene != null:
+		var scene_nav := scene.get_node_or_null("Systems/NavigationService")
+		if scene_nav != null:
+			return scene_nav as Node
+	var cursor: Node = owner
+	while cursor != null:
+		var branch_nav := cursor.get_node_or_null("Systems/NavigationService")
+		if branch_nav != null:
+			return branch_nav as Node
+		cursor = cursor.get_parent()
+	return null
+
+
+func _try_rebind_traverse_provider() -> bool:
+	var candidates: Array = []
+	if owner != null and owner.has_meta("nav_system"):
+		var meta_nav: Variant = owner.get_meta("nav_system")
+		if meta_nav is Node:
+			candidates.append(meta_nav as Node)
+	var scene_nav := _resolve_scene_navigation_service()
+	if scene_nav != null:
+		candidates.append(scene_nav)
+	if nav_system != null:
+		candidates.append(nav_system)
+	var seen_ids: Dictionary = {}
+	for candidate_variant in candidates:
+		var candidate := candidate_variant as Node
+		if candidate == null or not is_instance_valid(candidate):
+			continue
+		var candidate_id := candidate.get_instance_id()
+		if seen_ids.has(candidate_id):
+			continue
+		seen_ids[candidate_id] = true
+		if not _has_geometry_traverse_api(candidate) and not _has_allowed_legacy_traverse_api(candidate):
+			continue
+		nav_system = candidate
+		if owner != null:
+			owner.set_meta("nav_system", candidate)
+		if _patrol != null and _patrol.has_method("configure"):
+			_patrol.configure(nav_system, home_room_id)
+		_traverse_api_missing_reported = false
+		return true
+	return false
+
+
+func _update_traverse_runtime_state(delta: float) -> void:
+	var safe_delta := maxf(delta, 0.0)
+	_traverse_rebind_retry_left = maxf(0.0, _traverse_rebind_retry_left - safe_delta)
+	if _has_geometry_traverse_api(nav_system) or _has_allowed_legacy_traverse_api(nav_system):
+		_set_traverse_runtime_mode(TRAVERSE_RUNTIME_MODE_OK)
+		return
+	if _traverse_rebind_retry_left <= 0.0:
+		_traverse_rebind_retry_left = TRAVERSE_API_REBIND_RETRY_SEC
+		_traverse_rebind_attempts += 1
+		if _try_rebind_traverse_provider():
+			_set_traverse_runtime_mode(TRAVERSE_RUNTIME_MODE_OK)
+			return
+	_track_missing_traverse_api_runtime(safe_delta)
+	if _traverse_runtime_mode == TRAVERSE_RUNTIME_MODE_OK:
+		_set_traverse_runtime_mode(TRAVERSE_RUNTIME_MODE_MISSING_GRACE)
+	elif (
+		_traverse_runtime_mode == TRAVERSE_RUNTIME_MODE_MISSING_GRACE
+		and _traverse_api_missing_runtime_sec > TRAVERSE_API_MISSING_GRACE_SEC
+	):
+		_set_traverse_runtime_mode(TRAVERSE_RUNTIME_MODE_DEGRADED)
 
 
 func _update_plan_lock(intent_type: int, target: Vector2, target_valid: bool, allow_update: bool) -> void:
@@ -820,6 +1058,45 @@ func _schedule_next_repath(runtime_context: Dictionary, base_interval_sec: float
 	_repath_timer = _adaptive_repath_interval_sec(runtime_context, base_interval_sec, reason)
 
 
+func _cadence_target_shift_px() -> float:
+	if (
+		_last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PUSH
+		or _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.MOVE_TO_SLOT
+		or _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.HOLD_RANGE
+	):
+		return ADAPTIVE_REPATH_TARGET_SHIFT_PUSH_PX
+	return ADAPTIVE_REPATH_TARGET_SHIFT_PX
+
+
+func _can_defer_cadence_replan(movement_target: Vector2, target_reached_px: float) -> bool:
+	if _path_policy_blocked:
+		return false
+	if not _last_repath_anchor_valid:
+		return false
+	if _last_repath_anchor_target.distance_to(movement_target) > _cadence_target_shift_px():
+		return false
+	if not _has_active_path_to(movement_target, target_reached_px):
+		return false
+	if (
+		_last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_POLICY
+		or _last_path_plan_status == PATH_PLAN_STATUS_UNREACHABLE_GEOMETRY
+	):
+		return false
+	return true
+
+
+func _defer_cadence_replan(base_interval_sec: float) -> void:
+	_repath_defer_streak = mini(_repath_defer_streak + 1, ADAPTIVE_REPATH_DEFER_MAX_STREAK)
+	var defer_interval := base_interval_sec + float(_repath_defer_streak) * ADAPTIVE_REPATH_DEFER_STEP_SEC
+	_repath_timer = clampf(defer_interval, ADAPTIVE_REPATH_COMBAT_SEC, ADAPTIVE_REPATH_MAX_SEC)
+
+
+func _mark_cadence_replan_anchor(movement_target: Vector2) -> void:
+	_repath_defer_streak = 0
+	_last_repath_anchor_target = movement_target
+	_last_repath_anchor_valid = _is_finite_vector2(movement_target)
+
+
 func _movement_target_reached_px(movement_target: Vector2, runtime_context: Dictionary) -> float:
 	var base := _pursuit_cfg_float("waypoint_reached_px", 12.0)
 	var player_pos := _context_vec2_or_zero(runtime_context, "player_pos")
@@ -841,22 +1118,42 @@ func _execute_move_to_target(
 		_mark_missing_move_target(delta)
 		return false
 	var movement_target := target
+	var base_repath_interval := _adaptive_base_repath_interval_sec(runtime_context, repath_interval_override_sec)
+	var target_reached_px := _movement_target_reached_px(movement_target, runtime_context)
+	if owner.global_position.distance_to(movement_target) <= target_reached_px:
+		_stop_motion(delta)
+		_active_move_target = movement_target
+		_active_move_target_valid = true
+		_reset_stall_monitor()
+		_repath_timer = maxf(_repath_timer, base_repath_interval)
+		return true
 	var target_switched := not _active_move_target_valid or _active_move_target.distance_to(movement_target) > 0.5
 	if target_switched:
 		_reset_stall_monitor()
-	if not _active_move_target_valid or _active_move_target.distance_to(movement_target) > ADAPTIVE_REPATH_TARGET_SHIFT_PX:
+		_repath_defer_streak = 0
+	if not _active_move_target_valid:
 		_repath_timer = 0.0
+		_repath_defer_streak = 0
+	elif (
+		_last_intent_type != ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.RETREAT
+		and _active_move_target.distance_to(movement_target) > _cadence_target_shift_px()
+	):
+		_repath_timer = minf(_repath_timer, ADAPTIVE_REPATH_TARGET_SHIFT_SOFT_SEC)
+		_repath_defer_streak = 0
 	_active_move_target = movement_target
 	_active_move_target_valid = true
-	var base_repath_interval := _adaptive_base_repath_interval_sec(runtime_context, repath_interval_override_sec)
-	var target_reached_px := _movement_target_reached_px(movement_target, runtime_context)
 	_repath_timer = maxf(0.0, _repath_timer - maxf(delta, 0.0))
 	if _repath_timer <= 0.0:
-		if not _attempt_replan_with_policy(movement_target):
-			_apply_blocked_point_repeat_feedback(movement_target)
-			_schedule_next_repath(runtime_context, base_repath_interval, _last_path_plan_reason)
-			return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
-		_schedule_next_repath(runtime_context, base_repath_interval, "ok")
+		var force_cadence_replan := _repath_defer_streak >= ADAPTIVE_REPATH_DEFER_MAX_STREAK
+		if force_cadence_replan or not _can_defer_cadence_replan(movement_target, target_reached_px):
+			if not _attempt_replan_with_policy(movement_target):
+				_apply_blocked_point_repeat_feedback(movement_target)
+				_schedule_next_repath(runtime_context, base_repath_interval, _last_path_plan_reason)
+				return _handle_replan_failure_or_shadow_fsm(delta, runtime_context, movement_target, has_target)
+			_mark_cadence_replan_anchor(movement_target)
+			_schedule_next_repath(runtime_context, base_repath_interval, "ok")
+		else:
+			_defer_cadence_replan(base_repath_interval)
 	if not _has_active_path_to(movement_target, target_reached_px):
 		_mark_path_failed("path_unavailable")
 		_apply_blocked_point_repeat_feedback(movement_target)
@@ -872,7 +1169,9 @@ func _execute_move_to_target(
 			_last_path_plan_blocked_point,
 			_last_path_plan_blocked_point_valid
 		)
-		_schedule_next_repath(runtime_context, base_repath_interval, "collision_blocked")
+		# Keep first world-collision response immediate; subsequent retries are already rate-limited by cooldown.
+		if not _last_slide_collision_forced_repath:
+			_schedule_next_repath(runtime_context, base_repath_interval, "collision_blocked")
 	elif _last_path_failed_reason == "player_contact":
 		_schedule_next_repath(runtime_context, base_repath_interval, "player_contact")
 	if not moved and _path_policy_blocked:
@@ -899,14 +1198,18 @@ func _execute_move_to_target(
 		return false
 	if owner.global_position.distance_to(movement_target) <= target_reached_px:
 		_stop_motion(delta)
-		_active_move_target_valid = false
+		_active_move_target = movement_target
+		_active_move_target_valid = true
 		_reset_stall_monitor()
 		_repath_timer = maxf(_repath_timer, base_repath_interval)
+		return true
 	return not _last_path_failed
 
 
-func _combat_no_los_repath_interval_sec() -> float:
-	return maxf(_pursuit_cfg_float("combat_repath_interval_no_los_sec", COMBAT_REPATH_INTERVAL_NO_LOS_SEC), 0.01)
+func _combat_no_los_repath_interval_sec(runtime_context: Dictionary) -> float:
+	var adaptive_base := _adaptive_base_repath_interval_sec(runtime_context, -1.0)
+	var no_los_interval := maxf(adaptive_base, ADAPTIVE_REPATH_ALERT_SEC)
+	return clampf(no_los_interval, ADAPTIVE_REPATH_ALERT_SEC, ADAPTIVE_REPATH_MAX_SEC)
 
 
 func _execute_search(delta: float, center: Vector2) -> void:
@@ -1090,12 +1393,30 @@ func _run_shadow_scan_sweep(delta: float, target: Vector2) -> bool:
 	return false
 
 
+func _clear_retreat_target_runtime() -> void:
+	_retreat_target = Vector2.ZERO
+	_retreat_target_valid = false
+	_retreat_target_hold_left = 0.0
+
+
 func _execute_retreat_from(delta: float, danger_origin: Vector2) -> void:
-	var retreat_dir := (owner.global_position - danger_origin).normalized()
-	if retreat_dir.length_squared() <= 0.0001:
-		retreat_dir = Vector2.RIGHT.rotated(_rng.randf_range(0.0, TAU))
-	var retreat_target := owner.global_position + retreat_dir * _pursuit_cfg_float("retreat_distance_px", 140.0)
-	_execute_move_to_target(delta, retreat_target, 0.95)
+	_retreat_target_hold_left = maxf(0.0, _retreat_target_hold_left - maxf(delta, 0.0))
+	var need_new_target := not _retreat_target_valid
+	if _retreat_target_valid and owner.global_position.distance_to(_retreat_target) <= _pursuit_cfg_float("waypoint_reached_px", 12.0):
+		need_new_target = true
+	if _retreat_target_hold_left <= 0.0:
+		need_new_target = true
+	if need_new_target:
+		var retreat_dir := (owner.global_position - danger_origin).normalized()
+		if retreat_dir.length_squared() <= 0.0001:
+			retreat_dir = Vector2.RIGHT.rotated(_rng.randf_range(0.0, TAU))
+		_retreat_target = owner.global_position + retreat_dir * _pursuit_cfg_float("retreat_distance_px", 140.0)
+		_retreat_target_valid = _is_finite_vector2(_retreat_target)
+		_retreat_target_hold_left = maxf(ADAPTIVE_REPATH_PATROL_SEC, RETREAT_TARGET_HOLD_SEC)
+	if not _retreat_target_valid:
+		_mark_missing_move_target(delta)
+		return
+	_execute_move_to_target(delta, _retreat_target, 0.95)
 
 
 func _clear_patrol_move_target_tracking() -> void:
@@ -1107,8 +1428,6 @@ func _sync_patrol_move_target(target: Vector2, target_valid: bool) -> void:
 	if not target_valid or not _is_finite_vector2(target):
 		_clear_patrol_move_target_tracking()
 		return
-	if not _patrol_move_target_valid or _patrol_move_target.distance_to(target) > PLAN_TARGET_SWITCH_EPS_PX:
-		_repath_timer = 0.0
 	_patrol_move_target = target
 	_patrol_move_target_valid = true
 
@@ -1359,6 +1678,13 @@ func _move_in_direction(dir: Vector2, speed_scale: float, delta: float) -> bool:
 	var base_speed_pixels := speed_tiles * tile_size
 	var requested_speed_scale := maxf(speed_scale, 0.0)
 	var preavoid := _apply_preavoid(move_dir, requested_speed_scale, delta, base_speed_pixels)
+	if bool(preavoid.get("halt", false)):
+		owner.velocity = Vector2.ZERO
+		if bool(preavoid.get("policy_blocked", false)):
+			_path_policy_blocked = true
+			if _last_policy_blocked_segment < 0:
+				_last_policy_blocked_segment = 0
+		return false
 	var preavoid_dir_variant: Variant = preavoid.get("dir", move_dir)
 	if preavoid_dir_variant is Vector2:
 		move_dir = (preavoid_dir_variant as Vector2).normalized()
@@ -1371,6 +1697,8 @@ func _move_in_direction(dir: Vector2, speed_scale: float, delta: float) -> bool:
 	var next_velocity := owner.velocity.move_toward(target_velocity, accel_per_sec * delta)
 	var predicted_pos := owner.global_position + next_velocity * delta
 	if not _can_traverse_position(predicted_pos):
+		if _traverse_check_source == "missing_traverse_api" and _try_missing_traverse_api_soft_move(move_dir, next_velocity, delta):
+			return true
 		owner.velocity = Vector2.ZERO
 		_path_policy_blocked = true
 		if _last_policy_blocked_segment < 0:
@@ -1379,6 +1707,63 @@ func _move_in_direction(dir: Vector2, speed_scale: float, delta: float) -> bool:
 	owner.velocity = next_velocity
 	owner.move_and_slide()
 	_set_target_facing(move_dir)
+	return true
+
+
+func _can_use_legacy_shadow_api_fallback() -> bool:
+	return _pursuit_cfg_bool("allow_legacy_shadow_api_fallback", false)
+
+
+func _track_missing_traverse_api_runtime(delta: float) -> void:
+	_traverse_api_missing_runtime_sec = maxf(0.0, _traverse_api_missing_runtime_sec + maxf(delta, 0.0))
+
+
+func _clear_missing_traverse_api_runtime() -> void:
+	_traverse_api_missing_runtime_sec = 0.0
+
+
+func _missing_traverse_soft_corridor_dir() -> Vector2:
+	if _use_navmesh and _nav_agent != null and not _nav_agent.is_navigation_finished():
+		return (_nav_agent.get_next_path_position() - owner.global_position).normalized()
+	if not _waypoints.is_empty():
+		return ((_waypoints[0] as Vector2) - owner.global_position).normalized()
+	return Vector2.ZERO
+
+
+func _is_soft_move_within_current_room(next_pos: Vector2) -> bool:
+	if nav_system == null or not nav_system.has_method("room_id_at_point"):
+		return false
+	var from_room := int(nav_system.call("room_id_at_point", owner.global_position))
+	var to_room := int(nav_system.call("room_id_at_point", next_pos))
+	if from_room < 0 or to_room < 0:
+		return false
+	return from_room == to_room
+
+
+func _try_missing_traverse_api_soft_move(move_dir: Vector2, next_velocity: Vector2, delta: float) -> bool:
+	if _traverse_runtime_mode == TRAVERSE_RUNTIME_MODE_OK:
+		return false
+	if (
+		_traverse_runtime_mode == TRAVERSE_RUNTIME_MODE_MISSING_GRACE
+		and _traverse_api_missing_runtime_sec > TRAVERSE_API_MISSING_GRACE_SEC
+	):
+		return false
+	var max_step_px := TRAVERSE_API_MISSING_MAX_STEP_PX
+	var projected_step_px := next_velocity.length() * maxf(delta, 0.0)
+	if projected_step_px > max_step_px:
+		return false
+	var corridor_dir := _missing_traverse_soft_corridor_dir()
+	if corridor_dir.length_squared() <= 0.0001:
+		return false
+	if corridor_dir.dot(move_dir) < TRAVERSE_API_MISSING_PATH_ALIGN_DOT_MIN:
+		return false
+	var next_pos := owner.global_position + next_velocity * maxf(delta, 0.0)
+	if not _is_soft_move_within_current_room(next_pos):
+		return false
+	owner.velocity = next_velocity
+	owner.move_and_slide()
+	_set_target_facing(move_dir)
+	_traverse_api_missing_soft_moves += 1
 	return true
 
 
@@ -1413,6 +1798,8 @@ func _apply_preavoid(
 	var result := {
 		"dir": forward_dir,
 		"speed_scale": speed_scale,
+		"halt": false,
+		"policy_blocked": false,
 		"forced_repath": false,
 	}
 	if not _pursuit_cfg_bool("preavoid_enabled", true):
@@ -1453,6 +1840,10 @@ func _apply_preavoid(
 		if _preavoid_fail_ticks >= PREAVOID_FAILSAFE_TICKS:
 			_trigger_preavoid_forced_repath(hazard_kind)
 			result["forced_repath"] = true
+		else:
+			# Prevent head-on wall pushes while waiting for repath cooldown/failsafe.
+			result["halt"] = true
+			result["policy_blocked"] = true
 		return result
 
 	_preavoid_fail_ticks = 0
@@ -1567,11 +1958,19 @@ func _stop_motion(delta: float) -> void:
 func _can_traverse_position(candidate_pos: Vector2) -> bool:
 	_traverse_check_source = "geometry_api"
 	if nav_system and nav_system.has_method("can_enemy_traverse_geometry_point"):
+		_clear_missing_traverse_api_runtime()
 		return bool(nav_system.call("can_enemy_traverse_geometry_point", owner, candidate_pos))
-	if nav_system and nav_system.has_method("can_enemy_traverse_point"):
+	if nav_system and nav_system.has_method("can_enemy_traverse_point") and _can_use_legacy_shadow_api_fallback():
 		_traverse_check_source = "legacy_shadow_api"
+		_clear_missing_traverse_api_runtime()
 		return bool(nav_system.call("can_enemy_traverse_point", owner, candidate_pos))
-	return true
+	_traverse_check_source = "missing_traverse_api"
+	if not _traverse_api_missing_reported:
+		_traverse_api_missing_reported = true
+		push_error("[EnemyPursuit] Missing traverse API; fail-closed traversal engaged")
+		if AIWatchdog and AIWatchdog.has_method("record_missing_traverse_api_event"):
+			AIWatchdog.call("record_missing_traverse_api_event")
+	return false
 
 
 func _set_target_facing(dir: Vector2, force_apply: bool = false) -> void:
@@ -1687,9 +2086,9 @@ func _handle_slide_collisions_and_repath(slide_count: int) -> Dictionary:
 				_last_path_failed_reason = "collision_blocked"
 				_path_policy_blocked = false
 				_last_policy_blocked_segment = -1
-				_collision_repath_cooldown_left = COLLISION_REPATH_COOLDOWN_SEC
+				var is_patrol_collision_repath := _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
+				_collision_repath_cooldown_left = COLLISION_REPATH_COOLDOWN_PATROL_SEC if is_patrol_collision_repath else COLLISION_REPATH_COOLDOWN_SEC
 				if AIWatchdog:
-					var is_patrol_collision_repath := _last_intent_type == ENEMY_UTILITY_BRAIN_SCRIPT.IntentType.PATROL
 					AIWatchdog.record_collision_repath_event(is_patrol_collision_repath)
 			elif is_player_collision:
 				_last_path_failed_reason = "player_contact"
@@ -1838,7 +2237,7 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"stall_consecutive_windows": _stall_consecutive_windows,
 		"stall_speed_avg": _last_stall_speed_avg,
 		"stall_path_progress": _last_stall_path_progress,
-			"shadow_scan_active": _shadow_search_stage != ShadowSearchStage.IDLE,
+		"shadow_scan_active": _shadow_search_stage != ShadowSearchStage.IDLE,
 		"shadow_scan_target": _shadow_scan_target,
 		"shadow_scan_boundary_point": _shadow_scan_boundary_point,
 		"shadow_scan_boundary_valid": _shadow_scan_boundary_valid,
@@ -1852,6 +2251,17 @@ func debug_get_navigation_policy_snapshot() -> Dictionary:
 		"preavoid_side": preavoid_last_side,
 		"preavoid_cooldown_left": preavoid_cooldown_left,
 		"traverse_check_source": _traverse_check_source,
+		"traverse_runtime_mode": _traverse_runtime_mode,
+		"traverse_api_missing_runtime_sec": _traverse_api_missing_runtime_sec,
+		"traverse_api_missing_soft_moves": _traverse_api_missing_soft_moves,
+		"traverse_rebind_retry_left": _traverse_rebind_retry_left,
+		"traverse_rebind_attempts": _traverse_rebind_attempts,
+		"traverse_degrade_anchor": _traverse_degrade_anchor,
+		"traverse_degrade_anchor_valid": _traverse_degrade_anchor_valid,
+		"traverse_degrade_intent_remapped": _traverse_degrade_intent_remapped,
+		"repath_defer_streak": _repath_defer_streak,
+		"last_repath_anchor_target": _last_repath_anchor_target,
+		"last_repath_anchor_valid": _last_repath_anchor_valid,
 		"blocked_point_repeat_bucket": Vector2(float(_blocked_point_repeat_bucket.x), float(_blocked_point_repeat_bucket.y)),
 		"blocked_point_repeat_bucket_valid": _blocked_point_repeat_bucket_valid,
 		"blocked_point_repeat_count": _blocked_point_repeat_count,

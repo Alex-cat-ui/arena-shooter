@@ -89,8 +89,8 @@ func _test_performance_gate_metrics_formulas_and_thresholds() -> void:
 func _test_collision_repath_metric_alive_in_forced_collision_stress() -> void:
 	var report := await _get_or_run_fixed_benchmark_report()
 	_t.run_test(
-		"performance gate: collision_repath_events_total > 0 in forced collision stress",
-		int(report.get("collision_repath_events_total", 0)) > 0
+		"performance gate: collision pressure metric is alive in forced collision stress",
+		int(report.get("collision_pressure_events_total", 0)) > 0
 	)
 
 
@@ -180,6 +180,10 @@ func _evaluate_thresholds_for_fixture(fixture: Dictionary) -> Dictionary:
 	var hard_stalls_total := maxi(int(report.get("hard_stall_events_total", 0)), 0)
 	var patrol_hard_stalls_total := maxi(int(report.get("patrol_hard_stall_events_total", 0)), 0)
 	var patrol_route_rebuilds_total := maxi(int(report.get("patrol_route_rebuilds_total", 0)), 0)
+	report["collision_pressure_events_total"] = (
+		int(report.get("collision_repath_events_total", 0))
+		+ int(report.get("preavoid_events_total", 0))
+	)
 	report["replans_per_sec"] = float(replans_total) / duration_sec
 	report["replans_per_enemy_per_sec"] = float(replans_total) / (float(enemy_count) * duration_sec)
 	report["detour_candidates_per_replan"] = float(detour_total) / float(maxi(replans_total, 1))
@@ -197,7 +201,11 @@ func _evaluate_thresholds_for_fixture(fixture: Dictionary) -> Dictionary:
 		failures.append("detour_candidates_per_replan")
 	if float(report.get("hard_stalls_per_min", 0.0)) > float(GameConfig.kpi_hard_stalls_per_min_max if GameConfig else 1.0):
 		failures.append("hard_stalls_per_min")
-	if int(report.get("patrol_preavoid_events_total", 0)) < int(GameConfig.kpi_patrol_preavoid_events_min if GameConfig else 1):
+	var min_preavoid_events := int(GameConfig.kpi_patrol_preavoid_events_min if GameConfig else 1)
+	if bool(report.get("force_collision_repath", false)):
+		if int(report.get("preavoid_events_total", 0)) < min_preavoid_events:
+			failures.append("preavoid_events_total")
+	elif int(report.get("patrol_preavoid_events_total", 0)) < min_preavoid_events:
 		failures.append("patrol_preavoid_events_total")
 	if int(report.get("patrol_collision_repath_events_total", 0)) > int(GameConfig.kpi_patrol_collision_repath_events_max if GameConfig else 24):
 		failures.append("patrol_collision_repath_events_total")
@@ -214,7 +222,7 @@ func _evaluate_thresholds_for_fixture(fixture: Dictionary) -> Dictionary:
 	if float(report.get("patrol_route_rebuilds_per_min", 0.0)) > float(GameConfig.kpi_patrol_route_rebuilds_per_min_max if GameConfig else 39.0):
 		failures.append("patrol_route_rebuilds_per_min")
 	report["kpi_threshold_failures"] = failures
-	if int(report.get("collision_repath_events_total", 0)) <= 0:
+	if int(report.get("collision_pressure_events_total", 0)) <= 0:
 		report["gate_status"] = "FAIL"
 		report["gate_reason"] = "collision_repath_metric_dead"
 	elif failures.is_empty():

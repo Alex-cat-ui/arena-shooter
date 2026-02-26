@@ -14,6 +14,17 @@ var embedded_mode: bool = false
 var _t := TestHelpers.new()
 
 
+class FakeNavMissingGeometry:
+	extends Node
+
+
+class FakeNavWithGeometry:
+	extends Node
+
+	func can_enemy_traverse_geometry_point(_enemy: Node, _point: Vector2) -> bool:
+		return true
+
+
 func _ready() -> void:
 	if embedded_mode:
 		return
@@ -28,6 +39,7 @@ func run_suite() -> Dictionary:
 	print("============================================================")
 
 	await _test_system_creation_and_wiring_order()
+	await _test_traverse_preflight_contract()
 
 	_t.summary("LEVEL BOOTSTRAP CONTROLLER RESULTS")
 	return {
@@ -53,9 +65,17 @@ func _test_system_creation_and_wiring_order() -> void:
 	var _layout_was_enabled: bool = GameConfig.procedural_layout_enabled if GameConfig else false
 	if GameConfig:
 		GameConfig.procedural_layout_enabled = false
-	bootstrap.init_systems(ctx, layout_controller, transition_controller, camera_controller)
+	var systems_ok := bootstrap.init_systems(ctx, layout_controller, transition_controller, camera_controller)
 	if GameConfig:
 		GameConfig.procedural_layout_enabled = _layout_was_enabled
+	_t.run_test("bootstrap init_systems passes traverse preflight in normal wiring", systems_ok)
+	if not systems_ok:
+		if ctx.runtime_budget_controller and ctx.runtime_budget_controller.has_method("unbind"):
+			ctx.runtime_budget_controller.unbind()
+		ctx.runtime_budget_controller = null
+		ctx.level.queue_free()
+		await get_tree().process_frame
+		return
 	bootstrap.init_visual_polish(ctx, hud_controller)
 
 	_t.run_test("bootstrap creates core systems", ctx.combat_system != null and ctx.projectile_system != null and ctx.vfx_system != null)
@@ -78,6 +98,48 @@ func _test_system_creation_and_wiring_order() -> void:
 	ctx.runtime_budget_controller = null
 	ctx.level.queue_free()
 	await get_tree().process_frame
+
+
+func _test_traverse_preflight_contract() -> void:
+	var bootstrap = LEVEL_BOOTSTRAP_CONTROLLER_SCRIPT.new()
+	var baseline_missing_events := 0
+	if AIWatchdog and AIWatchdog.has_method("debug_reset_metrics_for_tests"):
+		AIWatchdog.call("debug_reset_metrics_for_tests")
+	if AIWatchdog and AIWatchdog.has_method("get_snapshot"):
+		var snapshot_before := AIWatchdog.call("get_snapshot") as Dictionary
+		baseline_missing_events = int(snapshot_before.get("missing_traverse_api_events_total", 0))
+
+	var strict_missing := bootstrap.debug_validate_traverse_preflight_contract(FakeNavMissingGeometry.new(), 1)
+	_t.run_test(
+		"preflight strict mode fails without geometry traverse api",
+		not bool(strict_missing.get("ok", true))
+		and bool(strict_missing.get("strict", false))
+		and String(strict_missing.get("reason", "")) == "missing_geometry_api"
+	)
+
+	var strict_ok := bootstrap.debug_validate_traverse_preflight_contract(FakeNavWithGeometry.new(), 1)
+	_t.run_test(
+		"preflight strict mode passes when geometry traverse api exists",
+		bool(strict_ok.get("ok", false))
+		and bool(strict_ok.get("strict", false))
+		and String(strict_ok.get("reason", "")) == "ok"
+	)
+
+	var release_missing := bootstrap.debug_validate_traverse_preflight_contract(FakeNavMissingGeometry.new(), 0)
+	_t.run_test(
+		"preflight release mode degrades gracefully without geometry traverse api",
+		bool(release_missing.get("ok", false))
+		and not bool(release_missing.get("strict", true))
+		and String(release_missing.get("reason", "")) == "missing_geometry_api"
+	)
+
+	if AIWatchdog and AIWatchdog.has_method("get_snapshot"):
+		var snapshot_after := AIWatchdog.call("get_snapshot") as Dictionary
+		var after_missing_events := int(snapshot_after.get("missing_traverse_api_events_total", 0))
+		_t.run_test(
+			"preflight missing geometry api emits watchdog signal",
+			after_missing_events >= baseline_missing_events + 2
+		)
 
 
 func _make_context_graph():
