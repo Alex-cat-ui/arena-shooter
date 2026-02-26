@@ -49,6 +49,25 @@ class FakeNavValidPlanner:
 		return contract.duplicate(true)
 
 
+class FakeServiceLegacyOnly:
+	extends Node
+
+	var layout = null
+	var _room_graph: Dictionary = {}
+	var geometry_path_points: Array[Vector2] = []
+	var legacy_calls: int = 0
+
+	func get_navigation_map_rid() -> RID:
+		return RID()
+
+	func _build_room_graph_path_points_reachable(_from_pos: Vector2, _to_pos: Vector2) -> Array[Vector2]:
+		return geometry_path_points.duplicate()
+
+	func can_enemy_traverse_point(_enemy: Node, _point: Vector2) -> bool:
+		legacy_calls += 1
+		return true
+
+
 func _ready() -> void:
 	if embedded_mode:
 		return
@@ -63,6 +82,7 @@ func run_suite() -> Dictionary:
 	print("============================================================")
 
 	_test_failure_reason_contract()
+	_test_navigation_queries_legacy_policy_bridge_contract()
 	_test_pursuit_dispatch_contract_nav_system_missing()
 
 	_t.summary("NAVIGATION FAILURE REASON CONTRACT RESULTS")
@@ -129,6 +149,42 @@ func _test_failure_reason_contract() -> void:
 
 	enemy.queue_free()
 	service.queue_free()
+
+
+func _test_navigation_queries_legacy_policy_bridge_contract() -> void:
+	var saved_ai_balance := (GameConfig.ai_balance as Dictionary).duplicate(true) if GameConfig and GameConfig.ai_balance is Dictionary else {}
+	var service := FakeServiceLegacyOnly.new()
+	add_child(service)
+	var queries = NAV_RUNTIME_QUERIES_SCRIPT.new(service)
+	var enemy := Node2D.new()
+	add_child(enemy)
+	var from_pos := Vector2.ZERO
+	var to_pos := Vector2(120.0, 0.0)
+	service.geometry_path_points = [to_pos]
+	service.legacy_calls = 0
+
+	_set_allow_legacy_shadow_api_fallback(false)
+	var blocked := queries.build_policy_valid_path(from_pos, to_pos, enemy) as Dictionary
+	_t.run_test(
+		"navigation queries: legacy policy bridge is fail-closed by default",
+		String(blocked.get("status", "")) == "unreachable_policy"
+			and String(blocked.get("reason", "")) == "policy_blocked"
+			and int(service.legacy_calls) == 0
+	)
+
+	_set_allow_legacy_shadow_api_fallback(true)
+	var bridged := queries.build_policy_valid_path(from_pos, to_pos, enemy) as Dictionary
+	_t.run_test(
+		"navigation queries: legacy policy bridge works only with explicit opt-in",
+		String(bridged.get("status", "")) == "ok"
+			and String(bridged.get("reason", "")) == "ok"
+			and int(service.legacy_calls) > 0
+	)
+
+	enemy.queue_free()
+	service.queue_free()
+	if GameConfig and GameConfig.ai_balance is Dictionary:
+		GameConfig.ai_balance = saved_ai_balance.duplicate(true)
 
 
 func _test_pursuit_dispatch_contract_nav_system_missing() -> void:
@@ -212,3 +268,13 @@ func _free_pursuit_fixture(fixture: Dictionary) -> void:
 		owner.queue_free()
 	if nav != null:
 		nav.queue_free()
+
+
+func _set_allow_legacy_shadow_api_fallback(enabled: bool) -> void:
+	if not (GameConfig and GameConfig.ai_balance is Dictionary):
+		return
+	var ai := (GameConfig.ai_balance as Dictionary).duplicate(true)
+	var pursuit := (ai.get("pursuit", {}) as Dictionary).duplicate(true)
+	pursuit["allow_legacy_shadow_api_fallback"] = enabled
+	ai["pursuit"] = pursuit
+	GameConfig.ai_balance = ai

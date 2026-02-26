@@ -4,6 +4,7 @@ class_name NavigationRuntimeQueries
 extends RefCounted
 
 var _service: Node = null
+var _legacy_traverse_policy_missing_reported: bool = false
 const POLICY_SAMPLE_STEP_PX := 12.0
 const NAV_COST_SHADOW_SAMPLE_STEP_PX := 16.0
 const ROUTE_SOURCE_NAVMESH := "navmesh"
@@ -738,7 +739,7 @@ func _validate_enemy_policy_path(enemy: Node, from_pos: Vector2, path_points: Ar
 						"blocked_point": sample,
 					}
 			prev = point
-	elif _service and _service.has_method("can_enemy_traverse_point"):
+	elif _service and _service.has_method("can_enemy_traverse_point") and _allow_legacy_shadow_api_fallback():
 		var legacy_prev := from_pos
 		for point in path_points:
 			var segment_len := legacy_prev.distance_to(point)
@@ -753,6 +754,12 @@ func _validate_enemy_policy_path(enemy: Node, from_pos: Vector2, path_points: Ar
 						"blocked_point": sample,
 					}
 			legacy_prev = point
+	else:
+		_report_missing_traverse_policy_api_once()
+		return {
+			"valid": false,
+			"segment_index": -1,
+		}
 	return {
 		"valid": true,
 		"segment_index": -1,
@@ -770,3 +777,21 @@ func _extract_path_points(points_variant: Variant) -> Array[Vector2]:
 
 static func _is_finite_vector2(value: Vector2) -> bool:
 	return is_finite(value.x) and is_finite(value.y)
+
+
+func _allow_legacy_shadow_api_fallback() -> bool:
+	if not GameConfig:
+		return false
+	if not (GameConfig.ai_balance is Dictionary):
+		return false
+	var pursuit := (GameConfig.ai_balance.get("pursuit", {}) as Dictionary)
+	return bool(pursuit.get("allow_legacy_shadow_api_fallback", false))
+
+
+func _report_missing_traverse_policy_api_once() -> void:
+	if _legacy_traverse_policy_missing_reported:
+		return
+	_legacy_traverse_policy_missing_reported = true
+	push_error("[NavigationRuntimeQueries] Missing modern traverse policy API; fail-closed validation engaged")
+	if AIWatchdog and AIWatchdog.has_method("record_missing_traverse_api_event"):
+		AIWatchdog.call("record_missing_traverse_api_event")
